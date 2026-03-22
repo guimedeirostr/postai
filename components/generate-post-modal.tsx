@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ interface CopyResult {
   caption:       string;
   hashtags:      string[];
   visual_prompt: string;
+  image_url?:    string | null;
 }
 
 interface Props {
@@ -31,12 +32,14 @@ interface Props {
 }
 
 export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
-  const [theme,     setTheme]     = useState("");
-  const [objective, setObjective] = useState("");
-  const [format,    setFormat]    = useState<Format>("feed");
-  const [loading,   setLoading]   = useState(false);
-  const [result,    setResult]    = useState<CopyResult | null>(null);
-  const [copied,    setCopied]    = useState<string | null>(null);
+  const [theme,          setTheme]          = useState("");
+  const [objective,      setObjective]      = useState("");
+  const [format,         setFormat]         = useState<Format>("feed");
+  const [loading,        setLoading]        = useState(false);
+  const [result,         setResult]         = useState<CopyResult | null>(null);
+  const [copied,         setCopied]         = useState<string | null>(null);
+  const [imgLoading,     setImgLoading]     = useState(false);
+  const [imgError,       setImgError]       = useState<string | null>(null);
 
   async function handleGenerate() {
     if (!theme || !objective) return;
@@ -57,6 +60,26 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  async function handleGenerateImage() {
+    if (!result?.post_id) return;
+    setImgLoading(true);
+    setImgError(null);
+
+    const res  = await fetch("/api/posts/generate-image", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ post_id: result.post_id }),
+    });
+    const data = await res.json();
+
+    if (res.ok && data.image_url) {
+      setResult(prev => prev ? { ...prev, image_url: data.image_url } : prev);
+    } else {
+      setImgError(data.error ?? "Erro ao gerar imagem");
+    }
+    setImgLoading(false);
   }
 
   return (
@@ -180,7 +203,29 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 <p className="text-slate-600 text-sm italic">{result.visual_prompt}</p>
               </div>
 
-              <Button variant="outline" className="w-full" onClick={() => setResult(null)}>
+              {/* Imagem gerada */}
+              {result.image_url ? (
+                <div className="rounded-xl overflow-hidden border">
+                  <img src={result.image_url} alt="Imagem gerada" className="w-full object-cover" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Button
+                    onClick={handleGenerateImage}
+                    disabled={imgLoading}
+                    className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+                  >
+                    {imgLoading
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando imagem...</>
+                      : <><ImageIcon className="w-4 h-4 mr-2" />Gerar imagem com Freepik</>}
+                  </Button>
+                  {imgError && (
+                    <p className="text-xs text-red-500 text-center">{imgError}</p>
+                  )}
+                </div>
+              )}
+
+              <Button variant="outline" className="w-full" onClick={() => { setResult(null); setImgError(null); }}>
                 Gerar outro post
               </Button>
             </div>
