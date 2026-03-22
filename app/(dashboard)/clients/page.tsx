@@ -7,6 +7,7 @@ import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientFormModal } from "@/components/client-form-modal";
+import { GeneratePostModal } from "@/components/generate-post-modal";
 import type { BrandProfile } from "@/types";
 
 function DeleteDialog({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
@@ -29,9 +30,10 @@ function DeleteDialog({ name, onConfirm, onCancel }: { name: string; onConfirm: 
 export default function ClientsPage() {
   const [clients, setClients]     = useState<BrandProfile[]>([]);
   const [loading, setLoading]     = useState(true);
-  const [showForm, setShowForm]   = useState(false);
-  const [editing, setEditing]     = useState<BrandProfile | undefined>();
-  const [deleting, setDeleting]   = useState<BrandProfile | undefined>();
+  const [showForm, setShowForm]       = useState(false);
+  const [editing, setEditing]         = useState<BrandProfile | undefined>();
+  const [deleting, setDeleting]       = useState<BrandProfile | undefined>();
+  const [generating, setGenerating]   = useState<BrandProfile | undefined>();
 
   async function load() {
     setLoading(true);
@@ -135,6 +137,7 @@ export default function ClientsPage() {
 
                 {/* Gerar post */}
                 <Button size="sm" variant="outline"
+                  onClick={() => setGenerating(client)}
                   className="w-full mt-4 text-violet-700 border-violet-200 hover:bg-violet-50">
                   <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Gerar post
                 </Button>
@@ -157,6 +160,14 @@ export default function ClientsPage() {
           name={deleting.name}
           onConfirm={() => handleDelete(deleting)}
           onCancel={() => setDeleting(undefined)}
+        />
+      )}
+
+      {generating && (
+        <GeneratePostModal
+          client={generating}
+          onClose={() => setGenerating(undefined)}
+          onGenerated={load}
         />
       )}
     </div>
