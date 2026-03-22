@@ -9,7 +9,10 @@ function getAdminApp(): App {
 
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (serviceAccountJson) {
-    return initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), projectId });
+    let json = serviceAccountJson.trim();
+    if (json.startsWith('"') && json.endsWith('"')) json = json.slice(1, -1);
+    json = json.replace(/\\n/g, "\n");
+    return initializeApp({ credential: cert(JSON.parse(json)), projectId });
   }
 
   return initializeApp({ projectId });
