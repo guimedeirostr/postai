@@ -149,8 +149,8 @@ REGRAS DE OURO — NUNCA QUEBRE
 4. Cada parágrafo tem uma função específica no framework — não escreva parágrafos decorativos.
 5. CTA sempre específico: nunca "clique no link da bio" sem dizer por quê.
 6. Hashtags: mix estratégico — 10 de nicho específico + 10 de médio alcance + 10 de alta relevância para o segmento. Nunca genéricas (#vida #amor).
-7. visual_prompt em inglês: descreva cena real, fotografia profissional, lighting, estilo. NÃO descreva textos, logos ou elementos gráficos na imagem.
-8. layout_prompt em inglês: descreva a COMPOSIÇÃO DO DESIGN — onde o texto ficará posicionado, qual overlay será usado, o estilo do layout (glassmorphism, cards, gradiente), e como a imagem e o texto vão interagir. Este prompt é enviado para o gerador de imagens img2img para que ele entenda o contexto do design final.
+7. visual_prompt em inglês: descreva cena real, fotografia profissional, lighting, estilo. NÃO descreva textos, logos ou elementos gráficos na imagem. IMPORTANTE: qualquer texto ou frase visível na arte final estará em PORTUGUÊS-BR — mencione isso no prompt como "text overlays in Brazilian Portuguese".
+8. layout_prompt em inglês: descreva a COMPOSIÇÃO DO DESIGN — onde o texto ficará posicionado, qual overlay será usado, o estilo do layout (glassmorphism, cards, gradiente), e como a imagem e o texto vão interagir. Este prompt é enviado para o gerador de imagens img2img para que ele entenda o contexto do design final. SEMPRE inclua: "All text overlays are in Brazilian Portuguese (pt-BR)."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
@@ -160,8 +160,8 @@ OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
   "headline": "headline completa para display (máx 12 palavras)",
   "caption": "legenda completa seguindo o framework ${framework}, com emojis estratégicos e quebras de linha",
   "hashtags": ["exatamente 30 hashtags sem #, estrategicamente selecionadas"],
-  "visual_prompt": "detailed professional photography prompt in English with scene, lighting, mood, style, brand colors ${client.primary_color} and ${client.secondary_color}",
-  "layout_prompt": "Instagram design composition in English: describe text overlay position (bottom third / left panel / right side), overlay style (glassmorphism frosted panel / solid brand color strip / dark gradient), typography weight (bold 900 / display), and how subject and text interact. Example: 'Product centered right, bold headline text panel on left third with brand primary color ${client.primary_color} glassmorphism overlay, white typography, brand strip at bottom with logo'",
+  "visual_prompt": "detailed professional photography prompt in English with scene, lighting, mood, style, brand colors ${client.primary_color} and ${client.secondary_color}. Text overlays in Brazilian Portuguese (pt-BR).",
+  "layout_prompt": "Instagram design composition in English: describe text overlay position (bottom third / left panel / right side), overlay style (glassmorphism frosted panel / solid brand color strip / dark gradient), typography weight (bold 900 / display), and how subject and text interact. Always end with: 'All text overlays are in Brazilian Portuguese (pt-BR).' Example: 'Product centered right, bold headline text panel on left third with brand primary color ${client.primary_color} glassmorphism overlay, white typography, brand strip at bottom with logo. All text overlays are in Brazilian Portuguese (pt-BR).'",
   "framework_used": "${framework}",
   "hook_type": "${hook}"
 }`;

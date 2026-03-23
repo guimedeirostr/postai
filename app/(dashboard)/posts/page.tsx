@@ -102,7 +102,14 @@ function PostDetailModal({ post, client, onClose, onImageGenerated }: PostDetail
 
           {/* Compositor / Imagem ou botão de gerar */}
           {imageUrl && client ? (
-            <PostComposer post={{ ...post, image_url: imageUrl }} client={client} />
+            <PostComposer
+              post={{ ...post, image_url: imageUrl }}
+              client={client}
+              onImageRefined={(url) => {
+                setImageUrl(url);
+                onImageGenerated?.(post.id, url);
+              }}
+            />
           ) : imageUrl ? (
             <div className="rounded-xl overflow-hidden border bg-slate-50">
               <img src={imageUrl} alt={post.headline} className="w-full object-cover" />

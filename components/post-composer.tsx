@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Download, RefreshCw, ScanSearch, Loader2 } from "lucide-react";
+import { Download, RefreshCw, ScanSearch, Loader2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BrandProfile, GeneratedPost } from "@/types";
 
@@ -523,11 +523,12 @@ function drawLogoBottomLeft(
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
-  post:   GeneratedPost;
-  client: BrandProfile;
+  post:             GeneratedPost;
+  client:           BrandProfile;
+  onImageRefined?:  (imageUrl: string) => void;
 }
 
-export function PostComposer({ post, client }: Props) {
+export function PostComposer({ post, client, onImageRefined }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rendered,       setRendered]       = useState(false);
   const [template,       setTemplate]       = useState<Template>("cards");
@@ -537,8 +538,10 @@ export function PostComposer({ post, client }: Props) {
   const [zone,           setZone]           = useState<CompositionZone>(
     (post.composition_zone as CompositionZone) ?? "bottom"
   );
-  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzing,   setAnalyzing]   = useState(false);
   const [analyzeInfo, setAnalyzeInfo] = useState<string>("");
+  const [refining,    setRefining]    = useState(false);
+  const [refineError, setRefineError] = useState<string | null>(null);
 
   const dim = FORMAT_PX[post.format] ?? FORMAT_PX.feed;
 
@@ -626,6 +629,60 @@ export function PostComposer({ post, client }: Props) {
     }
   }
 
+  // ─ Refine with Freepik img2img ───────────────────────────────────────────────
+  async function handleFreepikRefine() {
+    const canvas = canvasRef.current;
+    if (!canvas || refining) return;
+
+    setRefining(true);
+    setRefineError(null);
+
+    try {
+      // Export canvas as JPEG base64 (smaller than PNG)
+      const dataUrl     = canvas.toDataURL("image/jpeg", 0.88);
+      const canvas_base64 = dataUrl.replace(/^data:image\/jpeg;base64,/, "");
+
+      // 1. Submit to Freepik
+      const res  = await fetch("/api/posts/refine-image", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ post_id: post.id, canvas_base64 }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setRefineError(data.error ?? "Erro ao iniciar refinamento");
+        return;
+      }
+
+      const { task_id, post_id } = data as { task_id: string; post_id: string };
+
+      // 2. Poll check-image every 4s for up to 90s
+      for (let i = 0; i < 23; i++) {
+        await new Promise(r => setTimeout(r, 4000));
+        const check = await fetch(`/api/posts/check-image?task_id=${task_id}&post_id=${post_id}`);
+        const checkData = await check.json() as { status: string; image_url?: string; error?: string };
+
+        if (checkData.status === "COMPLETED" && checkData.image_url) {
+          onImageRefined?.(checkData.image_url);
+          setRefining(false);
+          return;
+        }
+        if (checkData.status === "FAILED") {
+          setRefineError(checkData.error ?? "Falha no refinamento");
+          setRefining(false);
+          return;
+        }
+      }
+      setRefineError("Timeout. A Freepik demorou mais que o esperado. Tente novamente.");
+    } catch (e) {
+      console.error(e);
+      setRefineError("Erro inesperado. Tente novamente.");
+    } finally {
+      setRefining(false);
+    }
+  }
+
   function handleDownload() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -654,6 +711,27 @@ export function PostComposer({ post, client }: Props) {
             <Download className="w-3.5 h-3.5 mr-1.5" /> PNG
           </Button>
         </div>
+      </div>
+
+      {/* ── Freepik img2img refine ── */}
+      <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-violet-50 to-fuchsia-50 rounded-xl border border-violet-100">
+        <div className="flex-1">
+          <p className="text-xs font-semibold text-violet-800">Refinar com Freepik ✨</p>
+          <p className="text-xs text-violet-500 mt-0.5">
+            Envia a arte composta para o Freepik melhorar a qualidade fotográfica preservando o layout
+          </p>
+          {refineError && <p className="text-xs text-red-500 mt-1">{refineError}</p>}
+        </div>
+        <Button
+          size="sm"
+          onClick={handleFreepikRefine}
+          disabled={refining || !rendered}
+          className="shrink-0 bg-violet-600 hover:bg-violet-700 text-white"
+        >
+          {refining
+            ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Refinando...</>
+            : <><Wand2 className="w-3.5 h-3.5 mr-1.5" />Refinar</>}
+        </Button>
       </div>
 
       {/* ── Template selector ── */}
