@@ -41,16 +41,47 @@ export function ClientFormModal({ client, onClose, onSaved }: Props) {
     setForm(f => ({ ...f, [key]: val }));
   }
 
-  async function handleLogoUpload(file: File) {
-    if (!client) return; // só faz upload após criar o cliente
+  async function compressImage(file: File): Promise<File> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 600;
+          const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+          const canvas = document.createElement("canvas");
+          canvas.width  = Math.round(img.width  * ratio);
+          canvas.height = Math.round(img.height * ratio);
+          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(
+            (blob) => resolve(new File([blob!], "logo.jpg", { type: "image/jpeg" })),
+            "image/jpeg", 0.78
+          );
+        };
+        img.src = e.target!.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleLogoUpload(rawFile: File) {
+    if (!client) return;
     setUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("client_id", client.id);
-    const res  = await fetch("/api/clients/upload-logo", { method: "POST", body: fd });
-    const data = await res.json();
-    if (res.ok) set("logo_url", data.url);
-    setUploading(false);
+    try {
+      const file = await compressImage(rawFile);
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("client_id", client.id);
+      const res  = await fetch("/api/clients/upload-logo", { method: "POST", body: fd });
+      const data = await res.json();
+      if (res.ok) set("logo_url", data.url);
+      else alert(`Erro no upload: ${data.error ?? res.status}`);
+    } catch (err) {
+      console.error("handleLogoUpload:", err);
+      alert("Erro ao enviar logo. Tente novamente.");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleSave() {
