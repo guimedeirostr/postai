@@ -4,37 +4,75 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithGoogle, handleGoogleRedirect } from "@/lib/auth";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { signInWithGoogle } from "@/lib/auth";
+import { getFirebaseAuth, getFirebaseDb } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sparkles, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const router = useRouter();
 
-  // Processa o redirect de volta do Google
   useEffect(() => {
-    handleGoogleRedirect()
-      .then((user) => {
-        if (user) {
-          router.push("/dashboard");
-        } else {
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error("Erro no redirect:", err);
+    const auth = getFirebaseAuth();
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
         setLoading(false);
-      });
+        return;
+      }
+
+      // Usuário autenticado — criar sessão
+      try {
+        // Garante doc de agência no Firestore
+        const agencyRef = doc(getFirebaseDb(), "agencies", user.uid);
+        const agencySnap = await getDoc(agencyRef);
+        if (!agencySnap.exists()) {
+          await setDoc(agencyRef, {
+            id: user.uid,
+            name: user.displayName ?? "Minha Agência",
+            email: user.email,
+            photo_url: user.photoURL ?? null,
+            created_at: serverTimestamp(),
+          });
+        }
+
+        // Cria session cookie via API
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/auth/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(`Session API error ${res.status}: ${body}`);
+        }
+
+        router.push("/dashboard");
+      } catch (err: unknown) {
+        console.error("Erro ao criar sessão:", err);
+        setError(err instanceof Error ? err.message : "Erro ao criar sessão. Tente novamente.");
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, [router]);
 
   async function handleLogin() {
     setLoading(true);
+    setError("");
     try {
       await signInWithGoogle(); // redireciona para o Google
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Erro no login:", err);
+      setError("Erro ao iniciar login. Tente novamente.");
       setLoading(false);
     }
   }
@@ -72,6 +110,10 @@ export default function LoginPage() {
             )}
             Entrar com Google
           </Button>
+
+          {error && (
+            <p className="text-center text-xs text-red-500 mt-3">{error}</p>
+          )}
 
           <p className="text-center text-xs text-slate-400 mt-4">
             Acesso exclusivo para agências parceiras
