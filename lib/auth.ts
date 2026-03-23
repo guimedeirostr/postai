@@ -1,11 +1,17 @@
 "use client";
 
-import { signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
+import { signInWithRedirect, getRedirectResult, signOut as firebaseSignOut } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { getFirebaseAuth, getFirebaseDb, getGoogleProvider } from "./firebase";
 
 export async function signInWithGoogle() {
-  const result = await signInWithPopup(getFirebaseAuth(), getGoogleProvider());
+  await signInWithRedirect(getFirebaseAuth(), getGoogleProvider());
+}
+
+export async function handleGoogleRedirect() {
+  const result = await getRedirectResult(getFirebaseAuth());
+  if (!result) return null;
+
   const user = result.user;
 
   const agencyRef = doc(getFirebaseDb(), "agencies", user.uid);
@@ -21,7 +27,6 @@ export async function signInWithGoogle() {
     });
   }
 
-  // Gera session cookie via API
   const idToken = await user.getIdToken();
   await fetch("/api/auth/session", {
     method: "POST",

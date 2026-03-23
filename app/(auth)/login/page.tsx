@@ -2,25 +2,39 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithGoogle } from "@/lib/auth";
+import { signInWithGoogle, handleGoogleRedirect } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sparkles, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  // Processa o redirect de volta do Google
+  useEffect(() => {
+    handleGoogleRedirect()
+      .then((user) => {
+        if (user) {
+          router.push("/dashboard");
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Erro no redirect:", err);
+        setLoading(false);
+      });
+  }, [router]);
 
   async function handleLogin() {
     setLoading(true);
     try {
-      await signInWithGoogle();
-      router.push("/dashboard");
+      await signInWithGoogle(); // redireciona para o Google
     } catch (err) {
       console.error("Erro no login:", err);
-    } finally {
       setLoading(false);
     }
   }
