@@ -9,10 +9,20 @@ function getAdminApp(): App {
 
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (serviceAccountJson) {
-    let json = serviceAccountJson.trim();
-    if (json.startsWith('"') && json.endsWith('"')) json = json.slice(1, -1);
-    json = json.replace(/\\n/g, "\n");
-    return initializeApp({ credential: cert(JSON.parse(json)), projectId });
+    try {
+      let json = serviceAccountJson.trim();
+      // Remove aspas externas que o Vercel às vezes adiciona
+      if (json.startsWith('"') && json.endsWith('"')) {
+        json = json.slice(1, -1).replace(/\\"/g, '"');
+      }
+      // Converte \n escapados em newlines reais (necessário para private_key)
+      json = json.replace(/\\n/g, "\n");
+      // Adiciona chaves se o usuário colou só o conteúdo interno do JSON
+      if (!json.startsWith("{")) json = "{" + json + "}";
+      return initializeApp({ credential: cert(JSON.parse(json)), projectId });
+    } catch (err) {
+      console.error("[firebase-admin] Falha ao parsear FIREBASE_SERVICE_ACCOUNT_JSON:", err);
+    }
   }
 
   return initializeApp({ projectId });
