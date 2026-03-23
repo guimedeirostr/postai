@@ -97,7 +97,7 @@ export function PostComposer({ post, client }: Props) {
       ctx.shadowBlur   = 12;
 
       // Usa visual_headline (overlay curto) se disponível, fallback para headline
-      const overlayText = (post as Record<string, unknown>).visual_headline as string || post.headline;
+      const overlayText = post.visual_headline || post.headline;
       const words = overlayText.split(" ");
       const lines: string[] = [];
       let current = "";

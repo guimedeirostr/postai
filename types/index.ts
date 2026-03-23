@@ -34,10 +34,14 @@ export interface GeneratedPost {
   theme: string;
   objective: string;
   format: "feed" | "stories" | "reels_cover";
+  visual_headline?: string;   // máx 6 palavras para overlay na imagem
   headline: string;
   caption: string;
   hashtags: string[];
   visual_prompt: string;
+  framework_used?: string;    // PAS | AIDA | PASTOR | PPPP
+  hook_type?: string;         // Dor | Curiosidade | Pergunta | etc
+  freepik_task_id?: string;
   image_url: string | null;
   status: "generating" | "ready" | "approved" | "rejected";
   created_at: Timestamp;
