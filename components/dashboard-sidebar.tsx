@@ -13,10 +13,10 @@ import {
 import { useState } from "react";
 
 const navItems = [
-  { href: "/dashboard",         label: "Dashboard",     icon: LayoutDashboard },
-  { href: "/dashboard/clients", label: "Clientes",      icon: Users },
-  { href: "/dashboard/posts",   label: "Posts Gerados", icon: ImageIcon },
-  { href: "/dashboard/settings",label: "Configurações", icon: Settings },
+  { href: "/",          label: "Dashboard",     icon: LayoutDashboard },
+  { href: "/clients",   label: "Clientes",      icon: Users },
+  { href: "/posts",     label: "Posts Gerados", icon: ImageIcon },
+  { href: "/settings",  label: "Configurações", icon: Settings },
 ];
 
 interface Props {
