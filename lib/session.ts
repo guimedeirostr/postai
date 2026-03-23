@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { cookies } from "next/headers";
 
 const SECRET    = new TextEncoder().encode(process.env.JWT_SECRET!);
 const ALGORITHM = "HS256";
@@ -27,4 +28,12 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
   } catch {
     return null;
   }
+}
+
+/** Lê e verifica o cookie de sessão atual (para uso em API routes) */
+export async function getSessionUser(): Promise<SessionPayload | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("postai_session")?.value;
+  if (!token) return null;
+  return verifySession(token);
 }
