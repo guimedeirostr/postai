@@ -18,8 +18,24 @@ interface CopyResult {
   hook_type:       string;
 }
 
-// Seleciona framework e tipo de hook com base no objetivo
-function selectFramework(objective: string): { framework: string; hook: string; description: string } {
+// Seleciona framework e tipo de hook com base no objetivo (ou usa hook_type do estrategista se fornecido)
+function selectFramework(objective: string, hookTypeOverride?: string): { framework: string; hook: string; description: string } {
+  // If strategy agent provided a hook_type, use it to influence framework selection
+  if (hookTypeOverride) {
+    const hookMap: Record<string, { framework: string; description: string }> = {
+      "Dor":          { framework: "PASTOR", description: "Problem → Amplify → Story → Testimony → Offer → Response" },
+      "Curiosidade":  { framework: "AIDA",   description: "Attention → Interest → Desire → Action" },
+      "Pergunta":     { framework: "PAS",    description: "Problem → Agitate → Solution" },
+      "Prova Social": { framework: "PPPP",   description: "Picture → Promise → Prove → Push" },
+      "Controvérsia": { framework: "AIDA",   description: "Attention → Interest → Desire → Action" },
+      "Número":       { framework: "AIDA",   description: "Attention → Interest → Desire → Action" },
+    };
+    const mapped = hookMap[hookTypeOverride];
+    if (mapped) {
+      return { framework: mapped.framework, hook: hookTypeOverride, description: mapped.description };
+    }
+  }
+
   const obj = objective.toLowerCase();
 
   if (obj.match(/vend|compra|oferta|promo|preço|desconto/))
@@ -72,8 +88,15 @@ CAPA DE REELS (1080×1920 — vertical 9:16):
 - Use números ou perguntas no visual_headline`,
 };
 
-function buildSystemPrompt(client: BrandProfile, format: string, objective: string): string {
-  const { framework, hook, description } = selectFramework(objective);
+interface StrategyContext {
+  pilar?: string;
+  publico_especifico?: string;
+  dor_desejo?: string;
+  hook_type?: string;
+}
+
+function buildSystemPrompt(client: BrandProfile, format: string, objective: string, strategy?: StrategyContext): string {
+  const { framework, hook, description } = selectFramework(objective, strategy?.hook_type);
   const hookGuide    = HOOK_GUIDE[hook] ?? HOOK_GUIDE["Dor"];
   const formatGuide  = FORMAT_GUIDE[format] ?? FORMAT_GUIDE.feed;
 
@@ -107,7 +130,16 @@ FORMATO: ${format.toUpperCase()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${formatGuide}
 
+${strategy && (strategy.pilar || strategy.publico_especifico || strategy.dor_desejo) ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BRIEFING DO ESTRATEGISTA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${strategy.pilar ? `Pilar de conteúdo:    ${strategy.pilar}` : ""}
+${strategy.publico_especifico ? `Público específico:   ${strategy.publico_especifico}` : ""}
+${strategy.dor_desejo ? `Dor/Desejo a explorar: ${strategy.dor_desejo}` : ""}
+
+Use este briefing para calibrar a profundidade emocional e o ângulo do copy. O público específico e a dor/desejo devem estar visivelmente presentes na copy.
+
+` : ""}━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REGRAS DE OURO — NUNCA QUEBRE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. visual_headline: MÁXIMO 6 PALAVRAS. É o texto que aparece sobreposto na imagem. Deve funcionar sozinho, sem contexto. Impacto imediato. Sem pontuação excessiva.
@@ -137,7 +169,25 @@ export async function POST(req: NextRequest) {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { client_id, theme, objective, format } = await req.json();
+    const {
+      client_id,
+      theme,
+      objective,
+      format,
+      pilar,
+      publico_especifico,
+      dor_desejo,
+      hook_type,
+    } = await req.json() as {
+      client_id: string;
+      theme: string;
+      objective: string;
+      format: string;
+      pilar?: string;
+      publico_especifico?: string;
+      dor_desejo?: string;
+      hook_type?: string;
+    };
 
     if (!client_id || !theme || !objective || !format) {
       return NextResponse.json({ error: "client_id, theme, objective e format são obrigatórios" }, { status: 400 });
@@ -150,10 +200,16 @@ export async function POST(req: NextRequest) {
 
     const client = { id: clientDoc.id, ...clientDoc.data() } as BrandProfile;
 
+    const strategy: StrategyContext = {};
+    if (pilar)             strategy.pilar             = pilar;
+    if (publico_especifico) strategy.publico_especifico = publico_especifico;
+    if (dor_desejo)        strategy.dor_desejo        = dor_desejo;
+    if (hook_type)         strategy.hook_type         = hook_type;
+
     const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 2048,
-      system:     buildSystemPrompt(client, format, objective),
+      system:     buildSystemPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined),
       messages: [{
         role:    "user",
         content: `Tema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,

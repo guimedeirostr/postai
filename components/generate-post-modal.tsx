@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import type { BrandProfile } from "@/types";
+import type { BrandProfile, StrategyBriefing } from "@/types";
 import { FORMAT_OPTIONS, FORMAT_ASPECT } from "@/lib/post-formats";
 
 type Format = "feed" | "stories" | "reels_cover";
+
+// Step 0 = strategy, Step 1 = form + generate
+type Step = 0 | 1;
 
 interface CopyResult {
   post_id:         string;
@@ -29,7 +32,27 @@ interface Props {
   onGenerated: () => void;
 }
 
+const PILAR_COLORS: Record<string, string> = {
+  "Produto":     "bg-blue-100 text-blue-700",
+  "Educação":    "bg-emerald-100 text-emerald-700",
+  "Prova Social":"bg-amber-100 text-amber-700",
+  "Bastidores":  "bg-orange-100 text-orange-700",
+  "Engajamento": "bg-pink-100 text-pink-700",
+  "Promoção":    "bg-red-100 text-red-700",
+  "Trend":       "bg-purple-100 text-purple-700",
+};
+
 export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
+  // Step management
+  const [step,          setStep]          = useState<Step>(0);
+
+  // Strategy step state
+  const [campaignFocus, setCampaignFocus] = useState("");
+  const [strategyLoading, setStrategyLoading] = useState(false);
+  const [strategy,      setStrategy]      = useState<StrategyBriefing | null>(null);
+  const [strategyError, setStrategyError] = useState<string | null>(null);
+
+  // Form step state
   const [theme,          setTheme]          = useState("");
   const [objective,      setObjective]      = useState("");
   const [format,         setFormat]         = useState<Format>("feed");
@@ -39,15 +62,62 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
 
+  async function handleGenerateStrategy() {
+    setStrategyLoading(true);
+    setStrategyError(null);
+    setStrategy(null);
+
+    try {
+      const res  = await fetch("/api/posts/generate-strategy", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ client_id: client.id, campaign_focus: campaignFocus || undefined }),
+      });
+      const data = await res.json() as StrategyBriefing & { error?: string };
+
+      if (!res.ok) {
+        setStrategyError(data.error ?? "Erro ao gerar estratégia");
+        return;
+      }
+
+      setStrategy(data);
+      // Auto-fill form fields from strategy
+      setTheme(data.tema);
+      setObjective(data.objetivo);
+      setFormat(data.formato_sugerido);
+    } catch {
+      setStrategyError("Erro inesperado. Tente novamente.");
+    } finally {
+      setStrategyLoading(false);
+    }
+  }
+
+  function handleSkipStrategy() {
+    setStrategy(null);
+    setStep(1);
+  }
+
+  function handleProceedWithStrategy() {
+    setStep(1);
+  }
+
   async function handleGenerate() {
     if (!theme || !objective) return;
     setLoading(true);
     setResult(null);
 
+    const body: Record<string, string> = { client_id: client.id, theme, objective, format };
+    if (strategy) {
+      if (strategy.pilar)             body.pilar             = strategy.pilar;
+      if (strategy.publico_especifico) body.publico_especifico = strategy.publico_especifico;
+      if (strategy.dor_desejo)        body.dor_desejo        = strategy.dor_desejo;
+      if (strategy.hook_type)         body.hook_type         = strategy.hook_type;
+    }
+
     const res  = await fetch("/api/posts/generate-copy", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ client_id: client.id, theme, objective, format }),
+      body:    JSON.stringify(body),
     });
     const data = await res.json();
     if (res.ok) { setResult(data); onGenerated(); }
@@ -113,6 +183,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     setImgLoading(false);
   }
 
+  const pilarColorClass = strategy ? (PILAR_COLORS[strategy.pilar] ?? "bg-slate-100 text-slate-700") : "";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
@@ -136,9 +208,120 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-          {/* Formulário */}
-          {!result && (
+          {/* ─── STEP 0: Strategy ─── */}
+          {step === 0 && !result && (
+            <div className="space-y-5">
+              {/* Step indicator */}
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-xs">1</span>
+                <span className="font-medium text-slate-600">Estratégia</span>
+                <ChevronRight className="w-3 h-3" />
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center font-bold text-xs">2</span>
+                <span>Conteúdo</span>
+              </div>
+
+              {/* Campaign focus textarea */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Contexto da campanha <span className="text-slate-400 font-normal">(opcional)</span></Label>
+                <textarea
+                  value={campaignFocus}
+                  onChange={e => setCampaignFocus(e.target.value)}
+                  rows={2}
+                  placeholder="Ex: Semana de lançamento do produto X, Dia das Mães se aproximando..."
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                />
+              </div>
+
+              {/* Generate strategy button */}
+              <Button
+                onClick={handleGenerateStrategy}
+                disabled={strategyLoading}
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                {strategyLoading
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analisando marca...</>
+                  : <><Brain className="w-4 h-4 mr-2" />Gerar Estratégia</>}
+              </Button>
+
+              {strategyError && (
+                <p className="text-xs text-red-500 text-center">{strategyError}</p>
+              )}
+
+              {/* Skip link */}
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={handleSkipStrategy}
+                  className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2"
+                >
+                  Pular → preencher manualmente
+                </button>
+              </div>
+
+              {/* Strategy result cards */}
+              {strategy && (
+                <div className="space-y-3">
+                  {/* Success banner */}
+                  <div className="flex items-center gap-2 p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                    <span className="text-violet-600 text-sm">📐</span>
+                    <p className="text-xs font-medium text-violet-700">Estratégia gerada — edite se quiser</p>
+                  </div>
+
+                  {/* Pilar badge + rationale */}
+                  <div className="p-4 bg-slate-50 rounded-xl space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-semibold px-3 py-1 rounded-full ${pilarColorClass}`}>
+                        {strategy.pilar}
+                      </span>
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                        🎣 {strategy.hook_type}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 italic leading-relaxed">{strategy.rationale}</p>
+                  </div>
+
+                  {/* Dor/Desejo highlight */}
+                  <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                    <p className="text-xs font-semibold text-amber-700 mb-1 uppercase tracking-wide">Dor / Desejo a explorar</p>
+                    <p className="text-sm text-amber-900">{strategy.dor_desejo}</p>
+                  </div>
+
+                  {/* Tema + objetivo preview */}
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Tema sugerido</p>
+                      <p className="text-sm text-slate-800">{strategy.tema}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Objetivo</p>
+                      <p className="text-sm text-slate-800">{strategy.objetivo}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── STEP 1: Form ─── */}
+          {step === 1 && !result && (
             <>
+              {/* Step indicator */}
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-xs">1</span>
+                <span>Estratégia</span>
+                <ChevronRight className="w-3 h-3" />
+                <span className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-xs">2</span>
+                <span className="font-medium text-slate-600">Conteúdo</span>
+              </div>
+
+              {/* Strategy used badge */}
+              {strategy && (
+                <div className="flex items-center gap-2 p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${pilarColorClass}`}>{strategy.pilar}</span>
+                  <p className="text-xs text-violet-700">📐 Estratégia gerada — edite se quiser</p>
+                </div>
+              )}
+
               {/* Formato */}
               <div className="space-y-2">
                 <Label>Formato</Label>
@@ -183,7 +366,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
             </>
           )}
 
-          {/* Preview do resultado */}
+          {/* ─── Result ─── */}
           {result && (
             <div className="space-y-4">
 
@@ -283,7 +466,16 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 </div>
               )}
 
-              <Button variant="outline" className="w-full" onClick={() => { setResult(null); setImgError(null); }}>
+              <Button variant="outline" className="w-full" onClick={() => {
+                setResult(null);
+                setImgError(null);
+                setStep(0);
+                setStrategy(null);
+                setTheme("");
+                setObjective("");
+                setFormat("feed");
+                setCampaignFocus("");
+              }}>
                 Gerar outro post
               </Button>
             </div>
@@ -294,13 +486,28 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
         {!result && (
           <div className="flex justify-end gap-3 px-6 py-4 border-t">
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button onClick={handleGenerate}
-              disabled={loading || !theme || !objective}
-              className="bg-violet-600 hover:bg-violet-700 text-white min-w-[140px]">
-              {loading
-                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
-                : <><Sparkles className="w-4 h-4 mr-2" />Gerar post</>}
-            </Button>
+
+            {step === 0 && (
+              <Button
+                onClick={strategy ? handleProceedWithStrategy : handleSkipStrategy}
+                disabled={strategyLoading}
+                className="bg-violet-600 hover:bg-violet-700 text-white min-w-[160px]"
+              >
+                {strategy
+                  ? <><Sparkles className="w-4 h-4 mr-2" />Usar estratégia</>
+                  : <><ChevronRight className="w-4 h-4 mr-2" />Pular etapa</>}
+              </Button>
+            )}
+
+            {step === 1 && (
+              <Button onClick={handleGenerate}
+                disabled={loading || !theme || !objective}
+                className="bg-violet-600 hover:bg-violet-700 text-white min-w-[140px]">
+                {loading
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
+                  : <><Sparkles className="w-4 h-4 mr-2" />Gerar post</>}
+              </Button>
+            )}
           </div>
         )}
       </div>

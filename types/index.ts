@@ -26,6 +26,17 @@ export interface BrandProfile {
   created_at: Timestamp;
 }
 
+export interface StrategyBriefing {
+  pilar: string;
+  tema: string;
+  objetivo: string;
+  publico_especifico: string;
+  dor_desejo: string;
+  formato_sugerido: "feed" | "stories" | "reels_cover";
+  hook_type: string;
+  rationale: string;
+}
+
 export interface GeneratedPost {
   id: string;
   agency_id: string;
