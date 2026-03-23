@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Upload, Trash2, Loader2, Images, Plus, Tag, FileJson, CheckCircle2, Wand2, RotateCw } from "lucide-react";
+import { X, Upload, Trash2, Loader2, Images, Plus, Tag, FileJson, CheckCircle2, Wand2, RotateCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BrandPhoto, BrandProfile } from "@/types";
 
@@ -140,18 +140,19 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
     }
   }
 
-  async function handleEnhance(photo: BrandPhoto) {
+  async function handleEnhance(photo: BrandPhoto, rotate?: 90 | 270) {
     setEnhancing(photo.id);
     try {
       const res  = await fetch(`/api/clients/${client.id}/photos/${photo.id}/enhance`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ enhance: true }),
+        body:    JSON.stringify({ enhance: false, ...(rotate ? { rotate } : {}) }),
       });
       if (res.ok) {
         const { url } = await res.json() as { url: string };
-        // Update locally so grid refreshes immediately
-        setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, url } : p));
+        setPhotos(prev => prev.map(p =>
+          p.id === photo.id ? { ...p, url, enhanced: true } as BrandPhoto & { enhanced: boolean } : p
+        ));
       }
     } finally {
       setEnhancing(null);
@@ -170,6 +171,9 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
     setEnhancingAll(false);
     setEnhanceProgress(null);
   }
+
+  // Track per-photo rotation state for visual feedback before re-processing
+  const rotatingPhoto = enhancing;
 
   async function handleDelete(photoId: string) {
     setDeleting(photoId);
@@ -458,18 +462,27 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
                         )}
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
-                        {/* Enhance button */}
+                        {/* Rotate CCW 90° */}
                         <button
-                          onClick={() => handleEnhance(photo)}
-                          disabled={enhancing === photo.id || enhancingAll}
-                          title="Corrigir orientação + melhorar qualidade"
+                          onClick={() => handleEnhance(photo, 270)}
+                          disabled={rotatingPhoto === photo.id || enhancingAll}
+                          title="Girar 90° para esquerda"
                           className="p-1.5 bg-violet-500 hover:bg-violet-600 rounded-lg text-white transition-colors"
                         >
-                          {enhancing === photo.id
+                          {rotatingPhoto === photo.id
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <RotateCw className="w-3.5 h-3.5" />}
+                            : <RotateCcw className="w-3.5 h-3.5" />}
                         </button>
-                        {/* Delete button */}
+                        {/* Rotate CW 90° */}
+                        <button
+                          onClick={() => handleEnhance(photo, 90)}
+                          disabled={rotatingPhoto === photo.id || enhancingAll}
+                          title="Girar 90° para direita"
+                          className="p-1.5 bg-violet-500 hover:bg-violet-600 rounded-lg text-white transition-colors"
+                        >
+                          <RotateCw className="w-3.5 h-3.5" />
+                        </button>
+                        {/* Delete */}
                         <button
                           onClick={() => handleDelete(photo.id)}
                           disabled={deleting === photo.id}

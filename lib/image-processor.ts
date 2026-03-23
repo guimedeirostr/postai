@@ -9,6 +9,12 @@ export interface ProcessOptions {
   enhance?: boolean;
   /** Crop and resize to an exact Instagram format using attention-based smart crop */
   cropFormat?: "feed" | "stories" | "reels_cover";
+  /**
+   * Manual rotation in degrees CW applied AFTER EXIF auto-rotate.
+   * Use when pixel data is stored sideways without EXIF orientation flag.
+   * Values: 90 | 180 | 270
+   */
+  rotate?: 90 | 180 | 270;
 }
 
 const FORMAT_PX: Record<string, [number, number]> = {
@@ -33,11 +39,17 @@ export async function processPhoto(
     quality    = 85,
     enhance    = false,
     cropFormat,
+    rotate,
   } = options;
 
   // Start pipeline — .rotate() with no args reads EXIF and corrects orientation
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pipeline: any = sharp(input).rotate();
+  let pipeline: any = sharp(input).rotate(); // auto EXIF
+
+  // Manual rotation for photos without EXIF orientation data
+  if (rotate) {
+    pipeline = pipeline.rotate(rotate);
+  }
 
   if (cropFormat && FORMAT_PX[cropFormat]) {
     const [w, h] = FORMAT_PX[cropFormat];

@@ -24,21 +24,23 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Optional: crop to Instagram format from request body
+    // Optional processing params from request body
     const body = await req.json().catch(() => ({})) as {
       cropFormat?: "feed" | "stories" | "reels_cover";
       enhance?: boolean;
+      rotate?: 90 | 180 | 270;
     };
 
     // 1. Fetch original from its current public URL (works for any bucket)
     const raw = await fetchRemotePhoto(data.url as string);
 
-    // 2. Process: auto-rotate EXIF + optional smart crop + enhance
+    // 2. Process: auto-rotate EXIF + manual rotation + optional smart crop + enhance
     const processed = await processPhoto(raw, {
       maxSize:    1920,
       quality:    88,
-      enhance:    body.enhance ?? true,
+      enhance:    body.enhance ?? false,
       cropFormat: body.cropFormat,
+      rotate:     body.rotate,
     });
 
     // 3. Upload to PostAI R2 as enhanced copy
