@@ -13,6 +13,8 @@ async function getUser() {
     return decoded;
   } catch (err) {
     console.error("[layout] verifySessionCookie falhou:", err);
+    // Limpa o cookie inválido para evitar redirect loop
+    cookieStore.delete("postai_session");
     return null;
   }
 }
