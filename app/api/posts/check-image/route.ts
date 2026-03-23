@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "task_id e post_id sao obrigatorios" }, { status: 400 });
     }
 
-    const res  = await fetch(`https://api.freepik.com/v1/ai/${task_id}`, {
+    const res  = await fetch(`https://api.freepik.com/v1/ai/mystic/${task_id}`, {
       headers: { "x-freepik-api-key": FREEPIK_API_KEY },
     });
     const data = await res.json();
