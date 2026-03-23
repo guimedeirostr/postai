@@ -96,8 +96,9 @@ export function PostComposer({ post, client }: Props) {
       ctx.shadowColor  = "rgba(0,0,0,0.6)";
       ctx.shadowBlur   = 12;
 
-      // Word wrap
-      const words = post.headline.split(" ");
+      // Usa visual_headline (overlay curto) se disponível, fallback para headline
+      const overlayText = (post as Record<string, unknown>).visual_headline as string || post.headline;
+      const words = overlayText.split(" ");
       const lines: string[] = [];
       let current = "";
       for (const word of words) {

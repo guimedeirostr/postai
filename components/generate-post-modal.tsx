@@ -12,12 +12,15 @@ import { FORMAT_OPTIONS, FORMAT_ASPECT } from "@/lib/post-formats";
 type Format = "feed" | "stories" | "reels_cover";
 
 interface CopyResult {
-  post_id:       string;
-  headline:      string;
-  caption:       string;
-  hashtags:      string[];
-  visual_prompt: string;
-  image_url?:    string | null;
+  post_id:         string;
+  visual_headline: string;
+  headline:        string;
+  caption:         string;
+  hashtags:        string[];
+  visual_prompt:   string;
+  framework_used?: string;
+  hook_type?:      string;
+  image_url?:      string | null;
 }
 
 interface Props {
@@ -183,7 +186,34 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
           {/* Preview do resultado */}
           {result && (
             <div className="space-y-4">
-              {/* Headline */}
+
+              {/* Badge framework + hook */}
+              {result.framework_used && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-violet-100 text-violet-700">
+                    📐 {result.framework_used}
+                  </span>
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                    🎣 Hook: {result.hook_type}
+                  </span>
+                </div>
+              )}
+
+              {/* Visual Headline (overlay) */}
+              {result.visual_headline && (
+                <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-violet-500 uppercase tracking-wide">Visual Headline (overlay)</Label>
+                    <button onClick={() => copyText(result.visual_headline, "visual_headline")}
+                      className="text-slate-400 hover:text-slate-700">
+                      {copied === "visual_headline" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="font-black text-violet-900 text-2xl leading-tight">{result.visual_headline}</p>
+                </div>
+              )}
+
+              {/* Headline completa */}
               <div className="p-4 bg-slate-50 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs text-slate-500 uppercase tracking-wide">Headline</Label>
