@@ -39,7 +39,7 @@ export default function LoginPage() {
           throw new Error(`Erro ${res.status}: ${body}`);
         }
 
-        router.push("/dashboard");
+        router.push("/");
       } catch (err: unknown) {
         console.error("Erro ao criar sessão:", err);
         setError(err instanceof Error ? err.message : "Erro ao criar sessão. Tente novamente.");
