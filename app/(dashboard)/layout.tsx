@@ -9,9 +9,10 @@ async function getUser() {
   if (!session) return null;
 
   try {
-    const decoded = await adminAuth.verifySessionCookie(session, true);
+    const decoded = await adminAuth.verifySessionCookie(session, false);
     return decoded;
-  } catch {
+  } catch (err) {
+    console.error("[layout] verifySessionCookie falhou:", err);
     return null;
   }
 }
