@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +61,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copied,         setCopied]         = useState<string | null>(null);
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
+  const [imageMode,      setImageMode]      = useState<"freepik" | "real">("freepik");
+  const [curateReason,   setCurateReason]   = useState<string | null>(null);
 
   async function handleGenerateStrategy() {
     setStrategyLoading(true);
@@ -181,6 +183,43 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     }
 
     setImgLoading(false);
+  }
+
+  async function handleCurateImage() {
+    if (!result?.post_id) return;
+    setImgLoading(true);
+    setImgError(null);
+    setCurateReason(null);
+
+    try {
+      const body: Record<string, string> = {
+        client_id: client.id,
+        post_id:   result.post_id,
+        theme,
+        objective,
+      };
+      if (strategy?.pilar)      body.pilar      = strategy.pilar;
+      if (strategy?.dor_desejo) body.dor_desejo = strategy.dor_desejo;
+
+      const res  = await fetch("/api/posts/curate-image", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json() as { image_url?: string; curation_reason?: string; error?: string };
+
+      if (!res.ok) {
+        setImgError(data.error ?? "Erro na curadoria de imagem");
+        return;
+      }
+
+      setCurateReason(data.curation_reason ?? null);
+      setResult(prev => prev ? { ...prev, image_url: data.image_url } : prev);
+    } catch {
+      setImgError("Erro inesperado. Tente novamente.");
+    } finally {
+      setImgLoading(false);
+    }
   }
 
   const pilarColorClass = strategy ? (PILAR_COLORS[strategy.pilar] ?? "bg-slate-100 text-slate-700") : "";
@@ -444,22 +483,67 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 <p className="text-slate-600 text-sm italic">{result.visual_prompt}</p>
               </div>
 
-              {/* Imagem gerada */}
+              {/* ── Imagem ── */}
               {result.image_url ? (
-                <div className={`rounded-xl overflow-hidden border w-full ${FORMAT_ASPECT[format]}`}>
-                  <img src={result.image_url} alt="Imagem gerada" className="w-full h-full object-cover" />
+                <div className="space-y-2">
+                  <div className={`rounded-xl overflow-hidden border w-full ${FORMAT_ASPECT[format]}`}>
+                    <img src={result.image_url} alt="Imagem gerada" className="w-full h-full object-cover" />
+                  </div>
+                  {curateReason && (
+                    <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                      <span className="text-emerald-500 mt-0.5">🎯</span>
+                      <p className="text-xs text-emerald-700"><strong>Curador IA:</strong> {curateReason}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {/* Mode selector */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button"
+                      onClick={() => setImageMode("freepik")}
+                      className={`p-3 rounded-xl border-2 text-left transition-all ${
+                        imageMode === "freepik"
+                          ? "border-violet-500 bg-violet-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Wand2 className="w-3.5 h-3.5 text-violet-600" />
+                        <p className="text-xs font-semibold text-slate-900">Freepik IA</p>
+                      </div>
+                      <p className="text-xs text-slate-400">Gera imagem do zero com prompt visual</p>
+                    </button>
+                    <button type="button"
+                      onClick={() => setImageMode("real")}
+                      className={`p-3 rounded-xl border-2 text-left transition-all ${
+                        imageMode === "real"
+                          ? "border-violet-500 bg-violet-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Camera className="w-3.5 h-3.5 text-violet-600" />
+                        <p className="text-xs font-semibold text-slate-900">Foto Real</p>
+                      </div>
+                      <p className="text-xs text-slate-400">IA seleciona melhor foto da biblioteca</p>
+                    </button>
+                  </div>
+
+                  {/* Action button */}
                   <Button
-                    onClick={handleGenerateImage}
+                    onClick={imageMode === "freepik" ? handleGenerateImage : handleCurateImage}
                     disabled={imgLoading}
                     className="w-full bg-violet-600 hover:bg-violet-700 text-white"
                   >
-                    {imgLoading
-                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando imagem...</>
-                      : <><ImageIcon className="w-4 h-4 mr-2" />Gerar imagem com Freepik</>}
+                    {imgLoading ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        {imageMode === "freepik" ? "Gerando imagem..." : "Curando com IA..."}</>
+                    ) : imageMode === "freepik" ? (
+                      <><ImageIcon className="w-4 h-4 mr-2" />Gerar com Freepik IA</>
+                    ) : (
+                      <><Camera className="w-4 h-4 mr-2" />Curar foto da biblioteca</>
+                    )}
                   </Button>
+
                   {imgError && (
                     <p className="text-xs text-red-500 text-center">{imgError}</p>
                   )}
@@ -469,6 +553,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
               <Button variant="outline" className="w-full" onClick={() => {
                 setResult(null);
                 setImgError(null);
+                setCurateReason(null);
+                setImageMode("freepik");
                 setStep(0);
                 setStrategy(null);
                 setTheme("");

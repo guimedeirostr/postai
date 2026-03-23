@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const accountId = process.env.CF_R2_ACCOUNT_ID!;
 
@@ -28,4 +28,8 @@ export async function uploadToR2(
     })
   );
   return `${R2_PUBLIC_URL}/${key}`;
+}
+
+export async function deleteFromR2(key: string): Promise<void> {
+  await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
 }

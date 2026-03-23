@@ -3,11 +3,12 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientFormModal } from "@/components/client-form-modal";
 import { GeneratePostModal } from "@/components/generate-post-modal";
+import { PhotoLibraryModal } from "@/components/photo-library-modal";
 import type { BrandProfile } from "@/types";
 
 function DeleteDialog({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
@@ -33,7 +34,8 @@ export default function ClientsPage() {
   const [showForm, setShowForm]       = useState(false);
   const [editing, setEditing]         = useState<BrandProfile | undefined>();
   const [deleting, setDeleting]       = useState<BrandProfile | undefined>();
-  const [generating, setGenerating]   = useState<BrandProfile | undefined>();
+  const [generating,  setGenerating]   = useState<BrandProfile | undefined>();
+  const [viewPhotos,  setViewPhotos]   = useState<BrandProfile | undefined>();
 
   async function load() {
     setLoading(true);
@@ -135,12 +137,19 @@ export default function ClientsPage() {
                   </div>
                 )}
 
-                {/* Gerar post */}
-                <Button size="sm" variant="outline"
-                  onClick={() => setGenerating(client)}
-                  className="w-full mt-4 text-violet-700 border-violet-200 hover:bg-violet-50">
-                  <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Gerar post
-                </Button>
+                {/* Actions */}
+                <div className="flex gap-2 mt-4">
+                  <Button size="sm" variant="outline"
+                    onClick={() => setViewPhotos(client)}
+                    className="flex-1 text-slate-600 border-slate-200 hover:bg-slate-50">
+                    <Camera className="w-3.5 h-3.5 mr-1.5" /> Fotos
+                  </Button>
+                  <Button size="sm" variant="outline"
+                    onClick={() => setGenerating(client)}
+                    className="flex-1 text-violet-700 border-violet-200 hover:bg-violet-50">
+                    <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Gerar post
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -168,6 +177,13 @@ export default function ClientsPage() {
           client={generating}
           onClose={() => setGenerating(undefined)}
           onGenerated={load}
+        />
+      )}
+
+      {viewPhotos && (
+        <PhotoLibraryModal
+          client={viewPhotos}
+          onClose={() => setViewPhotos(undefined)}
         />
       )}
     </div>

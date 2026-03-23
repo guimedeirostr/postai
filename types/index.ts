@@ -37,6 +37,19 @@ export interface StrategyBriefing {
   rationale: string;
 }
 
+export interface BrandPhoto {
+  id: string;
+  agency_id: string;
+  client_id: string;
+  r2_key: string;
+  url: string;
+  filename: string;
+  category: "produto" | "equipe" | "bastidores" | "cliente" | "ambiente" | "outro";
+  tags: string[];
+  description: string;
+  created_at: Timestamp;
+}
+
 export interface GeneratedPost {
   id: string;
   agency_id: string;
