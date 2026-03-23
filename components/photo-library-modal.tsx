@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Upload, Trash2, Loader2, Images, Plus, Tag } from "lucide-react";
+import { X, Upload, Trash2, Loader2, Images, Plus, Tag, FileJson, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BrandPhoto, BrandProfile } from "@/types";
 
@@ -35,6 +35,16 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
   const [deleting,    setDeleting]    = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showUpload,  setShowUpload]  = useState(false);
+
+  // Import JSON state
+  const [showImport,   setShowImport]   = useState(false);
+  const [importFile,   setImportFile]   = useState<File | null>(null);
+  const [importBase,   setImportBase]   = useState("");
+  const [importPrefix, setImportPrefix] = useState("Imagens");
+  const [importing,    setImporting]    = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [importError,  setImportError]  = useState<string | null>(null);
+  const importFileRef  = useRef<HTMLInputElement>(null);
 
   // Upload form
   const [selectedFile,  setSelectedFile]  = useState<File | null>(null);
@@ -93,6 +103,40 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
     setUploading(false);
   }
 
+  async function handleImport() {
+    if (!importFile || !importBase) return;
+    setImporting(true);
+    setImportError(null);
+    setImportResult(null);
+
+    try {
+      const raw    = await importFile.text();
+      const photos = JSON.parse(raw);
+
+      const res  = await fetch(`/api/clients/${client.id}/photos/import`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          photos,
+          public_base_url: importBase.trim().replace(/\/$/, ""),
+          r2_path_prefix:  importPrefix.trim() || "Imagens",
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setImportError(data.error ?? "Erro na importação");
+      } else {
+        setImportResult({ imported: data.imported, skipped: data.skipped ?? 0 });
+        load();
+      }
+    } catch {
+      setImportError("Erro ao processar o arquivo JSON");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function handleDelete(photoId: string) {
     setDeleting(photoId);
     await fetch(`/api/clients/${client.id}/photos/${photoId}`, { method: "DELETE" });
@@ -117,7 +161,12 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => setShowUpload(v => !v)}
+            <Button size="sm" variant="outline"
+              onClick={() => { setShowImport(v => !v); setShowUpload(false); }}
+              className="text-slate-600 border-slate-200 hover:bg-slate-50">
+              <FileJson className="w-3.5 h-3.5 mr-1.5" /> Importar JSON
+            </Button>
+            <Button size="sm" onClick={() => { setShowUpload(v => !v); setShowImport(false); }}
               className="bg-violet-600 hover:bg-violet-700 text-white">
               <Plus className="w-3.5 h-3.5 mr-1.5" /> Adicionar foto
             </Button>
@@ -128,6 +177,99 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          {/* ── Import JSON panel ── */}
+          {showImport && (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+              <div className="flex items-center gap-2">
+                <FileJson className="w-4 h-4 text-violet-600" />
+                <p className="text-sm font-semibold text-slate-800">Importar fotos via JSON semântico</p>
+              </div>
+              <p className="text-xs text-slate-500">
+                Importa em massa o JSON com tags geradas (r2_semantic_tags_updated.json). As categorias e tags são mapeadas automaticamente para o Curador de Imagens.
+              </p>
+
+              {/* JSON file picker */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1.5 block">Arquivo JSON</label>
+                <div
+                  onClick={() => importFileRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center cursor-pointer hover:border-violet-400 hover:bg-violet-50 transition-colors"
+                >
+                  {importFile ? (
+                    <p className="text-sm font-medium text-slate-700">
+                      📄 {importFile.name} — {(importFile.size / 1024).toFixed(0)} KB
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-400">Clique para selecionar o .json</p>
+                  )}
+                </div>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+
+              {/* Public base URL */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                  URL pública base do R2 <span className="text-slate-400">(sem barra no final)</span>
+                </label>
+                <input
+                  value={importBase}
+                  onChange={e => setImportBase(e.target.value)}
+                  placeholder="https://pub-xxxx.r2.dev"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent font-mono"
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  URL final: <span className="text-slate-600 font-mono">{importBase || "https://pub-xxx.r2.dev"}/{importPrefix || "Imagens"}/foto.jpg</span>
+                </p>
+              </div>
+
+              {/* Path prefix */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1.5 block">
+                  Pasta no bucket <span className="text-slate-400">(padrão: Imagens)</span>
+                </label>
+                <input
+                  value={importPrefix}
+                  onChange={e => setImportPrefix(e.target.value)}
+                  placeholder="Imagens"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent font-mono"
+                />
+              </div>
+
+              {/* Result / error feedback */}
+              {importResult && (
+                <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-700">Importação concluída!</p>
+                    <p className="text-xs text-emerald-600">{importResult.imported} fotos importadas · {importResult.skipped} ignoradas</p>
+                  </div>
+                </div>
+              )}
+              {importError && <p className="text-xs text-red-500">{importError}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" variant="outline" className="flex-1"
+                  onClick={() => { setShowImport(false); setImportFile(null); setImportResult(null); setImportError(null); }}>
+                  Fechar
+                </Button>
+                <Button size="sm"
+                  onClick={handleImport}
+                  disabled={!importFile || !importBase || importing}
+                  className="flex-1 bg-violet-600 hover:bg-violet-700 text-white">
+                  {importing
+                    ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Importando...</>
+                    : <><FileJson className="w-3.5 h-3.5 mr-1.5" />Importar {importFile ? "JSON" : ""}</>}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* ── Upload form ── */}
           {showUpload && (
