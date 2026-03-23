@@ -3,6 +3,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { uploadToR2 } from "@/lib/r2";
 import { FieldValue } from "firebase-admin/firestore";
+import { processPhoto } from "@/lib/image-processor";
 
 // GET — list all photos for a client
 export async function GET(
@@ -70,12 +71,14 @@ export async function POST(
     const description = (formData.get("description") as string) || "";
     const tags        = tagsRaw.split(",").map(t => t.trim()).filter(Boolean);
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const safeFilename = file.name.replace(/\s+/g, "_");
-    const key = `photos/${user.uid}/${client_id}/${Date.now()}-${safeFilename}`;
-    const contentType = file.type || "image/jpeg";
+    const rawBuffer    = Buffer.from(await file.arrayBuffer());
+    const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.[^.]+$/, "") + ".jpg";
+    const key          = `photos/${user.uid}/${client_id}/${Date.now()}-${safeFilename}`;
 
-    const url = await uploadToR2(key, buffer, contentType);
+    // Auto-rotate EXIF + normalize size before storing
+    const buffer = await processPhoto(rawBuffer, { maxSize: 1920, quality: 85, enhance: false });
+
+    const url = await uploadToR2(key, buffer, "image/jpeg");
 
     const ref = adminDb.collection("photos").doc();
     await ref.set({

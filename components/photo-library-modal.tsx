@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Upload, Trash2, Loader2, Images, Plus, Tag, FileJson, CheckCircle2 } from "lucide-react";
+import { X, Upload, Trash2, Loader2, Images, Plus, Tag, FileJson, CheckCircle2, Wand2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BrandPhoto, BrandProfile } from "@/types";
 
@@ -33,6 +33,9 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
   const [loading,     setLoading]     = useState(true);
   const [uploading,   setUploading]   = useState(false);
   const [deleting,    setDeleting]    = useState<string | null>(null);
+  const [enhancing,   setEnhancing]   = useState<string | null>(null);
+  const [enhancingAll, setEnhancingAll] = useState(false);
+  const [enhanceProgress, setEnhanceProgress] = useState<{ done: number; total: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showUpload,  setShowUpload]  = useState(false);
 
@@ -137,6 +140,37 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
     }
   }
 
+  async function handleEnhance(photo: BrandPhoto) {
+    setEnhancing(photo.id);
+    try {
+      const res  = await fetch(`/api/clients/${client.id}/photos/${photo.id}/enhance`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ enhance: true }),
+      });
+      if (res.ok) {
+        const { url } = await res.json() as { url: string };
+        // Update locally so grid refreshes immediately
+        setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, url } : p));
+      }
+    } finally {
+      setEnhancing(null);
+    }
+  }
+
+  async function handleEnhanceAll() {
+    const unenhanced = photos.filter(p => !(p as BrandPhoto & { enhanced?: boolean }).enhanced);
+    if (!unenhanced.length) return;
+    setEnhancingAll(true);
+    setEnhanceProgress({ done: 0, total: unenhanced.length });
+    for (let i = 0; i < unenhanced.length; i++) {
+      await handleEnhance(unenhanced[i]);
+      setEnhanceProgress({ done: i + 1, total: unenhanced.length });
+    }
+    setEnhancingAll(false);
+    setEnhanceProgress(null);
+  }
+
   async function handleDelete(photoId: string) {
     setDeleting(photoId);
     await fetch(`/api/clients/${client.id}/photos/${photoId}`, { method: "DELETE" });
@@ -161,6 +195,16 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {photos.length > 0 && (
+              <Button size="sm" variant="outline"
+                onClick={handleEnhanceAll}
+                disabled={enhancingAll}
+                className="text-violet-700 border-violet-200 hover:bg-violet-50">
+                {enhancingAll && enhanceProgress
+                  ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />{enhanceProgress.done}/{enhanceProgress.total}</>
+                  : <><Wand2 className="w-3.5 h-3.5 mr-1.5" />Processar tudo</>}
+              </Button>
+            )}
             <Button size="sm" variant="outline"
               onClick={() => { setShowImport(v => !v); setShowUpload(false); }}
               className="text-slate-600 border-slate-200 hover:bg-slate-50">
@@ -395,10 +439,17 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
                     className="w-full h-full object-cover"
                   />
 
+                  {/* Enhanced badge */}
+                  {(photo as BrandPhoto & { enhanced?: boolean }).enhanced && (
+                    <div className="absolute top-2 right-2 bg-violet-500 text-white text-xs px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                      <Wand2 className="w-2.5 h-2.5" /> IA
+                    </div>
+                  )}
+
                   {/* Hover overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-all flex flex-col justify-end p-2.5">
-                    <div className="flex items-end justify-between gap-2">
-                      <div className="min-w-0">
+                    <div className="flex items-end justify-between gap-1.5">
+                      <div className="min-w-0 flex-1">
                         <span className={`inline-block text-xs px-2 py-0.5 rounded-full mb-1 ${CATEGORY_COLORS[photo.category] ?? "bg-slate-100 text-slate-600"}`}>
                           {CATEGORIES.find(c => c.value === photo.category)?.label ?? photo.category}
                         </span>
@@ -406,15 +457,29 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
                           <p className="text-xs text-white/80 truncate leading-tight">{photo.tags.join(", ")}</p>
                         )}
                       </div>
-                      <button
-                        onClick={() => handleDelete(photo.id)}
-                        disabled={deleting === photo.id}
-                        className="p-1.5 bg-red-500 hover:bg-red-600 rounded-lg text-white transition-colors flex-shrink-0"
-                      >
-                        {deleting === photo.id
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <Trash2 className="w-3.5 h-3.5" />}
-                      </button>
+                      <div className="flex gap-1 flex-shrink-0">
+                        {/* Enhance button */}
+                        <button
+                          onClick={() => handleEnhance(photo)}
+                          disabled={enhancing === photo.id || enhancingAll}
+                          title="Corrigir orientação + melhorar qualidade"
+                          className="p-1.5 bg-violet-500 hover:bg-violet-600 rounded-lg text-white transition-colors"
+                        >
+                          {enhancing === photo.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <RotateCw className="w-3.5 h-3.5" />}
+                        </button>
+                        {/* Delete button */}
+                        <button
+                          onClick={() => handleDelete(photo.id)}
+                          disabled={deleting === photo.id}
+                          className="p-1.5 bg-red-500 hover:bg-red-600 rounded-lg text-white transition-colors"
+                        >
+                          {deleting === photo.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
