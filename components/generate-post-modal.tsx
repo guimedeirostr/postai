@@ -7,14 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import type { BrandProfile } from "@/types";
+import { FORMAT_OPTIONS, FORMAT_ASPECT } from "@/lib/post-formats";
 
 type Format = "feed" | "stories" | "reels_cover";
-
-const FORMAT_OPTIONS: { value: Format; label: string; desc: string }[] = [
-  { value: "feed",        label: "Feed",         desc: "Post quadrado ou retrato" },
-  { value: "stories",     label: "Stories",      desc: "Vertical 9:16, texto curto" },
-  { value: "reels_cover", label: "Capa de Reels", desc: "Imagem chamativa" },
-];
 
 interface CopyResult {
   post_id:       string;
@@ -238,8 +233,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
 
               {/* Imagem gerada */}
               {result.image_url ? (
-                <div className="rounded-xl overflow-hidden border">
-                  <img src={result.image_url} alt="Imagem gerada" className="w-full object-cover" />
+                <div className={`rounded-xl overflow-hidden border w-full ${FORMAT_ASPECT[format]}`}>
+                  <img src={result.image_url} alt="Imagem gerada" className="w-full h-full object-cover" />
                 </div>
               ) : (
                 <div className="space-y-2">

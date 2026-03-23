@@ -5,10 +5,11 @@ import { getSessionUser } from "@/lib/session";
 const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY ?? "";
 const FREEPIK_BASE    = "https://api.freepik.com/v1/ai/mystic";
 
+// Feed 1080×1350 (4:5), Stories/Reels 1080×1920 (9:16)
 const ASPECT_RATIO: Record<string, string> = {
-  feed:        "square_1_1",
+  feed:        "social_post_4_5",
   stories:     "social_story_9_16",
-  reels_cover: "portrait_2_3",
+  reels_cover: "social_story_9_16",
 };
 
 export async function POST(req: NextRequest) {
