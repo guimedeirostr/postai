@@ -67,18 +67,51 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     setImgLoading(true);
     setImgError(null);
 
-    const res  = await fetch("/api/posts/generate-image", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ post_id: result.post_id }),
-    });
-    const data = await res.json();
+    try {
+      // 1. Submete para o Freepik → recebe task_id imediatamente
+      const res  = await fetch("/api/posts/generate-image", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ post_id: result.post_id }),
+      });
+      const data = await res.json();
 
-    if (res.ok && data.image_url) {
-      setResult(prev => prev ? { ...prev, image_url: data.image_url } : prev);
-    } else {
-      setImgError(data.error ?? "Erro ao gerar imagem");
+      if (!res.ok) {
+        setImgError(data.error ?? "Erro ao iniciar geração");
+        setImgLoading(false);
+        return;
+      }
+
+      const { task_id, post_id } = data as { task_id: string; post_id: string };
+
+      // 2. Polling client-side: chama check-image a cada 4s por até 90s
+      const maxAttempts = 22;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(r => setTimeout(r, 4000));
+        const check = await fetch(
+          `/api/posts/check-image?task_id=${task_id}&post_id=${post_id}`
+        );
+        const checkData = await check.json() as { status: string; image_url?: string; error?: string };
+
+        if (checkData.status === "COMPLETED" && checkData.image_url) {
+          setResult(prev => prev ? { ...prev, image_url: checkData.image_url } : prev);
+          setImgLoading(false);
+          return;
+        }
+        if (checkData.status === "FAILED") {
+          setImgError(checkData.error ?? "Falha na geração da imagem");
+          setImgLoading(false);
+          return;
+        }
+        // PENDING → continua polling
+      }
+
+      setImgError("Timeout: a imagem demorou mais que o esperado. Tente novamente.");
+    } catch (err) {
+      console.error("handleGenerateImage:", err);
+      setImgError("Erro inesperado. Tente novamente.");
     }
+
     setImgLoading(false);
   }
 
