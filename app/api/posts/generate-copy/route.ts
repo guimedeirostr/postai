@@ -14,6 +14,7 @@ interface CopyResult {
   caption:         string;
   hashtags:        string[];
   visual_prompt:   string;
+  layout_prompt:   string;   // composition description for img2img
   framework_used:  string;
   hook_type:       string;
 }
@@ -149,6 +150,7 @@ REGRAS DE OURO — NUNCA QUEBRE
 5. CTA sempre específico: nunca "clique no link da bio" sem dizer por quê.
 6. Hashtags: mix estratégico — 10 de nicho específico + 10 de médio alcance + 10 de alta relevância para o segmento. Nunca genéricas (#vida #amor).
 7. visual_prompt em inglês: descreva cena real, fotografia profissional, lighting, estilo. NÃO descreva textos, logos ou elementos gráficos na imagem.
+8. layout_prompt em inglês: descreva a COMPOSIÇÃO DO DESIGN — onde o texto ficará posicionado, qual overlay será usado, o estilo do layout (glassmorphism, cards, gradiente), e como a imagem e o texto vão interagir. Este prompt é enviado para o gerador de imagens img2img para que ele entenda o contexto do design final.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
@@ -159,6 +161,7 @@ OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
   "caption": "legenda completa seguindo o framework ${framework}, com emojis estratégicos e quebras de linha",
   "hashtags": ["exatamente 30 hashtags sem #, estrategicamente selecionadas"],
   "visual_prompt": "detailed professional photography prompt in English with scene, lighting, mood, style, brand colors ${client.primary_color} and ${client.secondary_color}",
+  "layout_prompt": "Instagram design composition in English: describe text overlay position (bottom third / left panel / right side), overlay style (glassmorphism frosted panel / solid brand color strip / dark gradient), typography weight (bold 900 / display), and how subject and text interact. Example: 'Product centered right, bold headline text panel on left third with brand primary color ${client.primary_color} glassmorphism overlay, white typography, brand strip at bottom with logo'",
   "framework_used": "${framework}",
   "hook_type": "${hook}"
 }`;
@@ -240,6 +243,7 @@ export async function POST(req: NextRequest) {
       caption:         copy.caption,
       hashtags:        copy.hashtags,
       visual_prompt:   copy.visual_prompt,
+      layout_prompt:   copy.layout_prompt ?? null,
       framework_used:  copy.framework_used,
       hook_type:       copy.hook_type,
       image_url:       null,

@@ -67,6 +67,8 @@ export interface GeneratedPost {
   hook_type?: string;         // Dor | Curiosidade | Pergunta | etc
   freepik_task_id?: string;
   image_url: string | null;
+  layout_prompt?: string;          // AI-generated composition description for img2img
+  composition_zone?: "left" | "right" | "bottom" | "top" | "center"; // safe text area
   status: "generating" | "ready" | "approved" | "rejected";
   created_at: Timestamp;
 }
