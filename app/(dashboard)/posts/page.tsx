@@ -28,15 +28,51 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
 interface PostDetailModalProps {
   post: GeneratedPost;
   onClose: () => void;
+  onImageGenerated?: (post_id: string, image_url: string) => void;
 }
 
-function PostDetailModal({ post, onClose }: PostDetailModalProps) {
-  const [copied, setCopied] = useState<string | null>(null);
+function PostDetailModal({ post, onClose, onImageGenerated }: PostDetailModalProps) {
+  const [copied,     setCopied]     = useState<string | null>(null);
+  const [imgLoading, setImgLoading] = useState(false);
+  const [imgError,   setImgError]   = useState<string | null>(null);
+  const [imageUrl,   setImageUrl]   = useState(post.image_url ?? null);
 
   function copyText(text: string, key: string) {
     navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  async function handleGenerateImage() {
+    setImgLoading(true);
+    setImgError(null);
+    try {
+      const res  = await fetch("/api/posts/generate-image", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ post_id: post.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setImgError(data.error ?? "Erro ao iniciar geração"); setImgLoading(false); return; }
+
+      const { task_id, post_id } = data as { task_id: string; post_id: string };
+      for (let i = 0; i < 22; i++) {
+        await new Promise(r => setTimeout(r, 4000));
+        const check     = await fetch(`/api/posts/check-image?task_id=${task_id}&post_id=${post_id}`);
+        const checkData = await check.json() as { status: string; image_url?: string; error?: string };
+        if (checkData.status === "COMPLETED" && checkData.image_url) {
+          setImageUrl(checkData.image_url);
+          onImageGenerated?.(post.id, checkData.image_url);
+          setImgLoading(false);
+          return;
+        }
+        if (checkData.status === "FAILED") {
+          setImgError(checkData.error ?? "Falha na geração"); setImgLoading(false); return;
+        }
+      }
+      setImgError("Timeout. Tente novamente.");
+    } catch { setImgError("Erro inesperado. Tente novamente."); }
+    setImgLoading(false);
   }
 
   const status = STATUS_BADGE[post.status] ?? STATUS_BADGE.ready;
@@ -63,10 +99,20 @@ function PostDetailModal({ post, onClose }: PostDetailModalProps) {
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
 
-          {/* Imagem */}
-          {post.image_url && (
+          {/* Imagem ou botão de gerar */}
+          {imageUrl ? (
             <div className="rounded-xl overflow-hidden border max-h-72 flex items-center justify-center bg-slate-50">
-              <img src={post.image_url} alt={post.headline} className="w-full object-cover" />
+              <img src={imageUrl} alt={post.headline} className="w-full object-cover" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Button onClick={handleGenerateImage} disabled={imgLoading}
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white">
+                {imgLoading
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando imagem...</>
+                  : <><ImageIcon className="w-4 h-4 mr-2" />Gerar imagem com Freepik</>}
+              </Button>
+              {imgError && <p className="text-xs text-red-500 text-center">{imgError}</p>}
             </div>
           )}
 
@@ -244,7 +290,14 @@ export default function PostsPage() {
       )}
 
       {selected && (
-        <PostDetailModal post={selected} onClose={() => setSelected(null)} />
+        <PostDetailModal
+          post={selected}
+          onClose={() => setSelected(null)}
+          onImageGenerated={(post_id, image_url) => {
+            setPosts(prev => prev.map(p => p.id === post_id ? { ...p, image_url, status: "ready" } : p));
+            setSelected(prev => prev ? { ...prev, image_url, status: "ready" } : prev);
+          }}
+        />
       )}
     </div>
   );
