@@ -23,11 +23,14 @@ export async function GET(req: NextRequest) {
     const status = data.data?.status as string | undefined;
 
     if (status === "COMPLETED") {
-      const image_url = data.data?.generated?.[0]?.url as string | null;
+      // generated é um array de strings (URLs diretas), não objetos com .url
+      const generated = data.data?.generated;
+      const image_url = Array.isArray(generated) ? (generated[0] as string) : null;
       if (image_url) {
         await adminDb.collection("posts").doc(post_id).update({ image_url, status: "ready" });
         return NextResponse.json({ status: "COMPLETED", image_url });
       }
+      console.error("[check-image] COMPLETED mas sem URL. Raw:", JSON.stringify(data));
       return NextResponse.json({ status: "FAILED", error: "URL nao retornada" });
     }
 
