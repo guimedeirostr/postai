@@ -47,13 +47,16 @@ export function PostComposer({ post, client }: Props) {
     canvas.width  = dim.w;
     canvas.height = dim.h;
 
-    // 1. Imagem de fundo
+    // 1. Imagem de fundo — via proxy para evitar CORS com canvas
+    const proxyUrl = (src: string) =>
+      `/api/proxy/image?url=${encodeURIComponent(src)}`;
+
     const img = new Image();
     img.crossOrigin = "anonymous";
     await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
+      img.onload  = () => resolve();
       img.onerror = reject;
-      img.src = post.image_url!;
+      img.src = proxyUrl(post.image_url!);
     });
 
     // Cover fit
@@ -126,7 +129,7 @@ export function PostComposer({ post, client }: Props) {
         await new Promise<void>((resolve) => {
           logo.onload  = () => resolve();
           logo.onerror = () => resolve(); // silently skip if logo fails
-          logo.src = client.logo_url!;
+          logo.src = proxyUrl(client.logo_url!);
         });
         if (logo.complete && logo.naturalWidth > 0) {
           const maxLogoH  = Math.round(dim.h * 0.065);
