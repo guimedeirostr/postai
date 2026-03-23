@@ -7,17 +7,26 @@ function getAdminApp(): App {
 
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
+  // Opção 1: JSON em base64 (recomendado — sem problemas de formatação)
+  const base64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+  if (base64) {
+    try {
+      const json = Buffer.from(base64.trim(), "base64").toString("utf-8");
+      return initializeApp({ credential: cert(JSON.parse(json)), projectId });
+    } catch (err) {
+      console.error("[firebase-admin] Falha ao decodificar FIREBASE_SERVICE_ACCOUNT_BASE64:", err);
+    }
+  }
+
+  // Opção 2: JSON direto
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (serviceAccountJson) {
     try {
       let json = serviceAccountJson.trim();
-      // Remove aspas externas que o Vercel às vezes adiciona
       if (json.startsWith('"') && json.endsWith('"')) {
         json = json.slice(1, -1).replace(/\\"/g, '"');
       }
-      // Converte \n escapados em newlines reais (necessário para private_key)
       json = json.replace(/\\n/g, "\n");
-      // Adiciona chaves se o usuário colou só o conteúdo interno do JSON
       if (!json.startsWith("{")) json = "{" + json + "}";
       return initializeApp({ credential: cert(JSON.parse(json)), projectId });
     } catch (err) {
@@ -25,6 +34,7 @@ function getAdminApp(): App {
     }
   }
 
+  console.error("[firebase-admin] Nenhuma credencial encontrada! Configure FIREBASE_SERVICE_ACCOUNT_BASE64.");
   return initializeApp({ projectId });
 }
 
