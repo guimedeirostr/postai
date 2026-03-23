@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { BrandProfile, GeneratedPost } from "@/types";
-
+import { PostComposer } from "@/components/post-composer";
 const FORMAT_LABEL: Record<string, string> = {
   feed:        "Feed",
   stories:     "Stories",
@@ -26,12 +26,13 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
 };
 
 interface PostDetailModalProps {
-  post: GeneratedPost;
+  post:    GeneratedPost;
+  client?: BrandProfile;
   onClose: () => void;
   onImageGenerated?: (post_id: string, image_url: string) => void;
 }
 
-function PostDetailModal({ post, onClose, onImageGenerated }: PostDetailModalProps) {
+function PostDetailModal({ post, client, onClose, onImageGenerated }: PostDetailModalProps) {
   const [copied,     setCopied]     = useState<string | null>(null);
   const [imgLoading, setImgLoading] = useState(false);
   const [imgError,   setImgError]   = useState<string | null>(null);
@@ -99,9 +100,11 @@ function PostDetailModal({ post, onClose, onImageGenerated }: PostDetailModalPro
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
 
-          {/* Imagem ou botão de gerar */}
-          {imageUrl ? (
-            <div className="rounded-xl overflow-hidden border max-h-72 flex items-center justify-center bg-slate-50">
+          {/* Compositor / Imagem ou botão de gerar */}
+          {imageUrl && client ? (
+            <PostComposer post={{ ...post, image_url: imageUrl }} client={client} />
+          ) : imageUrl ? (
+            <div className="rounded-xl overflow-hidden border bg-slate-50">
               <img src={imageUrl} alt={post.headline} className="w-full object-cover" />
             </div>
           ) : (
@@ -292,6 +295,7 @@ export default function PostsPage() {
       {selected && (
         <PostDetailModal
           post={selected}
+          client={clients.find(c => c.id === selected.client_id)}
           onClose={() => setSelected(null)}
           onImageGenerated={(post_id, image_url) => {
             setPosts(prev => prev.map(p => p.id === post_id ? { ...p, image_url, status: "ready" } : p));
