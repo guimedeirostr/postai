@@ -5,9 +5,11 @@
  *   1. Validates client ownership
  *   2. Checks rate limit
  *   3. Creates a Firestore post doc with status "pending"
- *   4. Runs Strategy agent → Copy agent (synchronous, ~5-10s total)
- *   5. Kicks off Freepik image generation (async task)
- *   6. Returns { post_id, briefing, copy } immediately
+ *   4. Runs Strategy agent
+ *   5. Loads client design examples (few-shot references)
+ *   6. Runs Copy agent (with examples injected)
+ *   7. Kicks off Freepik image generation (async task)
+ *   8. Returns { post_id, briefing, copy } immediately
  *
  * The frontend only needs to:
  *   - Receive post_id
@@ -26,7 +28,7 @@ import { buildStrategyPrompt } from "@/lib/prompts/strategy";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import { createTask, FreepikAuthError } from "@/lib/freepik";
-import type { BrandProfile, StrategyBriefing, StrategyContext } from "@/types";
+import type { BrandProfile, StrategyBriefing, StrategyContext, DesignExample } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL     = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
@@ -115,7 +117,44 @@ export async function POST(req: NextRequest) {
       rationale:          briefing.rationale,
     });
 
-    // ── Step 2: Copy agent ────────────────────────────────────────────────────
+    // ── Step 2: Load client design examples (few-shot for Copy agent) ────────
+    // Fetch up to 5 examples matching this pilar + format. Falls back to
+    // any format if not enough pilar-specific examples exist.
+    let designExamples: DesignExample[] = [];
+    try {
+      const exSnap = await adminDb
+        .collection("clients").doc(client_id)
+        .collection("design_examples")
+        .where("pilar",  "==", briefing.pilar)
+        .where("format", "==", briefing.formato_sugerido)
+        .orderBy("created_at", "desc")
+        .limit(5)
+        .get();
+
+      designExamples = exSnap.docs.map(d => ({ id: d.id, ...d.data() } as DesignExample));
+
+      // If fewer than 3 pilar-specific, fill with any format examples for this pilar
+      if (designExamples.length < 3) {
+        const fillSnap = await adminDb
+          .collection("clients").doc(client_id)
+          .collection("design_examples")
+          .where("pilar", "==", briefing.pilar)
+          .orderBy("created_at", "desc")
+          .limit(5)
+          .get();
+        const existing = new Set(designExamples.map(e => e.id));
+        for (const doc of fillSnap.docs) {
+          if (!existing.has(doc.id)) {
+            designExamples.push({ id: doc.id, ...doc.data() } as DesignExample);
+            if (designExamples.length >= 5) break;
+          }
+        }
+      }
+    } catch {
+      // Non-fatal — generation continues without examples
+    }
+
+    // ── Step 3: Copy agent ────────────────────────────────────────────────────
     await postRef.update({ status: "copy" });
 
     const strategy: StrategyContext = {
@@ -128,7 +167,7 @@ export async function POST(req: NextRequest) {
     const copyRes = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 2048,
-      system:     buildCopyPrompt(client, briefing.formato_sugerido, briefing.objetivo, strategy),
+      system:     buildCopyPrompt(client, briefing.formato_sugerido, briefing.objetivo, strategy, designExamples.length ? designExamples : undefined),
       messages:   [{
         role:    "user",
         content: `Tema: ${briefing.tema}\nObjetivo: ${briefing.objetivo}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,

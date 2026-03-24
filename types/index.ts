@@ -50,6 +50,23 @@ export interface BrandPhoto {
   created_at: Timestamp;
 }
 
+export interface DesignExample {
+  id:                   string;
+  agency_id:            string;
+  client_id:            string;
+  visual_prompt:        string;
+  layout_prompt:        string;
+  visual_headline_style: string;
+  pilar:                string;
+  format:               "feed" | "stories" | "reels_cover";
+  description:          string;
+  color_mood:           string;
+  composition_zone:     "left" | "right" | "bottom" | "top" | "center";
+  source_url?:          string;   // original Instagram URL
+  image_url?:           string;   // og:image URL at import time
+  created_at:           Timestamp;
+}
+
 export interface StrategyContext {
   pilar?: string;
   publico_especifico?: string;

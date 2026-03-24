@@ -1,4 +1,4 @@
-import type { BrandProfile } from "@/types";
+import type { BrandProfile, DesignExample } from "@/types";
 
 export interface StrategyContext {
   pilar?: string;
@@ -78,15 +78,38 @@ CAPA DE REELS (1080×1920 — vertical 9:16):
 - Use números ou perguntas no visual_headline`,
 };
 
+/** Formats up to `max` design examples as a few-shot reference block */
+function buildExamplesBlock(examples: DesignExample[], max = 5): string {
+  if (!examples.length) return "";
+
+  const selected = examples.slice(0, max);
+  const lines    = selected.map((ex, i) => `
+Exemplo ${i + 1}${ex.description ? ` — ${ex.description}` : ""}:
+  visual_prompt:   "${ex.visual_prompt}"
+  layout_prompt:   "${ex.layout_prompt}"
+  composition_zone: ${ex.composition_zone}
+  color_mood:      ${ex.color_mood}`).join("\n");
+
+  return `━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFERÊNCIAS VISUAIS APROVADAS DESTE CLIENTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Os exemplos abaixo são posts reais aprovados por este cliente. Eles definem o estilo visual e de composição esperado. Ao gerar visual_prompt e layout_prompt, replique a qualidade, o estilo fotográfico e a lógica de composição desses exemplos — adaptando para o tema atual.
+${lines}
+
+`;
+}
+
 export function buildCopyPrompt(
   client: BrandProfile,
   format: string,
   objective: string,
-  strategy?: StrategyContext
+  strategy?: StrategyContext,
+  designExamples?: DesignExample[]
 ): string {
   const { framework, hook, description } = selectFramework(objective, strategy?.hook_type);
-  const hookGuide   = HOOK_GUIDE[hook] ?? HOOK_GUIDE["Dor"];
-  const formatGuide = FORMAT_GUIDE[format] ?? FORMAT_GUIDE.feed;
+  const hookGuide    = HOOK_GUIDE[hook] ?? HOOK_GUIDE["Dor"];
+  const formatGuide  = FORMAT_GUIDE[format] ?? FORMAT_GUIDE.feed;
+  const examplesBlock = designExamples?.length ? buildExamplesBlock(designExamples) : "";
 
   return `Você é um copywriter sênior especialista em Instagram para o mercado brasileiro, com 10+ anos criando conteúdo viral para marcas.
 
@@ -118,7 +141,7 @@ FORMATO: ${format.toUpperCase()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${formatGuide}
 
-${strategy && (strategy.pilar || strategy.publico_especifico || strategy.dor_desejo) ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${examplesBlock}${strategy && (strategy.pilar || strategy.publico_especifico || strategy.dor_desejo) ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BRIEFING DO ESTRATEGISTA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${strategy.pilar ? `Pilar de conteúdo:    ${strategy.pilar}` : ""}

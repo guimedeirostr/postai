@@ -42,10 +42,13 @@ export async function POST(req: NextRequest) {
     const clientDoc    = await adminDb.collection("clients").doc(post.client_id).get();
     const primaryColor = clientDoc.data()?.primary_color ?? "#6d28d9";
 
-    const basePrompt     = (post.visual_prompt as string) ?? "";
+    // Do NOT include visual_prompt here — it describes a new scene and would
+    // cause Freepik to replace the user's chosen photo. Only send a quality
+    // enhancement hint so Freepik improves lighting/sharpness while keeping
+    // the exact subjects, composition, and faces intact.
     const layoutPrompt   = (post.layout_prompt as string) ?? "";
-    const refinementHint = "Ultra high quality professional photography. Preserve the text overlay composition and layout. Enhance lighting, colors and photographic quality.";
-    const combinedPrompt = [basePrompt, layoutPrompt, refinementHint].filter(Boolean).join(" ").slice(0, 2000);
+    const refinementHint = "Ultra high quality professional photography. Preserve exactly the subjects, faces, objects, colors, and composition of the input image. Only enhance lighting, sharpness, and photographic quality. Do not change the scene.";
+    const combinedPrompt = [layoutPrompt, refinementHint].filter(Boolean).join(" ").slice(0, 2000);
 
     await postDoc.ref.update({ status: "generating" });
 
@@ -54,8 +57,8 @@ export async function POST(req: NextRequest) {
       aspect_ratio: aspect,
       realism:      true,
       image:        canvas_base64,
-      image_weight: 0.55,
-      styling:      { colors: [{ color: primaryColor, weight: 0.4 }] },
+      image_weight: 0.85,
+      // No brand color styling — we don't want color shifts on the user's photo
     });
 
     await postDoc.ref.update({ freepik_task_id: task_id });
