@@ -50,6 +50,13 @@ export interface BrandPhoto {
   created_at: Timestamp;
 }
 
+export interface StrategyContext {
+  pilar?: string;
+  publico_especifico?: string;
+  dor_desejo?: string;
+  hook_type?: string;
+}
+
 export interface GeneratedPost {
   id: string;
   agency_id: string;
@@ -69,6 +76,6 @@ export interface GeneratedPost {
   image_url: string | null;
   layout_prompt?: string;          // AI-generated composition description for img2img
   composition_zone?: "left" | "right" | "bottom" | "top" | "center"; // safe text area
-  status: "generating" | "ready" | "approved" | "rejected";
+  status: "pending" | "strategy" | "copy" | "generating" | "ready" | "approved" | "rejected" | "failed";
   created_at: Timestamp;
 }

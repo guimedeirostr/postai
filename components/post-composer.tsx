@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Download, RefreshCw, ScanSearch, Loader2, Wand2 } from "lucide-react";
+import { useEffect, useRef, useState, useCallback, useReducer } from "react";
+import { Download, RefreshCw, ScanSearch, Loader2, Wand2, Undo2, Redo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BrandProfile, GeneratedPost } from "@/types";
 
@@ -520,6 +520,60 @@ function drawLogoBottomLeft(
   ctx.drawImage(logo, pad, h - pad - lH, lW, lH);
 }
 
+// ─── Undo/Redo history ─────────────────────────────────────────────────────────
+
+interface ComposerState {
+  template:       Template;
+  overlayOpacity: number;
+  showHook:       boolean;
+  showLogo:       boolean;
+  zone:           CompositionZone;
+}
+
+interface HistoryState {
+  past:    ComposerState[];
+  present: ComposerState;
+  future:  ComposerState[];
+}
+
+type HistoryAction =
+  | { type: "SET"; payload: Partial<ComposerState> }
+  | { type: "UNDO" }
+  | { type: "REDO" };
+
+const MAX_HISTORY = 20;
+
+function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
+  switch (action.type) {
+    case "SET": {
+      const next = { ...state.present, ...action.payload };
+      return {
+        past:    [...state.past.slice(-MAX_HISTORY + 1), state.present],
+        present: next,
+        future:  [],
+      };
+    }
+    case "UNDO": {
+      if (state.past.length === 0) return state;
+      const previous = state.past[state.past.length - 1];
+      return {
+        past:    state.past.slice(0, -1),
+        present: previous,
+        future:  [state.present, ...state.future],
+      };
+    }
+    case "REDO": {
+      if (state.future.length === 0) return state;
+      const next = state.future[0];
+      return {
+        past:    [...state.past, state.present],
+        present: next,
+        future:  state.future.slice(1),
+      };
+    }
+  }
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -530,20 +584,51 @@ interface Props {
 
 export function PostComposer({ post, client, onImageRefined }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [rendered,       setRendered]       = useState(false);
-  const [template,       setTemplate]       = useState<Template>("cards");
-  const [overlayOpacity, setOverlayOpacity] = useState(20);
-  const [showHook,       setShowHook]       = useState(true);
-  const [showLogo,       setShowLogo]       = useState(!!client.logo_url);
-  const [zone,           setZone]           = useState<CompositionZone>(
-    (post.composition_zone as CompositionZone) ?? "bottom"
-  );
+  const [rendered,    setRendered]    = useState(false);
   const [analyzing,   setAnalyzing]   = useState(false);
   const [analyzeInfo, setAnalyzeInfo] = useState<string>("");
   const [refining,    setRefining]    = useState(false);
   const [refineError, setRefineError] = useState<string | null>(null);
 
+  const [history, dispatch] = useReducer(historyReducer, {
+    past:    [],
+    present: {
+      template:       "cards",
+      overlayOpacity: 20,
+      showHook:       true,
+      showLogo:       !!client.logo_url,
+      zone:           (post.composition_zone as CompositionZone) ?? "bottom",
+    },
+    future: [],
+  });
+
+  const { template, overlayOpacity, showHook, showLogo, zone } = history.present;
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
+
+  const setTemplate       = (v: Template)          => dispatch({ type: "SET", payload: { template: v } });
+  const setOverlayOpacity = (v: number)             => dispatch({ type: "SET", payload: { overlayOpacity: v } });
+  const setShowHook       = (v: boolean)            => dispatch({ type: "SET", payload: { showHook: v } });
+  const setShowLogo       = (v: boolean)            => dispatch({ type: "SET", payload: { showLogo: v } });
+  const setZone           = (v: CompositionZone)    => dispatch({ type: "SET", payload: { zone: v } });
+
   const dim = FORMAT_PX[post.format] ?? FORMAT_PX.feed;
+
+  // ─ Keyboard shortcuts for undo/redo ──────────────────────────────────────────
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        dispatch({ type: "UNDO" });
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        dispatch({ type: "REDO" });
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // ─ Load Montserrat font ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -703,6 +788,18 @@ export function PostComposer({ post, client, onImageRefined }: Props) {
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-700">Arte Final</p>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline"
+            onClick={() => dispatch({ type: "UNDO" })}
+            disabled={!canUndo}
+            title="Desfazer (Ctrl+Z)">
+            <Undo2 className="w-3.5 h-3.5" />
+          </Button>
+          <Button size="sm" variant="outline"
+            onClick={() => dispatch({ type: "REDO" })}
+            disabled={!canRedo}
+            title="Refazer (Ctrl+Y)">
+            <Redo2 className="w-3.5 h-3.5" />
+          </Button>
           <Button size="sm" variant="outline" onClick={() => { setRendered(false); draw(); }}>
             <RefreshCw className="w-3.5 h-3.5 mr-1" /> Atualizar
           </Button>

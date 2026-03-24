@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-
-const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY ?? "";
-const FREEPIK_BASE    = "https://api.freepik.com/v1/ai/mystic";
+import { createTask, FreepikAuthError } from "@/lib/freepik";
 
 // Feed 1080×1350 (4:5), Stories/Reels 1080×1920 (9:16)
 const ASPECT_RATIO: Record<string, string> = {
@@ -18,11 +16,11 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { post_id } = await req.json();
-    if (!post_id) return NextResponse.json({ error: "post_id e obrigatorio" }, { status: 400 });
+    if (!post_id) return NextResponse.json({ error: "post_id é obrigatório" }, { status: 400 });
 
     const postDoc = await adminDb.collection("posts").doc(post_id).get();
     if (!postDoc.exists || postDoc.data()?.agency_id !== user.uid) {
-      return NextResponse.json({ error: "Post nao encontrado" }, { status: 404 });
+      return NextResponse.json({ error: "Post não encontrado" }, { status: 404 });
     }
 
     const post   = postDoc.data()!;
@@ -33,38 +31,21 @@ export async function POST(req: NextRequest) {
 
     await postDoc.ref.update({ status: "generating" });
 
-    const freepikRes = await fetch(FREEPIK_BASE, {
-      method:  "POST",
-      headers: {
-        "Content-Type":      "application/json",
-        "x-freepik-api-key": FREEPIK_API_KEY,
-      },
-      body: JSON.stringify({
-        prompt:       post.visual_prompt,
-        aspect_ratio: aspect,
-        realism:      true,
-        styling: { colors: [{ color: primaryColor, weight: 0.5 }] },
-      }),
+    const { task_id } = await createTask({
+      prompt:       post.visual_prompt,
+      aspect_ratio: aspect,
+      realism:      true,
+      styling:      { colors: [{ color: primaryColor, weight: 0.5 }] },
     });
-
-    if (!freepikRes.ok) {
-      const err = await freepikRes.json().catch(() => ({}));
-      await postDoc.ref.update({ status: "ready" });
-      return NextResponse.json({ error: "Freepik error", details: err }, { status: 502 });
-    }
-
-    const freepikData = await freepikRes.json();
-    const task_id     = freepikData.data?.task_id as string | undefined;
-
-    if (!task_id) {
-      await postDoc.ref.update({ status: "ready" });
-      return NextResponse.json({ error: "task_id nao retornado pela Freepik" }, { status: 502 });
-    }
 
     await postDoc.ref.update({ freepik_task_id: task_id });
 
     return NextResponse.json({ task_id, post_id });
   } catch (err: unknown) {
+    if (err instanceof FreepikAuthError) {
+      console.error("[POST /api/posts/generate-image] Auth error:", err.message);
+      return NextResponse.json({ error: err.message }, { status: 502 });
+    }
     const message = err instanceof Error ? err.message : "Erro interno";
     console.error("[POST /api/posts/generate-image]", message);
     return NextResponse.json({ error: message }, { status: 500 });

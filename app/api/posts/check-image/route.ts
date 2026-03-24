@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-
-const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY ?? "";
+import { pollTask, FreepikAuthError } from "@/lib/freepik";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,34 +12,31 @@ export async function GET(req: NextRequest) {
     const post_id = req.nextUrl.searchParams.get("post_id");
 
     if (!task_id || !post_id) {
-      return NextResponse.json({ error: "task_id e post_id sao obrigatorios" }, { status: 400 });
+      return NextResponse.json({ error: "task_id e post_id são obrigatórios" }, { status: 400 });
     }
 
-    const res  = await fetch(`https://api.freepik.com/v1/ai/mystic/${task_id}`, {
-      headers: { "x-freepik-api-key": FREEPIK_API_KEY },
-    });
-    const data = await res.json();
-    const status = data.data?.status as string | undefined;
+    const result = await pollTask(task_id);
 
-    if (status === "COMPLETED") {
-      // generated é um array de strings (URLs diretas), não objetos com .url
-      const generated = data.data?.generated;
-      const image_url = Array.isArray(generated) ? (generated[0] as string) : null;
-      if (image_url) {
-        await adminDb.collection("posts").doc(post_id).update({ image_url, status: "ready" });
-        return NextResponse.json({ status: "COMPLETED", image_url });
+    if (result.status === "COMPLETED") {
+      if (result.image_url) {
+        await adminDb.collection("posts").doc(post_id).update({ image_url: result.image_url, status: "ready" });
+        return NextResponse.json({ status: "COMPLETED", image_url: result.image_url });
       }
-      console.error("[check-image] COMPLETED mas sem URL. Raw:", JSON.stringify(data));
-      return NextResponse.json({ status: "FAILED", error: "URL nao retornada" });
+      console.error("[check-image] COMPLETED mas sem URL. Raw:", JSON.stringify(result.raw));
+      return NextResponse.json({ status: "FAILED", error: "URL não retornada pela Freepik" });
     }
 
-    if (status === "FAILED") {
+    if (result.status === "FAILED") {
       await adminDb.collection("posts").doc(post_id).update({ status: "ready" });
-      return NextResponse.json({ status: "FAILED", error: "Geracao falhou no Freepik" });
+      return NextResponse.json({ status: "FAILED", error: "Geração falhou no Freepik" });
     }
 
-    return NextResponse.json({ status: status ?? "PENDING" });
+    return NextResponse.json({ status: result.status });
   } catch (err: unknown) {
+    if (err instanceof FreepikAuthError) {
+      console.error("[GET /api/posts/check-image] Auth error:", err.message);
+      return NextResponse.json({ error: err.message, status: "FAILED" }, { status: 502 });
+    }
     const message = err instanceof Error ? err.message : "Erro interno";
     console.error("[GET /api/posts/check-image]", message);
     return NextResponse.json({ error: message }, { status: 500 });
