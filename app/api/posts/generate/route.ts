@@ -24,6 +24,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
+import type { DocumentReference } from "firebase-admin/firestore";
 import { buildStrategyPrompt } from "@/lib/prompts/strategy";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
@@ -45,7 +46,7 @@ function parseJson<T>(raw: string): T {
 }
 
 export async function POST(req: NextRequest) {
-  let postRef: FirebaseFirestore.DocumentReference | null = null;
+  let postRef: DocumentReference | null = null;
 
   try {
     const user = await getSessionUser();

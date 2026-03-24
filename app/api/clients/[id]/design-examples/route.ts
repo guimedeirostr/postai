@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
+import type { Query } from "firebase-admin/firestore";
 import type { DesignExample } from "@/types";
 
 // ─── GET /api/clients/[id]/design-examples ────────────────────────────────────
@@ -27,7 +28,7 @@ export async function GET(
     let query = adminDb
       .collection("clients").doc(client_id)
       .collection("design_examples")
-      .orderBy("created_at", "desc") as FirebaseFirestore.Query;
+      .orderBy("created_at", "desc") as Query;
 
     if (pilar)  query = query.where("pilar",  "==", pilar);
     if (format) query = query.where("format", "==", format);
