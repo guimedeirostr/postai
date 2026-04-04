@@ -8,15 +8,16 @@
  *   4. Runs Strategy agent
  *   5. Loads client design examples (few-shot references)
  *   6. Runs Copy agent (with examples injected)
- *   7. Kicks off Freepik image generation (async task)
- *   8. Returns { post_id, briefing, copy } immediately
+ *   7. Runs Art Director agent (elevates visual_prompt to professional art direction)
+ *   8. Kicks off Freepik image generation (async task)
+ *   9. Returns { post_id, briefing, copy, art_direction } immediately
  *
  * The frontend only needs to:
  *   - Receive post_id
  *   - Poll GET /api/posts/check-image?task_id=...&post_id=... every 4s
  *
  * Post status progression:
- *   pending → strategy → copy → generating → ready (| failed)
+ *   pending → strategy → copy → art_direction → generating → ready (| failed)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -27,9 +28,14 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { DocumentReference } from "firebase-admin/firestore";
 import { buildStrategyPrompt } from "@/lib/prompts/strategy";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
+import { buildArtDirectorPrompt } from "@/lib/prompts/art-director";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import { createTask, FreepikAuthError } from "@/lib/freepik";
-import type { BrandProfile, StrategyBriefing, StrategyContext, DesignExample } from "@/types";
+import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
+import type { ArtDirection, BrandProfile, StrategyBriefing, StrategyContext, DesignExample } from "@/types";
+
+// Allow up to 60s — Imagen 4 is synchronous and can take 5–15s
+export const maxDuration = 60;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL     = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
@@ -201,30 +207,94 @@ export async function POST(req: NextRequest) {
       image_url:       null,
     });
 
-    // ── Step 3: Kick off Freepik image generation ─────────────────────────────
+    // ── Step 4: Art Director agent ────────────────────────────────────────────
+    // Elevates the Copy agent's visual_prompt into a professional art direction JSON.
+    // The final_visual_prompt from this step replaces the raw copy visual_prompt for Freepik.
+    await postRef.update({ status: "art_direction" });
+
+    let artDirection: ArtDirection | null = null;
+    let freepikPrompt = copy.visual_prompt; // fallback if Art Director fails
+    let freepikLayoutPrompt = copy.layout_prompt ?? null;
+
+    try {
+      const artRes = await anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 1024,
+        system:     buildArtDirectorPrompt(client, briefing, {
+          visual_headline: copy.visual_headline,
+          visual_prompt:   copy.visual_prompt,
+          layout_prompt:   copy.layout_prompt,
+        }),
+        messages: [{ role: "user", content: "Gere a direção de arte profissional para este post." }],
+      });
+
+      const artRaw = artRes.content[0].type === "text" ? artRes.content[0].text : "";
+      artDirection = parseJson<ArtDirection>(artRaw);
+      freepikPrompt      = artDirection.final_visual_prompt;
+      freepikLayoutPrompt = artDirection.final_layout_prompt;
+
+      await postRef.update({
+        art_direction:  artDirection,
+        visual_prompt:  artDirection.final_visual_prompt,
+        layout_prompt:  artDirection.final_layout_prompt,
+      });
+    } catch (artErr) {
+      // Non-fatal — generation continues with Copy agent's visual_prompt
+      console.error("[generate] Art Director error (non-fatal):", artErr instanceof Error ? artErr.message : artErr);
+    }
+
+    // ── Step 5: Image generation ──────────────────────────────────────────────
+    // Two providers:
+    //   IMAGE_PROVIDER=imagen4  → Imagen 4 (synchronous, R2 upload, no polling)
+    //   IMAGE_PROVIDER=freepik  → Freepik Mystic (async task, frontend polls)
     await postRef.update({ status: "generating" });
 
-    let task_id: string | null = null;
-    try {
-      const aspect = ASPECT_RATIO[briefing.formato_sugerido] ?? "social_post_4_5";
-      const task   = await createTask({
-        prompt:       copy.visual_prompt,
-        aspect_ratio: aspect,
-        realism:      true,
-        styling:      { colors: [{ color: client.primary_color, weight: 0.5 }] },
-      });
-      task_id = task.task_id;
-      await postRef.update({ freepik_task_id: task_id });
-    } catch (freepikErr) {
-      // Image generation failed, but copy is ready — degrade gracefully
-      const freepikMsg = freepikErr instanceof Error ? freepikErr.message : "Erro Freepik";
-      console.error("[generate] Freepik error (non-fatal):", freepikMsg);
-      await postRef.update({ status: "ready", freepik_error: freepikMsg });
+    let task_id:   string | null = null;
+    let image_url: string | null = null;
+
+    if (isImagen4Enabled()) {
+      // ── Imagen 4 path (synchronous) ─────────────────────────────────────────
+      try {
+        image_url = await imagenGenerate({
+          prompt:  freepikPrompt,
+          format:  briefing.formato_sugerido,
+          post_id: postRef.id,
+          model:   resolveImagenModel(),
+        });
+        await postRef.update({
+          image_url,
+          image_provider: "imagen4",
+          status:         "ready",
+        });
+      } catch (imgErr) {
+        const msg = imgErr instanceof Error ? imgErr.message : "Erro Imagen";
+        console.error("[generate] Imagen 4 error (non-fatal):", msg);
+        await postRef.update({ status: "ready", imagen_error: msg });
+      }
+    } else {
+      // ── Freepik path (async — frontend polls check-image) ───────────────────
+      try {
+        const aspect = ASPECT_RATIO[briefing.formato_sugerido] ?? "social_post_4_5";
+        const task   = await createTask({
+          prompt:       freepikPrompt,
+          aspect_ratio: aspect,
+          realism:      true,
+          styling:      { colors: [{ color: client.primary_color, weight: 0.5 }] },
+        });
+        task_id = task.task_id;
+        await postRef.update({ freepik_task_id: task_id, image_provider: "freepik" });
+      } catch (freepikErr) {
+        const msg = freepikErr instanceof Error ? freepikErr.message : "Erro Freepik";
+        console.error("[generate] Freepik error (non-fatal):", msg);
+        await postRef.update({ status: "ready", freepik_error: msg });
+      }
     }
 
     return NextResponse.json({
-      post_id:  postRef.id,
-      task_id,
+      post_id:        postRef.id,
+      task_id,        // null when using Imagen 4 — frontend skips polling
+      image_url,      // populated when using Imagen 4 — frontend shows immediately
+      image_provider: isImagen4Enabled() ? "imagen4" : "freepik",
       briefing,
       copy: {
         visual_headline: copy.visual_headline,
@@ -236,6 +306,7 @@ export async function POST(req: NextRequest) {
         framework_used:  copy.framework_used,
         hook_type:       copy.hook_type,
       },
+      art_direction: artDirection,
     });
 
   } catch (err: unknown) {
@@ -246,7 +317,7 @@ export async function POST(req: NextRequest) {
       await postRef.update({ status: "failed", error: message }).catch(() => null);
     }
 
-    if (err instanceof FreepikAuthError) {
+    if (err instanceof FreepikAuthError || err instanceof ImagenError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
     return NextResponse.json({ error: message }, { status: 500 });

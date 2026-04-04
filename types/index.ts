@@ -74,6 +74,23 @@ export interface StrategyContext {
   hook_type?: string;
 }
 
+export interface ArtDirection {
+  visual_style:        string;
+  lighting:            string;
+  composition:         string;
+  colors:              string;
+  background:          string;
+  typography:          string;
+  texture:             string;
+  image_type:          "photography" | "illustration" | "3d_render" | "graphic_design";
+  lens:                string;
+  depth_of_field:      string;
+  emotion:             string;
+  negative_prompt:     string;
+  final_visual_prompt: string;
+  final_layout_prompt: string;
+}
+
 export interface GeneratedPost {
   id: string;
   agency_id: string;
@@ -87,8 +104,10 @@ export interface GeneratedPost {
   caption: string;
   hashtags: string[];
   visual_prompt: string;
+  art_direction?: ArtDirection; // structured output from Art Director Agent
   framework_used?: string;    // PAS | AIDA | PASTOR | PPPP
   hook_type?: string;         // Dor | Curiosidade | Pergunta | etc
+  image_provider?: "freepik" | "imagen4"; // which provider generated image_url
   freepik_task_id?: string;
   image_url: string | null;
   layout_prompt?: string;          // AI-generated composition description for img2img
