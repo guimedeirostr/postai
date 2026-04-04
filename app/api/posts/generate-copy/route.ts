@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const response = await anthropic.messages.create({
       model:      MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
       system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined),
       messages: [{
         role:    "user",
