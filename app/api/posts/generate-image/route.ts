@@ -20,6 +20,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { createTask, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
+import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 
 // Allow up to 60s for synchronous Imagen 4 generation
 export const maxDuration = 60;
@@ -51,7 +52,19 @@ export async function POST(req: NextRequest) {
 
     await postDoc.ref.update({ status: "generating" });
 
-    // ── Imagen 4 path (synchronous) ─────────────────────────────────────────────
+    // ── FAL.ai path (synchronous) ────────────────────────────────────────────────
+    if (isFalEnabled()) {
+      const image_url = await generateImageFal({
+        prompt:  post.visual_prompt as string,
+        format:  post.format as "feed" | "stories" | "reels_cover",
+        post_id,
+        model:   resolveFalModel(),
+      });
+      await postDoc.ref.update({ image_url, image_provider: "fal", status: "ready" });
+      return NextResponse.json({ image_url, post_id });
+    }
+
+    // ── Imagen 4 path (synchronous) ──────────────────────────────────────────────
     if (isImagen4Enabled()) {
       const image_url = await imagenGenerate({
         prompt:  post.visual_prompt as string,
@@ -59,17 +72,11 @@ export async function POST(req: NextRequest) {
         post_id,
         model:   resolveImagenModel(),
       });
-
-      await postDoc.ref.update({
-        image_url,
-        image_provider: "imagen4",
-        status:         "ready",
-      });
-
+      await postDoc.ref.update({ image_url, image_provider: "imagen4", status: "ready" });
       return NextResponse.json({ image_url, post_id });
     }
 
-    // ── Freepik path (async — frontend polls check-image) ───────────────────────
+    // ── Freepik path (async — frontend polls check-image) ────────────────────────
     const clientDoc    = await adminDb.collection("clients").doc(post.client_id).get();
     const primaryColor = clientDoc.data()?.primary_color ?? "#6d28d9";
     const aspect       = FREEPIK_ASPECT[post.format as string] ?? "square_1_1";
@@ -86,7 +93,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ task_id, post_id });
 
   } catch (err: unknown) {
-    if (err instanceof FreepikAuthError || err instanceof ImagenError) {
+    if (err instanceof FreepikAuthError || err instanceof ImagenError || err instanceof FalError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
     const message = err instanceof Error ? err.message : "Erro interno";

@@ -107,11 +107,12 @@ export interface GeneratedPost {
   art_direction?: ArtDirection; // structured output from Art Director Agent
   framework_used?: string;    // PAS | AIDA | PASTOR | PPPP
   hook_type?: string;         // Dor | Curiosidade | Pergunta | etc
-  image_provider?: "freepik" | "imagen4"; // which provider generated image_url
+  image_provider?: "freepik" | "imagen4" | "fal"; // which provider generated image_url
   freepik_task_id?: string;
   image_url: string | null;
+  composed_url?: string | null;            // final branded post (compositor output)
   layout_prompt?: string;          // AI-generated composition description for img2img
   composition_zone?: "left" | "right" | "bottom" | "top" | "center"; // safe text area
-  status: "pending" | "strategy" | "copy" | "generating" | "ready" | "approved" | "rejected" | "failed";
+  status: "pending" | "strategy" | "copy" | "art_direction" | "generating" | "composing" | "ready" | "approved" | "rejected" | "failed";
   created_at: Timestamp;
 }

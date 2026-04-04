@@ -32,6 +32,8 @@ import { buildArtDirectorPrompt } from "@/lib/prompts/art-director";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import { createTask, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
+import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
+import { composePost } from "@/lib/composer";
 import type { ArtDirection, BrandProfile, StrategyBriefing, StrategyContext, DesignExample } from "@/types";
 
 // Allow up to 60s — Imagen 4 is synchronous and can take 5–15s
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest) {
 
     const copyRes = await anthropic.messages.create({
       model:      MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
       system:     buildCopyPrompt(client, briefing.formato_sugerido, briefing.objetivo, strategy, designExamples.length ? designExamples : undefined),
       messages:   [{
         role:    "user",
@@ -244,35 +246,53 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 5: Image generation ──────────────────────────────────────────────
-    // Two providers:
-    //   IMAGE_PROVIDER=imagen4  → Imagen 4 (synchronous, R2 upload, no polling)
-    //   IMAGE_PROVIDER=freepik  → Freepik Mystic (async task, frontend polls)
+    // Providers (via IMAGE_PROVIDER env var):
+    //   fal     → FAL.ai Flux Pro Ultra (sync, premium quality)
+    //   imagen4 → Google Imagen 4 (sync)
+    //   freepik → Freepik Mystic (async, frontend polls check-image)
     await postRef.update({ status: "generating" });
 
-    let task_id:   string | null = null;
-    let image_url: string | null = null;
+    let task_id:        string | null = null;
+    let image_url:      string | null = null;
+    let composed_url:   string | null = null;
+    let image_provider                = "freepik";
 
-    if (isImagen4Enabled()) {
-      // ── Imagen 4 path (synchronous) ─────────────────────────────────────────
+    if (isFalEnabled()) {
+      // ── FAL.ai path (synchronous) ────────────────────────────────────────────
       try {
-        image_url = await imagenGenerate({
+        image_url      = await generateImageFal({
+          prompt:  freepikPrompt,
+          format:  briefing.formato_sugerido,
+          post_id: postRef.id,
+          model:   resolveFalModel(),
+        });
+        image_provider = "fal";
+        await postRef.update({ image_url, image_provider: "fal", status: "ready" });
+      } catch (falErr) {
+        const msg = falErr instanceof Error ? falErr.message : "Erro FAL.ai";
+        console.error("[generate] FAL.ai error (non-fatal):", msg);
+        await postRef.update({ status: "ready", fal_error: msg });
+      }
+
+    } else if (isImagen4Enabled()) {
+      // ── Imagen 4 path (synchronous) ──────────────────────────────────────────
+      try {
+        image_url      = await imagenGenerate({
           prompt:  freepikPrompt,
           format:  briefing.formato_sugerido,
           post_id: postRef.id,
           model:   resolveImagenModel(),
         });
-        await postRef.update({
-          image_url,
-          image_provider: "imagen4",
-          status:         "ready",
-        });
+        image_provider = "imagen4";
+        await postRef.update({ image_url, image_provider: "imagen4", status: "ready" });
       } catch (imgErr) {
         const msg = imgErr instanceof Error ? imgErr.message : "Erro Imagen";
         console.error("[generate] Imagen 4 error (non-fatal):", msg);
         await postRef.update({ status: "ready", imagen_error: msg });
       }
+
     } else {
-      // ── Freepik path (async — frontend polls check-image) ───────────────────
+      // ── Freepik path (async — frontend polls check-image) ────────────────────
       try {
         const aspect = ASPECT_RATIO[briefing.formato_sugerido] ?? "social_post_4_5";
         const task   = await createTask({
@@ -281,7 +301,8 @@ export async function POST(req: NextRequest) {
           realism:      true,
           styling:      { colors: [{ color: client.primary_color, weight: 0.5 }] },
         });
-        task_id = task.task_id;
+        task_id        = task.task_id;
+        image_provider = "freepik";
         await postRef.update({ freepik_task_id: task_id, image_provider: "freepik" });
       } catch (freepikErr) {
         const msg = freepikErr instanceof Error ? freepikErr.message : "Erro Freepik";
@@ -290,11 +311,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Step 6: Auto-compose (providers síncronos geram a arte final) ─────────
+    // Freepik é async → compose ocorre em /api/posts/check-image quando completo
+    if (image_url && !task_id) {
+      try {
+        await postRef.update({ status: "composing" });
+        composed_url = await composePost({
+          imageUrl:        image_url,
+          logoUrl:         client.logo_url,
+          visualHeadline:  copy.visual_headline ?? briefing.tema,
+          instagramHandle: client.instagram_handle,
+          clientName:      client.name,
+          primaryColor:    client.primary_color,
+          secondaryColor:  client.secondary_color,
+          format:          briefing.formato_sugerido,
+          postId:          postRef.id,
+        });
+        await postRef.update({ composed_url, status: "ready" });
+      } catch (composeErr) {
+        const msg = composeErr instanceof Error ? composeErr.message : "Erro compositor";
+        console.error("[generate] Compositor error (non-fatal):", msg);
+        await postRef.update({ status: "ready", compose_error: msg });
+      }
+    }
+
     return NextResponse.json({
       post_id:        postRef.id,
-      task_id,        // null when using Imagen 4 — frontend skips polling
-      image_url,      // populated when using Imagen 4 — frontend shows immediately
-      image_provider: isImagen4Enabled() ? "imagen4" : "freepik",
+      task_id,
+      image_url,
+      composed_url,
+      image_provider,
       briefing,
       copy: {
         visual_headline: copy.visual_headline,
@@ -317,7 +363,7 @@ export async function POST(req: NextRequest) {
       await postRef.update({ status: "failed", error: message }).catch(() => null);
     }
 
-    if (err instanceof FreepikAuthError || err instanceof ImagenError) {
+    if (err instanceof FreepikAuthError || err instanceof ImagenError || err instanceof FalError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
     return NextResponse.json({ error: message }, { status: 500 });
