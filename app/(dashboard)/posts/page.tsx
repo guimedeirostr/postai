@@ -5,13 +5,14 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import {
   ImageIcon, Loader2, Hash, Copy, Check, X,
-  Calendar, Tag, Download, Wand2, Layers, RefreshCw,
+  Calendar, Tag, Download, Wand2, Layers, RefreshCw, ScanSearch,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { BrandProfile, GeneratedPost } from "@/types";
 import { PostComposer } from "@/components/post-composer";
+import { AnalyzeReferenceModal } from "@/components/analyze-reference-modal";
 const FORMAT_LABEL: Record<string, string> = {
   feed:        "Feed",
   stories:     "Stories",
@@ -48,6 +49,7 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
   const [composedUrl,  setComposedUrl]  = useState(post.composed_url ?? null);
   // show composed (branded) by default if available, raw otherwise
   const [viewComposed, setViewComposed] = useState(!!post.composed_url);
+  const [showDnaModal, setShowDnaModal] = useState(false);
 
   function copyText(text: string, key: string) {
     navigator.clipboard.writeText(text);
@@ -232,7 +234,7 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
                     `${post.caption}\n\n${post.hashtags.map(h => `#${h}`).join(" ")}`,
                     "full_copy"
                   )}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors ml-auto"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
                   title="Copiar legenda + hashtags (pronto para colar no Instagram)"
                 >
                   {copied === "full_copy"
@@ -240,6 +242,21 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
                     : <Copy className="w-3.5 h-3.5" />}
                   Copiar tudo
                 </button>
+
+                {/* Analisar referência visual para este post */}
+                {client && (
+                  <>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                    <button
+                      onClick={() => setShowDnaModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors ml-auto"
+                      title="Analisar uma referência visual para este post"
+                    >
+                      <ScanSearch className="w-3.5 h-3.5" />
+                      Referência
+                    </button>
+                  </>
+                )}
               </div>
 
               <div className="rounded-xl overflow-hidden border bg-slate-50">
@@ -340,6 +357,15 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
           </div>
         </div>
       </div>
+
+      {/* Modal de referência visual — abre por cima do detail modal */}
+      {showDnaModal && client && (
+        <AnalyzeReferenceModal
+          client={client}
+          onClose={() => setShowDnaModal(false)}
+          onSaved={() => setShowDnaModal(false)}
+        />
+      )}
     </div>
   );
 }
