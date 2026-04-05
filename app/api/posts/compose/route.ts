@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { post_id } = await req.json() as { post_id: string };
+    const body = await req.json() as { post_id: string; image_url?: string };
+    const { post_id } = body;
     if (!post_id) {
       return NextResponse.json({ error: "post_id é obrigatório" }, { status: 400 });
     }
@@ -44,12 +45,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
     }
 
+    // Se image_url foi passado no body, usa ele (modo "Minha Foto" da biblioteca)
+    const imageUrlOverride = body.image_url ?? null;
+    const imageUrl = imageUrlOverride ?? post.image_url;
+
     // Precisa ter image_url para compor
-    if (!post.image_url) {
+    if (!imageUrl) {
       return NextResponse.json(
         { error: "Post ainda não tem imagem gerada. Aguarde a geração e tente novamente." },
         { status: 422 }
       );
+    }
+
+    // Se veio override, salva no post antes de compor
+    if (imageUrlOverride) {
+      await postDoc.ref.update({ image_url: imageUrlOverride });
     }
 
     // ── Carregar dados do cliente ─────────────────────────────────────────────
@@ -65,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     // ── Compor o post ─────────────────────────────────────────────────────────
     const composed_url = await composePost({
-      imageUrl:        post.image_url,
+      imageUrl:        imageUrl,
       logoUrl:         client.logo_url,
       visualHeadline:  post.visual_headline ?? post.headline ?? client.name,
       instagramHandle: client.instagram_handle,

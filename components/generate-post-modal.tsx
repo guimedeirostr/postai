@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download } from "lucide-react";
+import type { BrandPhoto } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,10 +63,25 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copied,         setCopied]         = useState<string | null>(null);
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
-  const [imageMode,      setImageMode]      = useState<"freepik" | "real">("freepik");
-  const [curateReason,   setCurateReason]   = useState<string | null>(null);
-  const [composedUrl,    setComposedUrl]    = useState<string | null>(null);
-  const [viewComposed,   setViewComposed]   = useState(true);
+  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library">("freepik");
+  const [curateReason,       setCurateReason]       = useState<string | null>(null);
+  const [composedUrl,        setComposedUrl]        = useState<string | null>(null);
+  const [viewComposed,       setViewComposed]       = useState(true);
+  const [libraryPhotos,      setLibraryPhotos]      = useState<BrandPhoto[]>([]);
+  const [libraryLoading,     setLibraryLoading]     = useState(false);
+  const [selectedLibPhoto,   setSelectedLibPhoto]   = useState<string | null>(null);
+
+  // Fetch library photos when mode = "library" and we have a result
+  useEffect(() => {
+    if (imageMode !== "library" || !result) return;
+    if (libraryPhotos.length > 0) return; // already loaded
+    setLibraryLoading(true);
+    fetch(`/api/clients/${client.id}/photos`)
+      .then(r => r.json())
+      .then((data: { photos?: BrandPhoto[] }) => setLibraryPhotos(data.photos ?? []))
+      .catch(() => setLibraryPhotos([]))
+      .finally(() => setLibraryLoading(false));
+  }, [imageMode, result, client.id, libraryPhotos.length]);
 
   async function handleGenerateStrategy() {
     setStrategyLoading(true);
@@ -233,6 +249,37 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
 
       setCurateReason(data.curation_reason ?? null);
       setResult(prev => prev ? { ...prev, image_url: data.image_url } : prev);
+    } catch {
+      setImgError("Erro inesperado. Tente novamente.");
+    } finally {
+      setImgLoading(false);
+    }
+  }
+
+  async function handleComposeWithLibraryPhoto() {
+    if (!result?.post_id || !selectedLibPhoto) return;
+    setImgLoading(true);
+    setImgError(null);
+
+    try {
+      const res  = await fetch("/api/posts/compose", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ post_id: result.post_id, image_url: selectedLibPhoto }),
+      });
+      const data = await res.json() as { composed_url?: string; error?: string };
+
+      if (!res.ok) {
+        setImgError(data.error ?? "Erro ao compor imagem");
+        return;
+      }
+
+      // Set image_url to the selected library photo (raw view)
+      setResult(prev => prev ? { ...prev, image_url: selectedLibPhoto } : prev);
+      if (data.composed_url) {
+        setComposedUrl(data.composed_url);
+        setViewComposed(true);
+      }
     } catch {
       setImgError("Erro inesperado. Tente novamente.");
     } finally {
@@ -534,8 +581,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Mode selector */}
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* Mode selector — 3 options */}
+                  <div className="grid grid-cols-3 gap-2">
                     <button type="button"
                       onClick={() => setImageMode("freepik")}
                       className={`p-3 rounded-xl border-2 text-left transition-all ${
@@ -543,11 +590,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                           ? "border-violet-500 bg-violet-50"
                           : "border-slate-200 hover:border-slate-300"
                       }`}>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-1.5 mb-1">
                         <Wand2 className="w-3.5 h-3.5 text-violet-600" />
                         <p className="text-xs font-semibold text-slate-900">Freepik IA</p>
                       </div>
-                      <p className="text-xs text-slate-400">Gera imagem do zero com prompt visual</p>
+                      <p className="text-xs text-slate-400">Gera do zero com prompt</p>
                     </button>
                     <button type="button"
                       onClick={() => setImageMode("real")}
@@ -556,27 +603,98 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                           ? "border-violet-500 bg-violet-50"
                           : "border-slate-200 hover:border-slate-300"
                       }`}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Camera className="w-3.5 h-3.5 text-violet-600" />
-                        <p className="text-xs font-semibold text-slate-900">Foto Real</p>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Brain className="w-3.5 h-3.5 text-violet-600" />
+                        <p className="text-xs font-semibold text-slate-900">IA Curada</p>
                       </div>
-                      <p className="text-xs text-slate-400">IA seleciona melhor foto da biblioteca</p>
+                      <p className="text-xs text-slate-400">IA escolhe da biblioteca</p>
+                    </button>
+                    <button type="button"
+                      onClick={() => setImageMode("library")}
+                      className={`p-3 rounded-xl border-2 text-left transition-all ${
+                        imageMode === "library"
+                          ? "border-emerald-500 bg-emerald-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                        <p className="text-xs font-semibold text-slate-900">Minha Foto</p>
+                      </div>
+                      <p className="text-xs text-slate-400">Escolha da biblioteca</p>
                     </button>
                   </div>
 
+                  {/* Library photo picker */}
+                  {imageMode === "library" && (
+                    <div className="space-y-2">
+                      {libraryLoading ? (
+                        <div className="flex items-center justify-center py-8 text-slate-400">
+                          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                          <span className="text-sm">Carregando fotos...</span>
+                        </div>
+                      ) : libraryPhotos.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
+                          <ImageIcon className="w-8 h-8 opacity-40" />
+                          <p className="text-sm">Nenhuma foto na biblioteca</p>
+                          <p className="text-xs text-slate-300">Faça upload em "Biblioteca de Fotos"</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
+                          {libraryPhotos.map(photo => (
+                            <button
+                              key={photo.id}
+                              type="button"
+                              onClick={() => setSelectedLibPhoto(
+                                selectedLibPhoto === photo.url ? null : photo.url
+                              )}
+                              className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                                selectedLibPhoto === photo.url
+                                  ? "border-emerald-500 ring-2 ring-emerald-300"
+                                  : "border-transparent hover:border-slate-300"
+                              }`}
+                            >
+                              <img src={photo.url} alt={photo.filename}
+                                className="w-full h-full object-cover" />
+                              {selectedLibPhoto === photo.url && (
+                                <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
+                                  <Check className="w-6 h-6 text-white drop-shadow" />
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Action button */}
                   <Button
-                    onClick={imageMode === "freepik" ? handleGenerateImage : handleCurateImage}
-                    disabled={imgLoading}
-                    className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+                    onClick={
+                      imageMode === "freepik" ? handleGenerateImage
+                      : imageMode === "real"   ? handleCurateImage
+                      :                         handleComposeWithLibraryPhoto
+                    }
+                    disabled={
+                      imgLoading ||
+                      (imageMode === "library" && !selectedLibPhoto)
+                    }
+                    className={`w-full text-white ${
+                      imageMode === "library"
+                        ? "bg-emerald-600 hover:bg-emerald-700"
+                        : "bg-violet-600 hover:bg-violet-700"
+                    }`}
                   >
                     {imgLoading ? (
                       <><Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        {imageMode === "freepik" ? "Gerando imagem..." : "Curando com IA..."}</>
+                        {imageMode === "freepik" ? "Gerando imagem..."
+                         : imageMode === "real"   ? "Curando com IA..."
+                         :                         "Compondo post..."}</>
                     ) : imageMode === "freepik" ? (
                       <><ImageIcon className="w-4 h-4 mr-2" />Gerar com Freepik IA</>
+                    ) : imageMode === "real" ? (
+                      <><Brain className="w-4 h-4 mr-2" />Curar foto com IA</>
                     ) : (
-                      <><Camera className="w-4 h-4 mr-2" />Curar foto da biblioteca</>
+                      <><Layers className="w-4 h-4 mr-2" />Usar esta foto</>
                     )}
                   </Button>
 
@@ -591,6 +709,10 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setImgError(null);
                 setCurateReason(null);
                 setImageMode("freepik");
+                setComposedUrl(null);
+                setViewComposed(true);
+                setLibraryPhotos([]);
+                setSelectedLibPhoto(null);
                 setStep(0);
                 setStrategy(null);
                 setTheme("");
