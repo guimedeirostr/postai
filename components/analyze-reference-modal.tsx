@@ -55,36 +55,50 @@ const PILAR_COLORS: Record<string, string> = {
 };
 
 export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
-  const [imageUrl,   setImageUrl]   = useState("");
-  const [sourceUrl,  setSourceUrl]  = useState("");
+  const [postUrl,    setPostUrl]    = useState("");   // URL do post ou da imagem direta
+  const [imageUrl,   setImageUrl]   = useState("");   // URL resolvida (preenchida após submit)
   const [format,     setFormat]     = useState("feed");
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState<string | null>(null);
   const [result,     setResult]     = useState<AnalysisResult | null>(null);
 
+  /** Detecta se a URL é de um post do Instagram (não a imagem direta) */
+  function isPostUrl(url: string): boolean {
+    return /instagram\.com\/(p|reel|tv)\//.test(url);
+  }
+
   async function handleAnalyze() {
-    if (!imageUrl.trim()) return;
+    const trimmed = postUrl.trim();
+    if (!trimmed) return;
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
+      const body: Record<string, string> = { format };
+
+      if (isPostUrl(trimmed)) {
+        // URL do post → backend resolve og:image automaticamente
+        body.source_url = trimmed;
+      } else {
+        // URL direta da imagem
+        body.image_url  = trimmed;
+      }
+
       const res = await fetch(`/api/clients/${client.id}/analyze-reference`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          image_url:  imageUrl.trim(),
-          source_url: sourceUrl.trim() || undefined,
-          format,
-        }),
+        body:    JSON.stringify(body),
       });
 
-      const data = await res.json() as AnalysisResult & { error?: string };
+      const data = await res.json() as AnalysisResult & { error?: string; image_url?: string };
       if (!res.ok) {
         setError(data.error ?? "Erro na análise");
         return;
       }
 
+      // Salva a URL resolvida para exibir o preview no resultado
+      setImageUrl(data.image_url ?? trimmed);
       setResult(data);
       onSaved();
     } catch {
@@ -96,8 +110,8 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
 
   function handleNew() {
     setResult(null);
+    setPostUrl("");
     setImageUrl("");
-    setSourceUrl("");
     setError(null);
     setFormat("feed");
   }
@@ -133,35 +147,27 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
               {/* Explicação */}
               <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl">
                 <p className="text-xs text-violet-700 leading-relaxed">
-                  <strong>Como funciona:</strong> Cole a URL de qualquer imagem do Instagram (use a URL da imagem, não do post).
-                  O Claude vai extrair paleta de cores, tipografia, composição, estilo e salvar como referência
-                  visual para o cliente <strong>{client.name}</strong>.
+                  <strong>Como funciona:</strong> Cole a URL do post do Instagram <em>ou</em> a URL direta
+                  da imagem. O Claude extrai paleta de cores, tipografia, composição e estilo — salvando
+                  como referência visual para <strong>{client.name}</strong>.
                 </p>
               </div>
 
-              {/* URL da imagem */}
+              {/* Campo único inteligente */}
               <div className="space-y-1.5">
-                <Label>URL da imagem *</Label>
+                <Label>URL do post ou da imagem *</Label>
                 <Input
-                  value={imageUrl}
-                  onChange={e => setImageUrl(e.target.value)}
-                  placeholder="https://... (URL direta da imagem, não do post)"
+                  value={postUrl}
+                  onChange={e => setPostUrl(e.target.value)}
+                  placeholder="https://www.instagram.com/p/... ou URL direta da imagem"
                   type="url"
                 />
-                <p className="text-xs text-slate-400">
-                  No Instagram: clique com botão direito na foto → "Abrir imagem em nova guia" → copie a URL
-                </p>
-              </div>
-
-              {/* URL do post (opcional) */}
-              <div className="space-y-1.5">
-                <Label>URL do post original <span className="text-slate-400 font-normal">(opcional)</span></Label>
-                <Input
-                  value={sourceUrl}
-                  onChange={e => setSourceUrl(e.target.value)}
-                  placeholder="https://www.instagram.com/p/..."
-                  type="url"
-                />
+                <div className="flex items-start gap-3 text-xs text-slate-400">
+                  <div className="space-y-0.5">
+                    <p>✅ <strong className="text-slate-500">Post:</strong> cole a URL do post (instagram.com/p/...)</p>
+                    <p>✅ <strong className="text-slate-500">Imagem direta:</strong> botão direito na foto → "Abrir em nova guia" → copie a URL</p>
+                  </div>
+                </div>
               </div>
 
               {/* Formato */}
@@ -182,15 +188,21 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </div>
               </div>
 
-              {/* Preview da imagem */}
-              {imageUrl && (
+              {/* Preview da imagem direta */}
+              {postUrl && !isPostUrl(postUrl) && (
                 <div className="rounded-xl overflow-hidden border bg-slate-50 flex items-center justify-center min-h-24">
                   <img
-                    src={imageUrl}
+                    src={postUrl}
                     alt="Preview"
                     className="max-h-64 object-contain"
                     onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
+                </div>
+              )}
+              {postUrl && isPostUrl(postUrl) && (
+                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700">
+                  <Check className="w-4 h-4 flex-shrink-0" />
+                  <span>URL do Instagram detectada — a imagem será extraída automaticamente na análise.</span>
                 </div>
               )}
 
@@ -300,7 +312,7 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
               <Button variant="outline" onClick={onClose}>Cancelar</Button>
               <Button
                 onClick={handleAnalyze}
-                disabled={loading || !imageUrl.trim()}
+                disabled={loading || !postUrl.trim()}
                 className="bg-violet-600 hover:bg-violet-700 text-white min-w-[160px]">
                 {loading
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analisando...</>

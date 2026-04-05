@@ -108,17 +108,54 @@ export async function POST(
 
     // ── Ler body ──────────────────────────────────────────────────────────────
     const body = await req.json() as {
-      image_url:   string;
+      image_url?:  string;
       source_url?: string;
       format?:     "feed" | "stories" | "reels_cover";
     };
 
-    if (!body.image_url) {
-      return NextResponse.json({ error: "image_url é obrigatório" }, { status: 400 });
+    if (!body.image_url && !body.source_url) {
+      return NextResponse.json({ error: "image_url ou source_url é obrigatório" }, { status: 400 });
+    }
+
+    // ── Resolver image_url a partir de source_url (Instagram post) ────────────
+    let resolvedImageUrl = body.image_url ?? "";
+
+    if (!resolvedImageUrl && body.source_url) {
+      // Tenta extrair og:image do HTML da página do post
+      try {
+        const pageResp = await fetch(body.source_url, {
+          headers: {
+            "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+          },
+          signal: AbortSignal.timeout(12_000),
+          redirect: "follow",
+        });
+        if (pageResp.ok) {
+          const html  = await pageResp.text();
+          // Busca og:image ou twitter:image
+          const match = html.match(/<meta[^>]+(?:property="og:image"|name="twitter:image")[^>]+content="([^"]+)"/i)
+                     ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+(?:property="og:image"|name="twitter:image")/i);
+          if (match?.[1]) {
+            resolvedImageUrl = match[1].replace(/&amp;/g, "&");
+          }
+        }
+      } catch (fetchErr) {
+        console.warn("[analyze-reference] Falha ao extrair og:image:", fetchErr);
+      }
+
+      if (!resolvedImageUrl) {
+        return NextResponse.json(
+          { error: "Não foi possível extrair a imagem do post. Tente colar a URL direta da imagem (clique com botão direito na foto → Abrir em nova guia)." },
+          { status: 422 }
+        );
+      }
     }
 
     // ── Baixar imagem e converter para base64 ─────────────────────────────────
-    const imgResponse = await fetch(body.image_url, {
+    const imgResponse = await fetch(resolvedImageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; PostAI/1.0)",
+      },
       signal: AbortSignal.timeout(15_000),
     });
     if (!imgResponse.ok) {
@@ -230,7 +267,7 @@ export async function POST(
       color_mood,
       composition_zone,
       source_url:           body.source_url ?? undefined,
-      image_url:            body.image_url,
+      image_url:            resolvedImageUrl,
     };
 
     await ref.set({
@@ -250,7 +287,8 @@ export async function POST(
       description,
       color_mood,
       composition_zone,
-      blueprint,            // blueprint completo para debug/preview
+      image_url:             resolvedImageUrl,   // retorna a URL resolvida para o preview
+      blueprint,
     }, { status: 201 });
 
   } catch (err: unknown) {
