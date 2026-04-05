@@ -78,6 +78,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [referenceWarn,      setReferenceWarn]      = useState<string | null>(null);
   const [copyError,          setCopyError]          = useState<string | null>(null);
   const [freepikModel,       setFreepikModel]       = useState<"mystic" | "seedream">("mystic");
+  const [extraInstructions,  setExtraInstructions]  = useState("");
 
   // Fetch library photos when mode = "library" and we have a result
   useEffect(() => {
@@ -164,6 +165,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       body.reference_url = referenceUrl.trim();
     }
     body.image_provider = freepikModel;
+    if (extraInstructions.trim()) body.extra_instructions = extraInstructions.trim();
 
     setCopyError(null);
     const res  = await fetch("/api/posts/generate-copy", {
@@ -594,6 +596,20 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 )}
               </div>
 
+              {/* Instruções extras */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">
+                  Instruções para a IA <span className="text-slate-400 font-normal">(opcional)</span>
+                </Label>
+                <textarea
+                  value={extraInstructions}
+                  onChange={e => setExtraInstructions(e.target.value)}
+                  placeholder={'Ex: "Fundo branco limpo, sem pessoas"\n"Tom mais sério e corporativo"\n"Foco no produto, estilo editorial"'}
+                  rows={2}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+
               {/* Brand preview */}
               <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl text-xs text-slate-500">
                 <div className="flex gap-1">
@@ -885,6 +901,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setReferenceType("image/jpeg");
                 setReferencePreview(null);
                 setReferenceWarn(null);
+                setExtraInstructions("");
                 setComposedUrl(null);
                 setViewComposed(true);
                 setLibraryPhotos([]);
