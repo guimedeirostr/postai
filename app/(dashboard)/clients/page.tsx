@@ -3,12 +3,13 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientFormModal } from "@/components/client-form-modal";
 import { GeneratePostModal } from "@/components/generate-post-modal";
 import { PhotoLibraryModal } from "@/components/photo-library-modal";
+import { AnalyzeReferenceModal } from "@/components/analyze-reference-modal";
 import type { BrandProfile } from "@/types";
 
 function DeleteDialog({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
@@ -36,6 +37,7 @@ export default function ClientsPage() {
   const [deleting, setDeleting]       = useState<BrandProfile | undefined>();
   const [generating,  setGenerating]   = useState<BrandProfile | undefined>();
   const [viewPhotos,  setViewPhotos]   = useState<BrandProfile | undefined>();
+  const [analyzing,   setAnalyzing]    = useState<BrandProfile | undefined>();
 
   async function load() {
     setLoading(true);
@@ -141,8 +143,14 @@ export default function ClientsPage() {
                 <div className="flex gap-2 mt-4">
                   <Button size="sm" variant="outline"
                     onClick={() => setViewPhotos(client)}
-                    className="flex-1 text-slate-600 border-slate-200 hover:bg-slate-50">
+                    className="text-slate-600 border-slate-200 hover:bg-slate-50">
                     <Camera className="w-3.5 h-3.5 mr-1.5" /> Fotos
+                  </Button>
+                  <Button size="sm" variant="outline"
+                    onClick={() => setAnalyzing(client)}
+                    className="text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                    title="Analisar referência visual">
+                    <ScanSearch className="w-3.5 h-3.5 mr-1.5" /> DNA
                   </Button>
                   <Button size="sm" variant="outline"
                     onClick={() => setGenerating(client)}
@@ -184,6 +192,14 @@ export default function ClientsPage() {
         <PhotoLibraryModal
           client={viewPhotos}
           onClose={() => setViewPhotos(undefined)}
+        />
+      )}
+
+      {analyzing && (
+        <AnalyzeReferenceModal
+          client={analyzing}
+          onClose={() => setAnalyzing(undefined)}
+          onSaved={() => {/* reference saved — no list reload needed */}}
         />
       )}
     </div>
