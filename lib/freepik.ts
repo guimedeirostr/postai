@@ -88,12 +88,12 @@ const MYSTIC_ASPECT: Record<string, string> = {
 };
 
 /**
- * Seedream V5 Lite does not have social_post_4_5.
- * portrait_2_3 (1672×2508) is the closest portrait option for feed.
- * social_story_9_16 is an exact match for stories/reels.
+ * Seedream V5 Lite does not have social_post_4_5 (exact Instagram 4:5).
+ * traditional_3_4 (1774×2364, ratio 0.75) is the closest portrait option for feed.
+ * social_story_9_16 (1536×2730) is an exact match for stories/reels.
  */
 const SEEDREAM_ASPECT: Record<string, string> = {
-  feed:        "portrait_2_3",
+  feed:        "traditional_3_4",
   stories:     "social_story_9_16",
   reels_cover: "social_story_9_16",
 };
