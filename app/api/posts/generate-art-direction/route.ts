@@ -22,10 +22,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { buildArtDirectorPrompt } from "@/lib/prompts/art-director";
-import {
-  SKILLS_BETA, CODE_EXEC_BETA,
-  CODE_EXECUTION_TOOL, CONTAINER_INSTAGRAM,
-} from "@/lib/skills";
+import { SKILLS_BETA, CONTAINER_INSTAGRAM } from "@/lib/skills";
 import type { ArtDirection, BrandProfile, GeneratedPost, StrategyBriefing } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -112,15 +109,15 @@ export async function POST(req: NextRequest) {
     const res = await anthropic.beta.messages.create({
       model:      MODEL,
       max_tokens: 1024,
-      betas:      [SKILLS_BETA, CODE_EXEC_BETA],
+      betas:      [SKILLS_BETA],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       container:  CONTAINER_INSTAGRAM as any,
-      tools:      [CODE_EXECUTION_TOOL],
       system:     buildArtDirectorPrompt(client, briefing, copy),
       messages:   [{ role: "user", content: "Gere a direção de arte profissional para este post." }],
     });
 
-    const raw = res.content[0].type === "text" ? res.content[0].text : "";
+    const textBlock = res.content.find(b => b.type === "text");
+    const raw       = textBlock?.type === "text" ? textBlock.text : "";
     let artDirection: ArtDirection;
     try {
       artDirection = parseJson<ArtDirection>(raw);
