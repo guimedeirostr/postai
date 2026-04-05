@@ -22,7 +22,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { buildArtDirectorPrompt } from "@/lib/prompts/art-director";
-import type { ArtDirection, BrandProfile, GeneratedPost, StrategyBriefing } from "@/types";
+import type { ArtDirection, BrandProfile, DesignExample, GeneratedPost, StrategyBriefing } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL     = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
@@ -104,11 +104,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Run Art Director agent + Instagram Designer Skill ─────────────────────
+    // ── Buscar design examples para enriquecer o Art Director ─────────────────
+    let designExamples: DesignExample[] = [];
+    try {
+      const clientId = "client_id" in client ? client.id : (body as { client_id?: string }).client_id ?? "";
+      const exSnap = await adminDb
+        .collection("clients").doc(clientId)
+        .collection("design_examples")
+        .where("pilar", "==", briefing.pilar)
+        .orderBy("created_at", "desc")
+        .limit(3)
+        .get();
+      designExamples = exSnap.docs.map(d => ({ id: d.id, ...d.data() } as DesignExample));
+    } catch {
+      // non-fatal
+    }
+
+    // ── Run Art Director agent ────────────────────────────────────────────────
     const res = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 1024,
-      system:     buildArtDirectorPrompt(client, briefing, copy),
+      system:     buildArtDirectorPrompt(client, briefing, copy, designExamples.length ? designExamples : undefined),
       messages:   [{ role: "user", content: "Gere a direção de arte profissional para este post." }],
     });
 

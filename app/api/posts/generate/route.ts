@@ -222,11 +222,16 @@ export async function POST(req: NextRequest) {
       const artRes = await anthropic.messages.create({
         model:      MODEL,
         max_tokens: 1024,
-        system:     buildArtDirectorPrompt(client, briefing, {
-          visual_headline: copy.visual_headline,
-          visual_prompt:   copy.visual_prompt,
-          layout_prompt:   copy.layout_prompt,
-        }),
+        system:     buildArtDirectorPrompt(
+          client,
+          briefing,
+          {
+            visual_headline: copy.visual_headline,
+            visual_prompt:   copy.visual_prompt,
+            layout_prompt:   copy.layout_prompt,
+          },
+          designExamples.length ? designExamples : undefined,
+        ),
         messages: [{ role: "user", content: "Gere a direção de arte profissional para este post." }],
       });
 

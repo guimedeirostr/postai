@@ -1,4 +1,4 @@
-import type { BrandProfile, StrategyBriefing } from "@/types";
+import type { BrandProfile, StrategyBriefing, DesignExample } from "@/types";
 
 export interface ArtDirection {
   visual_style:       string;
@@ -87,9 +87,10 @@ export interface CopyContext {
 }
 
 export function buildArtDirectorPrompt(
-  client:   BrandProfile,
-  briefing: StrategyBriefing,
-  copy:     CopyContext
+  client:          BrandProfile,
+  briefing:        StrategyBriefing,
+  copy:            CopyContext,
+  designExamples?: DesignExample[]
 ): string {
   const defaults = PILAR_STYLE_MAP[briefing.pilar] ?? PILAR_STYLE_MAP["Engajamento"];
 
@@ -139,7 +140,27 @@ Textura:                  ${defaults.texture}
 
 Use isso como ponto de partida — mas adapte à marca, ao tema e ao objetivo específico.
 
+${designExamples && designExamples.length > 0 ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFERÊNCIAS VISUAIS APROVADAS — DNA EXTRAÍDO (use como inspiração direta)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Estas referências foram analisadas e aprovadas para o estilo visual do cliente.
+PRIORIZE estas referências ao criar o final_visual_prompt e final_layout_prompt.
+São posts reais que funcionaram no nicho — não ignore.
+
+${designExamples.slice(0, 3).map((ex, i) => `--- Referência ${i + 1} | Pilar: ${ex.pilar} | Formato: ${ex.format} ---
+Estilo visual: ${ex.description}
+Color mood:    ${ex.color_mood}
+Zona de composição: ${ex.composition_zone}
+Tipografia na headline: ${ex.visual_headline_style}
+Visual prompt desta referência (em inglês):
+  ${ex.visual_prompt}
+Layout prompt desta referência (em inglês):
+  ${ex.layout_prompt}`).join("\n\n")}
+
+INSTRUÇÃO: adapte o estilo destas referências para o tema atual — não copie,
+mas use o mesmo nível de qualidade, mood de cores e composição como base.
+
+` : ""}━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SEU PROCESSO MENTAL (siga esta ordem antes de gerar o output)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. O que é o foco principal da imagem — pessoa, produto, cena, conceito abstrato?
