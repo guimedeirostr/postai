@@ -16,12 +16,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  ALL_SKILLS_BETAS,
-  CODE_EXECUTION_TOOL,
-  CONTAINER_ANALISADOR,
-  SKILLS_MODEL,
-} from "@/lib/skills";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
@@ -88,6 +82,7 @@ Retorne JSON com esta estrutura:
 
 // ── Anthropic client ─────────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
 
 // ── Route handler ────────────────────────────────────────────────────────────
 export async function POST(
@@ -172,17 +167,10 @@ export async function POST(
     const imgBuffer   = await imgResponse.arrayBuffer();
     const base64Data  = Buffer.from(imgBuffer).toString("base64");
 
-    // ── Chamar Claude claude-opus-4-5 com a imagem + Analisador Visual Skill ───────────
-    // ── Claude com Analisador Visual Skill ───────────────────────────────────
-    // Requer: 3 betas + code_execution_20250825 + modelo opus/sonnet 4.5+
-    // Referência: platform.claude.com/docs/pt-BR/build-with-claude/skills-guide
-    const message = await anthropic.beta.messages.create({
-      model:      SKILLS_MODEL,          // claude-opus-4-5 (suporta code_execution)
+    // ── Chamar Claude com visão direta (sem Skills API — mais estável) ───────
+    const message = await anthropic.messages.create({
+      model:      MODEL,
       max_tokens: 4096,
-      betas:      [...ALL_SKILLS_BETAS], // code-execution-2025-08-25 + skills-2025-10-02 + files-api-2025-04-14
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      container:  CONTAINER_ANALISADOR as any,
-      tools:      [CODE_EXECUTION_TOOL], // obrigatório com skills
       system:     ANALYZER_SYSTEM,
       messages: [
         {
@@ -199,8 +187,8 @@ export async function POST(
             {
               type: "text",
               text: body.format
-                ? `Analise esta imagem para o formato: ${body.format}. Extraia o DNA visual completo e retorne o JSON estruturado.`
-                : "Analise esta imagem e extraia o DNA visual completo. Retorne o JSON estruturado.",
+                ? `Analise esta imagem para o formato: ${body.format}. Extraia o DNA visual completo e retorne SOMENTE o JSON estruturado, sem markdown, sem backticks.`
+                : "Analise esta imagem e extraia o DNA visual completo. Retorne SOMENTE o JSON estruturado, sem markdown, sem backticks.",
             },
           ],
         },
