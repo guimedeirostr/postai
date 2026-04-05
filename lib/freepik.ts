@@ -210,13 +210,34 @@ export async function createSeedreamEditTask(params: SeedreamEditParams): Promis
   return { task_id };
 }
 
-/** Polls a Seedream task (uses the seedream-v5-lite base endpoint). */
+/** Polls a Seedream V5 Lite txt2img task. */
 export async function pollSeedreamTask(task_id: string): Promise<FreepikTaskResult> {
   const res = await freepikFetch(`${SEEDREAM_BASE}/${task_id}`, { method: "GET" });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`Freepik Seedream poll error ${res.status}: ${JSON.stringify(err)}`);
+  }
+
+  const data   = await res.json();
+  const status = (data.data?.status ?? "PENDING") as FreepikTaskStatus;
+
+  if (status === "COMPLETED") {
+    const generated = data.data?.generated;
+    const image_url = Array.isArray(generated) ? (generated[0] as string) : null;
+    return { status, image_url, raw: data };
+  }
+
+  return { status, image_url: null, raw: data };
+}
+
+/** Polls a Seedream V5 Lite Edit (img2img) task — separate endpoint from txt2img. */
+export async function pollSeedreamEditTask(task_id: string): Promise<FreepikTaskResult> {
+  const res = await freepikFetch(`${SEEDREAM_EDIT}/${task_id}`, { method: "GET" });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Freepik Seedream Edit poll error ${res.status}: ${JSON.stringify(err)}`);
   }
 
   const data   = await res.json();

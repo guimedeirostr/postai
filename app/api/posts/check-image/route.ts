@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { pollTask, pollSeedreamTask, FreepikAuthError } from "@/lib/freepik";
+import { pollTask, pollSeedreamTask, pollSeedreamEditTask, FreepikAuthError } from "@/lib/freepik";
 import { composePost } from "@/lib/composer";
 import type { BrandProfile } from "@/types";
 
@@ -21,11 +21,13 @@ export async function GET(req: NextRequest) {
     }
 
     // Determine which poll endpoint to use based on image_provider stored on the post
-    const postSnap0   = await adminDb.collection("posts").doc(post_id).get();
-    const provider    = (postSnap0.data()?.image_provider as string | undefined) ?? "freepik";
-    const result      = provider === "seedream"
-      ? await pollSeedreamTask(task_id)
-      : await pollTask(task_id);
+    const postSnap0 = await adminDb.collection("posts").doc(post_id).get();
+    const provider  = (postSnap0.data()?.image_provider as string | undefined) ?? "freepik";
+    const result    = provider === "seedream_edit"
+      ? await pollSeedreamEditTask(task_id)
+      : provider === "seedream"
+        ? await pollSeedreamTask(task_id)
+        : await pollTask(task_id);
 
     if (result.status === "COMPLETED") {
       if (!result.image_url) {

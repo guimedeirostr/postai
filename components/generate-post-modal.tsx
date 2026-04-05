@@ -269,24 +269,48 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     setImgError(null);
 
     try {
-      const res  = await fetch("/api/posts/compose", {
+      // Send photo to Seedream Edit — it refines it with the visual_prompt
+      // then the compositor adds text overlays on top
+      const res  = await fetch("/api/posts/generate-image", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ post_id: result.post_id, image_url: selectedLibPhoto }),
       });
-      const data = await res.json() as { composed_url?: string; error?: string };
+      const data = await res.json() as { task_id?: string; post_id?: string; error?: string };
 
       if (!res.ok) {
-        setImgError(data.error ?? "Erro ao compor imagem");
+        setImgError(data.error ?? "Erro ao enviar foto para o Seedream");
         return;
       }
 
-      // Set image_url to the selected library photo (raw view)
-      setResult(prev => prev ? { ...prev, image_url: selectedLibPhoto } : prev);
-      if (data.composed_url) {
-        setComposedUrl(data.composed_url);
-        setViewComposed(true);
+      const { task_id, post_id } = data;
+      if (!task_id || !post_id) {
+        setImgError("Resposta inesperada do servidor.");
+        return;
       }
+
+      // Polling — same as Freepik IA flow
+      const maxAttempts = 22;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(r => setTimeout(r, 4000));
+        const check     = await fetch(`/api/posts/check-image?task_id=${task_id}&post_id=${post_id}`);
+        const checkData = await check.json() as { status: string; image_url?: string; composed_url?: string; error?: string };
+
+        if (checkData.status === "COMPLETED" && checkData.image_url) {
+          setResult(prev => prev ? { ...prev, image_url: checkData.image_url } : prev);
+          if (checkData.composed_url) {
+            setComposedUrl(checkData.composed_url);
+            setViewComposed(true);
+          }
+          return;
+        }
+        if (checkData.status === "FAILED") {
+          setImgError(checkData.error ?? "Falha na geração com Seedream Edit");
+          return;
+        }
+      }
+
+      setImgError("Timeout: a imagem demorou mais que o esperado. Tente novamente.");
     } catch {
       setImgError("Erro inesperado. Tente novamente.");
     } finally {
@@ -646,7 +670,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                         <Camera className="w-3.5 h-3.5 text-emerald-600" />
                         <p className="text-xs font-semibold text-slate-900">Minha Foto</p>
                       </div>
-                      <p className="text-xs text-slate-400">Escolha da biblioteca</p>
+                      <p className="text-xs text-slate-400">Seedream Edit + compositor</p>
                     </button>
                   </div>
 
@@ -742,13 +766,13 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       <><Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         {imageMode === "freepik" ? "Gerando imagem..."
                          : imageMode === "real"   ? "Curando com IA..."
-                         :                         "Compondo post..."}</>
+                         :                         "Estilizando com IA..."}</>
                     ) : imageMode === "freepik" ? (
                       <><ImageIcon className="w-4 h-4 mr-2" />Gerar com Freepik IA</>
                     ) : imageMode === "real" ? (
                       <><Brain className="w-4 h-4 mr-2" />Curar foto com IA</>
                     ) : (
-                      <><Layers className="w-4 h-4 mr-2" />Usar esta foto</>
+                      <><Layers className="w-4 h-4 mr-2" />Estilizar com Seedream</>
                     )}
                   </Button>
 

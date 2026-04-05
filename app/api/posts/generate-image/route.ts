@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { createTask, createSeedreamTask, freepikAspect, FreepikAuthError } from "@/lib/freepik";
+import { createTask, createSeedreamTask, createSeedreamEditTask, freepikAspect, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 
@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { post_id } = await req.json();
+    const { post_id, image_url: libraryImageUrl } = await req.json() as {
+      post_id: string;
+      image_url?: string; // optional — passed when using a library photo (triggers Seedream Edit)
+    };
     if (!post_id) return NextResponse.json({ error: "post_id é obrigatório" }, { status: 400 });
 
     const postDoc = await adminDb.collection("posts").doc(post_id).get();
@@ -63,6 +66,42 @@ export async function POST(req: NextRequest) {
       });
       await postDoc.ref.update({ image_url, image_provider: "imagen4", status: "ready" });
       return NextResponse.json({ image_url, post_id });
+    }
+
+    // ── Seedream Edit path — library photo as reference image ────────────────────
+    // Triggered when the user picks a photo from the brand library.
+    // We download it and send as reference_image to Seedream Edit so the model
+    // preserves subjects/faces while applying the visual_prompt style.
+    if (libraryImageUrl) {
+      const aspect = freepikAspect(post.format as string, "seedream");
+
+      // Download the library image and convert to base64
+      const imgRes = await fetch(libraryImageUrl, { signal: AbortSignal.timeout(15_000) });
+      if (!imgRes.ok) {
+        return NextResponse.json(
+          { error: `Não foi possível baixar a imagem da biblioteca: HTTP ${imgRes.status}` },
+          { status: 422 }
+        );
+      }
+      const imgBuf   = await imgRes.arrayBuffer();
+      const imgB64   = Buffer.from(imgBuf).toString("base64");
+      const ct       = imgRes.headers.get("content-type") ?? "image/jpeg";
+      const mimeType = ct.split(";")[0].trim();
+      const dataUri  = `data:${mimeType};base64,${imgB64}`;
+
+      const { task_id } = await createSeedreamEditTask({
+        prompt:           post.visual_prompt as string,
+        aspect_ratio:     aspect,
+        reference_images: [dataUri],
+      });
+
+      await postDoc.ref.update({
+        freepik_task_id: task_id,
+        image_provider:  "seedream_edit",
+        image_url:       libraryImageUrl, // save original for raw view fallback
+      });
+
+      return NextResponse.json({ task_id, post_id });
     }
 
     // ── Seedream V5 Lite path — chosen by user in modal OR env fallback ──────────
