@@ -238,8 +238,8 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </span>
                 <Badge variant="outline" className="text-xs">{FORMAT_OPTIONS.find(f => f.value === result.format)?.label ?? result.format}</Badge>
                 <Badge variant="outline" className="text-xs capitalize">{result.composition_zone}</Badge>
-                {sourceUrl && (
-                  <a href={sourceUrl} target="_blank" rel="noopener"
+                {isPostUrl(postUrl) && postUrl && (
+                  <a href={postUrl} target="_blank" rel="noopener"
                     className="ml-auto text-xs text-violet-600 hover:underline flex items-center gap-1">
                     <ExternalLink className="w-3 h-3" /> Ver post original
                   </a>
