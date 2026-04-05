@@ -154,8 +154,8 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
               <ScanSearch className="w-3.5 h-3.5 text-white" />
             </div>
             <div>
-              <p className="font-semibold text-slate-900 text-sm">Analisar Referência Visual</p>
-              <p className="text-xs text-slate-400">{client.name} · DNA visual via IA</p>
+              <p className="font-semibold text-slate-900 text-sm">Salvar DNA Visual</p>
+              <p className="text-xs text-slate-400">{client.name} · referência para posts futuros</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">

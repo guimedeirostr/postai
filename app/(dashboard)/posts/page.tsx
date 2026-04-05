@@ -250,10 +250,10 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
                     <button
                       onClick={() => setShowDnaModal(true)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors ml-auto"
-                      title="Analisar uma referência visual para este post"
+                      title="Salvar imagem como referência de DNA visual do cliente — usada em posts futuros"
                     >
                       <ScanSearch className="w-3.5 h-3.5" />
-                      Referência
+                      + DNA Visual
                     </button>
                   </>
                 )}
