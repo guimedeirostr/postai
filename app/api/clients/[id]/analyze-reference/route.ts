@@ -243,7 +243,7 @@ export async function POST(
       description,
       color_mood,
       composition_zone,
-      source_url:           body.source_url ?? undefined,
+      ...(body.source_url ? { source_url: body.source_url } : {}),
       image_url:            resolvedImageUrl,
     };
 
