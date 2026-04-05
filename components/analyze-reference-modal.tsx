@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { X, ScanSearch, Loader2, Check, ExternalLink, Palette, Type, Layout } from "lucide-react";
+import { X, ScanSearch, Loader2, Check, ExternalLink, Palette, Type, Layout, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,21 +55,39 @@ const PILAR_COLORS: Record<string, string> = {
 };
 
 export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
-  const [postUrl,    setPostUrl]    = useState("");   // URL do post ou da imagem direta
-  const [imageUrl,   setImageUrl]   = useState("");   // URL resolvida (preenchida após submit)
-  const [format,     setFormat]     = useState("feed");
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [result,     setResult]     = useState<AnalysisResult | null>(null);
+  const [postUrl,        setPostUrl]        = useState("");
+  const [imageUrl,       setImageUrl]       = useState("");   // URL resolvida (preview)
+  const [uploadB64,      setUploadB64]      = useState<string | null>(null);
+  const [uploadMime,     setUploadMime]     = useState("image/jpeg");
+  const [uploadPreview,  setUploadPreview]  = useState<string | null>(null);
+  const [format,         setFormat]         = useState("feed");
+  const [loading,        setLoading]        = useState(false);
+  const [error,          setError]          = useState<string | null>(null);
+  const [result,         setResult]         = useState<AnalysisResult | null>(null);
 
-  /** Detecta se a URL é de um post do Instagram (não a imagem direta) */
-  function isPostUrl(url: string): boolean {
-    return /instagram\.com\/(p|reel|tv)\//.test(url);
+  function handleUploadFile(file: File) {
+    setError(null);
+    setPostUrl("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const [header, b64] = dataUrl.split(",");
+      const mime = header.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
+      setUploadB64(b64);
+      setUploadMime(mime);
+      setUploadPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearUpload() {
+    setUploadB64(null);
+    setUploadMime("image/jpeg");
+    setUploadPreview(null);
   }
 
   async function handleAnalyze() {
-    const trimmed = postUrl.trim();
-    if (!trimmed) return;
+    if (!uploadB64 && !postUrl.trim()) return;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -77,12 +95,17 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
     try {
       const body: Record<string, string> = { format };
 
-      if (isPostUrl(trimmed)) {
-        // URL do post → backend resolve og:image automaticamente
-        body.source_url = trimmed;
+      if (uploadB64) {
+        // Upload direto — sem fetch externo, funciona sempre
+        body.image_base64 = uploadB64;
+        body.image_type   = uploadMime;
       } else {
-        // URL direta da imagem
-        body.image_url  = trimmed;
+        const trimmed = postUrl.trim();
+        if (/instagram\.com\/(p|reel|tv)\//.test(trimmed)) {
+          body.source_url = trimmed;
+        } else {
+          body.image_url = trimmed;
+        }
       }
 
       const res = await fetch(`/api/clients/${client.id}/analyze-reference`, {
@@ -97,12 +120,11 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
         return;
       }
 
-      // Salva a URL resolvida para exibir o preview no resultado
-      setImageUrl(data.image_url ?? trimmed);
+      setImageUrl(data.image_url ?? uploadPreview ?? postUrl);
       setResult(data);
       onSaved();
     } catch {
-      setError("Erro inesperado. Verifique a URL e tente novamente.");
+      setError("Erro inesperado. Verifique a imagem e tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -112,6 +134,7 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
     setResult(null);
     setPostUrl("");
     setImageUrl("");
+    clearUpload();
     setError(null);
     setFormat("feed");
   }
@@ -144,31 +167,59 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
 
           {!result ? (
             <>
-              {/* Explicação */}
-              <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl">
-                <p className="text-xs text-violet-700 leading-relaxed">
-                  <strong>Como funciona:</strong> Cole a URL do post do Instagram <em>ou</em> a URL direta
-                  da imagem. O Claude extrai paleta de cores, tipografia, composição e estilo — salvando
-                  como referência visual para <strong>{client.name}</strong>.
-                </p>
+              {/* Upload zone — método principal */}
+              <div className="space-y-1.5">
+                <Label>Imagem de referência *</Label>
+                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+                  uploadB64
+                    ? "border-violet-400 bg-violet-50"
+                    : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
+                }`}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => { if (e.target.files?.[0]) handleUploadFile(e.target.files[0]); }}
+                  />
+                  {uploadPreview ? (
+                    <>
+                      <img src={uploadPreview} alt="Referência" className="w-14 h-14 object-cover rounded-lg flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-violet-700">Imagem carregada ✓</p>
+                        <p className="text-xs text-slate-400">Clique para trocar</p>
+                      </div>
+                      <button type="button" onClick={e => { e.preventDefault(); clearUpload(); }}
+                        className="text-slate-400 hover:text-red-500 flex-shrink-0">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                        <Camera className="w-5 h-5 text-slate-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-slate-600">Arraste ou clique para enviar</p>
+                        <p className="text-xs text-slate-400">Salve o post do Instagram como imagem e faça upload</p>
+                      </div>
+                    </>
+                  )}
+                </label>
               </div>
 
-              {/* Campo único inteligente */}
-              <div className="space-y-1.5">
-                <Label>URL do post ou da imagem *</Label>
-                <Input
-                  value={postUrl}
-                  onChange={e => setPostUrl(e.target.value)}
-                  placeholder="https://www.instagram.com/p/... ou URL direta da imagem"
-                  type="url"
-                />
-                <div className="flex items-start gap-3 text-xs text-slate-400">
-                  <div className="space-y-0.5">
-                    <p>✅ <strong className="text-slate-500">Post:</strong> cole a URL do post (instagram.com/p/...)</p>
-                    <p>✅ <strong className="text-slate-500">Imagem direta:</strong> botão direito na foto → "Abrir em nova guia" → copie a URL</p>
-                  </div>
+              {/* URL — fallback para imagens diretas */}
+              {!uploadB64 && (
+                <div className="space-y-1.5">
+                  <Label className="text-slate-500">Ou URL direta da imagem</Label>
+                  <Input
+                    value={postUrl}
+                    onChange={e => setPostUrl(e.target.value)}
+                    placeholder="https://... (não funciona com links do Instagram)"
+                    type="url"
+                  />
+                  <p className="text-xs text-amber-600">⚠️ URLs do Instagram bloqueiam acesso server-side — prefira o upload acima.</p>
                 </div>
-              </div>
+              )}
 
               {/* Formato */}
               <div className="space-y-2">
@@ -188,21 +239,15 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </div>
               </div>
 
-              {/* Preview da imagem direta */}
-              {postUrl && !isPostUrl(postUrl) && (
+              {/* Preview URL direta */}
+              {!uploadB64 && postUrl && (
                 <div className="rounded-xl overflow-hidden border bg-slate-50 flex items-center justify-center min-h-24">
                   <img
                     src={postUrl}
                     alt="Preview"
-                    className="max-h-64 object-contain"
+                    className="max-h-48 object-contain"
                     onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
-                </div>
-              )}
-              {postUrl && isPostUrl(postUrl) && (
-                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700">
-                  <Check className="w-4 h-4 flex-shrink-0" />
-                  <span>URL do Instagram detectada — a imagem será extraída automaticamente na análise.</span>
                 </div>
               )}
 
@@ -312,7 +357,7 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
               <Button variant="outline" onClick={onClose}>Cancelar</Button>
               <Button
                 onClick={handleAnalyze}
-                disabled={loading || !postUrl.trim()}
+                disabled={loading || (!uploadB64 && !postUrl.trim())}
                 className="bg-violet-600 hover:bg-violet-700 text-white min-w-[160px]">
                 {loading
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analisando...</>

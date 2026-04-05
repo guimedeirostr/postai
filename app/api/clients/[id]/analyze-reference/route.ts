@@ -103,69 +103,58 @@ export async function POST(
 
     // ── Ler body ──────────────────────────────────────────────────────────────
     const body = await req.json() as {
-      image_url?:  string;
-      source_url?: string;
-      format?:     "feed" | "stories" | "reels_cover";
+      image_url?:    string;
+      source_url?:   string;
+      image_base64?: string;  // upload direto do browser — preferido
+      image_type?:   string;
+      format?:       "feed" | "stories" | "reels_cover";
     };
 
-    if (!body.image_url && !body.source_url) {
-      return NextResponse.json({ error: "image_url ou source_url é obrigatório" }, { status: 400 });
+    if (!body.image_base64 && !body.image_url && !body.source_url) {
+      return NextResponse.json({ error: "image_base64, image_url ou source_url é obrigatório" }, { status: 400 });
     }
 
-    // ── Resolver image_url a partir de source_url (Instagram post) ────────────
-    let resolvedImageUrl = body.image_url ?? "";
+    // ── Resolver base64 da imagem ─────────────────────────────────────────────
+    let base64Data: string;
+    let mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+    let resolvedImageUrl = "";
 
-    if (!resolvedImageUrl && body.source_url) {
-      // Tenta extrair og:image do HTML da página do post
-      try {
-        const pageResp = await fetch(body.source_url, {
-          headers: {
-            "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
-          },
-          signal: AbortSignal.timeout(12_000),
-          redirect: "follow",
-        });
-        if (pageResp.ok) {
-          const html  = await pageResp.text();
-          // Busca og:image ou twitter:image
-          const match = html.match(/<meta[^>]+(?:property="og:image"|name="twitter:image")[^>]+content="([^"]+)"/i)
-                     ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+(?:property="og:image"|name="twitter:image")/i);
-          if (match?.[1]) {
-            resolvedImageUrl = match[1].replace(/&amp;/g, "&");
-          }
+    if (body.image_base64) {
+      // Upload direto — sem fetch externo, sempre funciona
+      base64Data    = body.image_base64;
+      mediaType     = (body.image_type ?? "image/jpeg") as typeof mediaType;
+      resolvedImageUrl = ""; // sem URL pública para retornar
+    } else {
+      // Fallback: buscar por URL
+      let imageUrl = body.image_url ?? "";
+
+      if (!imageUrl && body.source_url) {
+        if (/instagram\.com/.test(body.source_url)) {
+          return NextResponse.json(
+            { error: "URLs do Instagram bloqueiam acesso server-side. Use o upload de imagem: salve o post como imagem e faça upload." },
+            { status: 422 }
+          );
         }
-      } catch (fetchErr) {
-        console.warn("[analyze-reference] Falha ao extrair og:image:", fetchErr);
+        imageUrl = body.source_url;
       }
 
-      if (!resolvedImageUrl) {
+      const imgResponse = await fetch(imageUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; PostAI/1.0)" },
+        signal:  AbortSignal.timeout(15_000),
+      });
+      if (!imgResponse.ok) {
         return NextResponse.json(
-          { error: "Não foi possível extrair a imagem do post. Tente colar a URL direta da imagem (clique com botão direito na foto → Abrir em nova guia)." },
+          { error: `Não foi possível baixar a imagem: HTTP ${imgResponse.status}` },
           { status: 422 }
         );
       }
-    }
 
-    // ── Baixar imagem e converter para base64 ─────────────────────────────────
-    const imgResponse = await fetch(resolvedImageUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; PostAI/1.0)",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!imgResponse.ok) {
-      return NextResponse.json(
-        { error: `Não foi possível baixar a imagem: HTTP ${imgResponse.status}` },
-        { status: 422 }
-      );
-    }
-
-    const contentType = imgResponse.headers.get("content-type") ?? "image/jpeg";
-    const mediaType   = (contentType.split(";")[0].trim()) as
-      "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-
-    const imgBuffer   = await imgResponse.arrayBuffer();
-    const base64Data  = Buffer.from(imgBuffer).toString("base64");
+      const contentType = imgResponse.headers.get("content-type") ?? "image/jpeg";
+      mediaType         = (contentType.split(";")[0].trim()) as typeof mediaType;
+      const imgBuffer   = await imgResponse.arrayBuffer();
+      base64Data        = Buffer.from(imgBuffer).toString("base64");
+      resolvedImageUrl  = imageUrl;
+    };
 
     // ── Chamar Claude com visão direta (sem Skills API — mais estável) ───────
     const message = await anthropic.messages.create({
