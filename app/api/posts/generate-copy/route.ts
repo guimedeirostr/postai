@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
+import { extractPromptFromImage } from "@/lib/freepik";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import type { BrandProfile, StrategyContext } from "@/types";
 
@@ -114,18 +115,40 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Freepik Image-to-Prompt (parallel with no blocking wait) ────────────
+    let freepikExtractedPrompt: string | null = null;
+    if (referenceImageBase64) {
+      freepikExtractedPrompt = await extractPromptFromImage({
+        imageBase64: referenceImageBase64,
+        imageMime:   referenceMediaType,
+      });
+    }
+
+    const referenceTextBlock = referenceImageBase64
+      ? [
+          `REFERÊNCIA VISUAL PRIORITÁRIA: A imagem acima define o estilo visual deste post.`,
+          freepikExtractedPrompt
+            ? `\nPROMPT EXTRAÍDO PELO FREEPIK (descrição técnica fiel da imagem — use como base para visual_prompt):\n"${freepikExtractedPrompt}"`
+            : "",
+          `\n\nSua tarefa:`,
+          `1. Analise profundamente: paleta de cores, estilo fotográfico, composição, mood, tipografia, atmosfera.`,
+          `2. Crie o visual_prompt replicando FIELMENTE esse estilo e paleta — NÃO use as cores da marca na imagem.${freepikExtractedPrompt ? " Incorpore e expanda o prompt extraído acima, adaptando ao tema." : ""}`,
+          `3. Crie o layout_prompt baseado na composição e posicionamento de texto da referência.`,
+          `4. A identidade da marca aparece APENAS no copy (visual_headline, legenda) e nos overlays de texto — nunca na paleta da imagem.`,
+          `\nTema: ${theme}\nObjetivo: ${objective}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}`,
+          `\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
+        ].join("")
+      : `Tema: ${theme}\nObjetivo: ${objective}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`;
+
     const userContent: Anthropic.MessageParam["content"] = referenceImageBase64
       ? [
           {
             type: "image",
             source: { type: "base64", media_type: referenceMediaType, data: referenceImageBase64 },
           },
-          {
-            type: "text",
-            text: `REFERÊNCIA VISUAL PRIORITÁRIA: A imagem acima define o estilo visual deste post.\n\nSua tarefa:\n1. Analise profundamente: paleta de cores, estilo fotográfico, composição, mood, tipografia, atmosfera.\n2. Crie o visual_prompt replicando FIELMENTE esse estilo e paleta — NÃO use as cores da marca na imagem.\n3. Crie o layout_prompt baseado na composição e posicionamento de texto da referência.\n4. A identidade da marca aparece APENAS no copy (visual_headline, legenda) e nos overlays de texto — nunca na paleta da imagem.\n\nTema: ${theme}\nObjetivo: ${objective}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
-          },
+          { type: "text", text: referenceTextBlock as string },
         ]
-      : `Tema: ${theme}\nObjetivo: ${objective}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`;
+      : referenceTextBlock;
 
     const response = await anthropic.messages.create({
       model:      MODEL,

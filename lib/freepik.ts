@@ -12,9 +12,10 @@
 const FREEPIK_API_KEY = () => process.env.FREEPIK_API_KEY ?? "";
 
 // ── Base URLs ────────────────────────────────────────────────────────────────
-const MYSTIC_BASE    = "https://api.freepik.com/v1/ai/mystic";
-const SEEDREAM_BASE  = "https://api.freepik.com/v1/ai/text-to-image/seedream-v5-lite";
-const SEEDREAM_EDIT  = "https://api.freepik.com/v1/ai/text-to-image/seedream-v5-lite-edit";
+const MYSTIC_BASE      = "https://api.freepik.com/v1/ai/mystic";
+const SEEDREAM_BASE    = "https://api.freepik.com/v1/ai/text-to-image/seedream-v5-lite";
+const SEEDREAM_EDIT    = "https://api.freepik.com/v1/ai/text-to-image/seedream-v5-lite-edit";
+const IMAGE_TO_PROMPT  = "https://api.freepik.com/v1/ai/image-to-prompt";
 
 const MAX_RETRIES    = 3;
 const RETRY_DELAY_MS = 1500;
@@ -250,4 +251,95 @@ export async function pollSeedreamEditTask(task_id: string): Promise<FreepikTask
   }
 
   return { status, image_url: null, raw: data };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMAGE TO PROMPT
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ImageToPromptTask {
+  task_id: string;
+}
+
+export interface ImageToPromptResult {
+  status: FreepikTaskStatus;
+  prompt: string | null;
+}
+
+/**
+ * Submits an image to Freepik's Image-to-Prompt API.
+ * Accepts either a base64-encoded image or a public URL.
+ */
+export async function imageToPrompt(params: {
+  imageBase64?: string;
+  imageMime?:   string;
+  imageUrl?:    string;
+}): Promise<ImageToPromptTask> {
+  const image = params.imageBase64
+    ? `data:${params.imageMime ?? "image/jpeg"};base64,${params.imageBase64}`
+    : params.imageUrl!;
+
+  const res = await freepikFetch(IMAGE_TO_PROMPT, {
+    method: "POST",
+    body:   JSON.stringify({ image }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Freepik Image-to-Prompt error ${res.status}: ${JSON.stringify(err)}`);
+  }
+
+  const data    = await res.json();
+  const task_id = data.data?.task_id as string | undefined;
+  if (!task_id) throw new Error("task_id não retornado pelo Freepik Image-to-Prompt");
+
+  return { task_id };
+}
+
+/** Polls a Freepik Image-to-Prompt task. */
+export async function pollImageToPromptTask(task_id: string): Promise<ImageToPromptResult> {
+  const res = await freepikFetch(`${IMAGE_TO_PROMPT}/${task_id}`, { method: "GET" });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Freepik Image-to-Prompt poll error ${res.status}: ${JSON.stringify(err)}`);
+  }
+
+  const data   = await res.json();
+  const status = (data.data?.status ?? "PENDING") as FreepikTaskStatus;
+
+  if (status === "COMPLETED") {
+    const generated = data.data?.generated;
+    const prompt = Array.isArray(generated)
+      ? (generated[0] as string ?? null)
+      : typeof generated === "string"
+        ? generated
+        : null;
+    return { status, prompt };
+  }
+
+  return { status, prompt: null };
+}
+
+/**
+ * Convenience wrapper: submits image, polls until done, returns the extracted prompt.
+ * Returns null on failure or timeout (15s max).
+ */
+export async function extractPromptFromImage(params: {
+  imageBase64?: string;
+  imageMime?:   string;
+  imageUrl?:    string;
+}): Promise<string | null> {
+  try {
+    const { task_id } = await imageToPrompt(params);
+    for (let i = 0; i < 10; i++) {
+      await sleep(1500);
+      const result = await pollImageToPromptTask(task_id);
+      if (result.status === "COMPLETED") return result.prompt;
+      if (result.status === "FAILED")    return null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
