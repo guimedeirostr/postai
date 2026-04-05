@@ -528,11 +528,20 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 </Label>
 
                 {/* Upload zone */}
-                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
-                  referenceB64
-                    ? "border-emerald-400 bg-emerald-50"
-                    : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
-                }`}>
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+                    referenceB64
+                      ? "border-emerald-400 bg-emerald-50"
+                      : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
+                  }`}
+                  onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file && file.type.startsWith("image/")) handleReferenceFile(file);
+                  }}
+                >
                   <input
                     type="file"
                     accept="image/*"

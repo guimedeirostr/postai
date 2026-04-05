@@ -170,11 +170,20 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
               {/* Upload zone — método principal */}
               <div className="space-y-1.5">
                 <Label>Imagem de referência *</Label>
-                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
-                  uploadB64
-                    ? "border-violet-400 bg-violet-50"
-                    : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
-                }`}>
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+                    uploadB64
+                      ? "border-violet-400 bg-violet-50"
+                      : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
+                  }`}
+                  onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file && file.type.startsWith("image/")) handleUploadFile(file);
+                  }}
+                >
                   <input
                     type="file"
                     accept="image/*"
