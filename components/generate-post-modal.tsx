@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch } from "lucide-react";
 import type { BrandPhoto } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [libraryPhotos,      setLibraryPhotos]      = useState<BrandPhoto[]>([]);
   const [libraryLoading,     setLibraryLoading]     = useState(false);
   const [selectedLibPhoto,   setSelectedLibPhoto]   = useState<string | null>(null);
+  const [referenceUrl,       setReferenceUrl]       = useState("");
 
   // Fetch library photos when mode = "library" and we have a result
   useEffect(() => {
@@ -134,6 +135,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       if (strategy.dor_desejo)        body.dor_desejo        = strategy.dor_desejo;
       if (strategy.hook_type)         body.hook_type         = strategy.hook_type;
     }
+    if (referenceUrl.trim()) body.reference_url = referenceUrl.trim();
 
     const res  = await fetch("/api/posts/generate-copy", {
       method:  "POST",
@@ -459,6 +461,25 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   placeholder="Ex: Educar e gerar curiosidade para agendar consulta" />
               </div>
 
+              {/* Referência visual (opcional) */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                  <ScanSearch className="w-3.5 h-3.5 text-emerald-500" />
+                  Referência visual <span className="text-slate-400 font-normal">(opcional)</span>
+                </Label>
+                <Input
+                  value={referenceUrl}
+                  onChange={e => setReferenceUrl(e.target.value)}
+                  placeholder="Cole URL de um post que gostou (Instagram, imagem direta...)"
+                  type="url"
+                />
+                {referenceUrl.trim() && (
+                  <p className="text-xs text-emerald-600">
+                    ✓ A IA vai usar este post como inspiração visual para o visual_prompt e layout deste post.
+                  </p>
+                )}
+              </div>
+
               {/* Brand preview */}
               <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl text-xs text-slate-500">
                 <div className="flex gap-1">
@@ -713,6 +734,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setViewComposed(true);
                 setLibraryPhotos([]);
                 setSelectedLibPhoto(null);
+                setReferenceUrl("");
                 setStep(0);
                 setStrategy(null);
                 setTheme("");

@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
       publico_especifico,
       dor_desejo,
       hook_type,
+      reference_url,
     } = await req.json() as {
       client_id: string;
       theme: string;
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
       publico_especifico?: string;
       dor_desejo?: string;
       hook_type?: string;
+      reference_url?: string;
     };
 
     if (!client_id || !theme || !objective || !format) {
@@ -71,14 +73,59 @@ export async function POST(req: NextRequest) {
     if (dor_desejo)        strategy.dor_desejo        = dor_desejo;
     if (hook_type)         strategy.hook_type         = hook_type;
 
+    // ── Resolver imagem de referência (se fornecida) ──────────────────────────
+    let referenceImageBase64: string | null = null;
+    let referenceMediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif" = "image/jpeg";
+
+    if (reference_url) {
+      try {
+        let imageUrl = reference_url;
+
+        // Se for URL de post Instagram, extrai og:image
+        if (/instagram\.com\/(p|reel|tv)\//.test(reference_url)) {
+          const pageRes = await fetch(reference_url, {
+            headers: { "User-Agent": "facebookexternalhit/1.1" },
+            signal: AbortSignal.timeout(10_000),
+            redirect: "follow",
+          });
+          if (pageRes.ok) {
+            const html  = await pageRes.text();
+            const match = html.match(/<meta[^>]+(?:property="og:image"|name="twitter:image")[^>]+content="([^"]+)"/i)
+                       ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+(?:property="og:image"|name="twitter:image")/i);
+            if (match?.[1]) imageUrl = match[1].replace(/&amp;/g, "&");
+          }
+        }
+
+        const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(12_000) });
+        if (imgRes.ok) {
+          const ct = imgRes.headers.get("content-type") ?? "image/jpeg";
+          referenceMediaType = (ct.split(";")[0].trim()) as typeof referenceMediaType;
+          const buf = await imgRes.arrayBuffer();
+          referenceImageBase64 = Buffer.from(buf).toString("base64");
+        }
+      } catch {
+        // non-fatal — segue sem referência
+      }
+    }
+
+    const userContent: Anthropic.MessageParam["content"] = referenceImageBase64
+      ? [
+          {
+            type: "image",
+            source: { type: "base64", media_type: referenceMediaType, data: referenceImageBase64 },
+          },
+          {
+            type: "text",
+            text: `REFERÊNCIA VISUAL: A imagem acima é um post que o usuário quer usar como inspiração visual.\nEstude o estilo, composição, mood de cores, posição do texto e atmosfera. Use isso como base para criar o visual_prompt e layout_prompt deste post — adaptando à identidade da marca, não copiando.\n\nTema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
+          },
+        ]
+      : `Tema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`;
+
     const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
       system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined),
-      messages: [{
-        role:    "user",
-        content: `Tema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
-      }],
+      messages: [{ role: "user", content: userContent }],
     });
 
     const raw     = response.content[0].type === "text" ? response.content[0].text : "";
@@ -109,6 +156,7 @@ export async function POST(req: NextRequest) {
       framework_used:  copy.framework_used,
       hook_type:       copy.hook_type,
       image_url:       null,
+      reference_url:   reference_url ?? null,
       status:          "ready",
       created_at:      FieldValue.serverTimestamp(),
     });
