@@ -59,23 +59,34 @@ async function fetchSafe(url: string): Promise<ArrayBuffer | null> {
 async function ensureFonts(): Promise<FontCache> {
   if (_fontCache) return _fontCache;
 
-  const BASE = "https://cdn.jsdelivr.net/npm/@fontsource";
-
-  const [m900, m900e, i700, i700e] = await Promise.all([
-    fetchSafe(`${BASE}/montserrat@5/files/montserrat-latin-900-normal.woff2`),
-    fetchSafe(`${BASE}/montserrat@5/files/montserrat-latin-ext-900-normal.woff2`),
-    fetchSafe(`${BASE}/inter@5/files/inter-latin-700-normal.woff2`),
-    fetchSafe(`${BASE}/inter@5/files/inter-latin-ext-700-normal.woff2`),
+  // satori aceita apenas TTF ou WOFF — NÃO suporta WOFF2
+  // Fonte: repositório Google Fonts no GitHub via jsDelivr CDN (TTF estático)
+  const [m900, i700] = await Promise.all([
+    fetchSafe("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-Black.ttf"),
+    fetchSafe("https://cdn.jsdelivr.net/gh/rsms/inter@master/docs/font-files/Inter-Bold.ttf"),
   ]);
 
-  if (!m900) throw new Error("[composer] Falha ao carregar fonte Montserrat 900");
-  if (!i700) throw new Error("[composer] Falha ao carregar fonte Inter 700");
+  // Fallback: fontsource WOFF (não WOFF2) — suportado pelo satori
+  const [m900Fallback, i700Fallback] = await Promise.all([
+    m900 ? Promise.resolve(null) : fetchSafe("https://cdn.jsdelivr.net/npm/@fontsource/montserrat@4/files/montserrat-latin-900-normal.woff"),
+    i700 ? Promise.resolve(null) : fetchSafe("https://cdn.jsdelivr.net/npm/@fontsource/inter@4/files/inter-latin-700-normal.woff"),
+  ]);
+
+  const montserrat = m900 ?? m900Fallback;
+  const inter      = i700 ?? i700Fallback;
+
+  if (!montserrat) throw new Error("[composer] Falha ao carregar fonte Montserrat 900");
+  if (!inter)      throw new Error("[composer] Falha ao carregar fonte Inter 700");
+
+  // Renomeia para manter compatibilidade com o restante da função
+  const m900Final = montserrat;
+  const i700Final = inter;
 
   _fontCache = {
-    montserrat900:    m900,
-    montserrat900Ext: m900e,
-    inter700:         i700,
-    inter700Ext:      i700e,
+    montserrat900:    m900Final,
+    montserrat900Ext: null,   // TTF já inclui todos os caracteres incluindo latin-ext
+    inter700:         i700Final,
+    inter700Ext:      null,
   };
   return _fontCache;
 }
