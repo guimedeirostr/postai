@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
           },
           {
             type: "text",
-            text: `REFERÊNCIA VISUAL: A imagem acima é um post que o usuário quer usar como inspiração visual.\nEstude o estilo, composição, mood de cores, posição do texto e atmosfera. Use isso como base para criar o visual_prompt e layout_prompt deste post — adaptando à identidade da marca, não copiando.\n\nTema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
+            text: `REFERÊNCIA VISUAL PRIORITÁRIA: A imagem acima define o estilo visual deste post.\n\nSua tarefa:\n1. Analise profundamente: paleta de cores, estilo fotográfico, composição, mood, tipografia, atmosfera.\n2. Crie o visual_prompt replicando FIELMENTE esse estilo e paleta — NÃO use as cores da marca na imagem.\n3. Crie o layout_prompt baseado na composição e posicionamento de texto da referência.\n4. A identidade da marca aparece APENAS no copy (visual_headline, legenda) e nos overlays de texto — nunca na paleta da imagem.\n\nTema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
           },
         ]
       : `Tema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`;
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
-      system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined),
+      system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined, undefined, !!referenceImageBase64),
       messages: [{ role: "user", content: userContent }],
     });
 
