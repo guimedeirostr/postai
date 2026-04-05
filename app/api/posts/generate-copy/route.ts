@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
       dor_desejo,
       hook_type,
       reference_url,
+      reference_image_base64,
+      reference_image_type,
       image_provider,
     } = await req.json() as {
       client_id: string;
@@ -57,6 +59,8 @@ export async function POST(req: NextRequest) {
       dor_desejo?: string;
       hook_type?: string;
       reference_url?: string;
+      reference_image_base64?: string;
+      reference_image_type?: string;
       image_provider?: string;
     };
 
@@ -80,35 +84,31 @@ export async function POST(req: NextRequest) {
     // ── Resolver imagem de referência (se fornecida) ──────────────────────────
     let referenceImageBase64: string | null = null;
     let referenceMediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif" = "image/jpeg";
+    let referenceWarning: string | null = null;
 
-    if (reference_url) {
-      try {
-        let imageUrl = reference_url;
-
-        // Se for URL de post Instagram, extrai og:image
-        if (/instagram\.com\/(p|reel|tv)\//.test(reference_url)) {
-          const pageRes = await fetch(reference_url, {
-            headers: { "User-Agent": "facebookexternalhit/1.1" },
-            signal: AbortSignal.timeout(10_000),
-            redirect: "follow",
-          });
-          if (pageRes.ok) {
-            const html  = await pageRes.text();
-            const match = html.match(/<meta[^>]+(?:property="og:image"|name="twitter:image")[^>]+content="([^"]+)"/i)
-                       ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+(?:property="og:image"|name="twitter:image")/i);
-            if (match?.[1]) imageUrl = match[1].replace(/&amp;/g, "&");
+    if (reference_image_base64) {
+      // Upload direto do browser — caminho preferido, sem fetch externo
+      referenceImageBase64 = reference_image_base64;
+      const mt = reference_image_type ?? "image/jpeg";
+      referenceMediaType   = mt as typeof referenceMediaType;
+    } else if (reference_url) {
+      // URL — funciona para imagens diretas; Instagram bloqueia server-side
+      if (/instagram\.com/.test(reference_url)) {
+        referenceWarning = "URLs do Instagram bloqueiam acesso server-side — a referência não foi carregada. Use o upload de imagem.";
+      } else {
+        try {
+          const imgRes = await fetch(reference_url, { signal: AbortSignal.timeout(12_000) });
+          if (imgRes.ok) {
+            const ct = imgRes.headers.get("content-type") ?? "image/jpeg";
+            referenceMediaType   = (ct.split(";")[0].trim()) as typeof referenceMediaType;
+            const buf            = await imgRes.arrayBuffer();
+            referenceImageBase64 = Buffer.from(buf).toString("base64");
+          } else {
+            referenceWarning = `Não foi possível carregar a imagem de referência (HTTP ${imgRes.status}) — post gerado sem ela.`;
           }
+        } catch {
+          referenceWarning = "Erro ao carregar imagem de referência — post gerado sem ela.";
         }
-
-        const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(12_000) });
-        if (imgRes.ok) {
-          const ct = imgRes.headers.get("content-type") ?? "image/jpeg";
-          referenceMediaType = (ct.split(";")[0].trim()) as typeof referenceMediaType;
-          const buf = await imgRes.arrayBuffer();
-          referenceImageBase64 = Buffer.from(buf).toString("base64");
-        }
-      } catch {
-        // non-fatal — segue sem referência
       }
     }
 
@@ -166,7 +166,11 @@ export async function POST(req: NextRequest) {
       created_at:      FieldValue.serverTimestamp(),
     });
 
-    return NextResponse.json({ post_id: ref.id, ...copy });
+    return NextResponse.json({
+      post_id: ref.id,
+      ...copy,
+      ...(referenceWarning ? { reference_warning: referenceWarning } : {}),
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro interno";
     console.error("[POST /api/posts/generate-copy]", message);

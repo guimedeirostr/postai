@@ -16,16 +16,17 @@ type Format = "feed" | "stories" | "reels_cover";
 type Step = 0 | 1;
 
 interface CopyResult {
-  post_id:         string;
-  visual_headline: string;
-  headline:        string;
-  caption:         string;
-  hashtags:        string[];
-  visual_prompt:   string;
-  framework_used?: string;
-  hook_type?:      string;
-  image_url?:      string | null;
-  composed_url?:   string | null;
+  post_id:            string;
+  visual_headline:    string;
+  headline:           string;
+  caption:            string;
+  hashtags:           string[];
+  visual_prompt:      string;
+  framework_used?:    string;
+  hook_type?:         string;
+  image_url?:         string | null;
+  composed_url?:      string | null;
+  reference_warning?: string;
 }
 
 interface Props {
@@ -71,6 +72,10 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [libraryLoading,     setLibraryLoading]     = useState(false);
   const [selectedLibPhoto,   setSelectedLibPhoto]   = useState<string | null>(null);
   const [referenceUrl,       setReferenceUrl]       = useState("");
+  const [referenceB64,       setReferenceB64]       = useState<string | null>(null);
+  const [referenceType,      setReferenceType]      = useState<string>("image/jpeg");
+  const [referencePreview,   setReferencePreview]   = useState<string | null>(null);
+  const [referenceWarn,      setReferenceWarn]      = useState<string | null>(null);
   const [copyError,          setCopyError]          = useState<string | null>(null);
   const [freepikModel,       setFreepikModel]       = useState<"mystic" | "seedream">("mystic");
 
@@ -85,6 +90,21 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       .catch(() => setLibraryPhotos([]))
       .finally(() => setLibraryLoading(false));
   }, [imageMode, result, client.id, libraryPhotos.length]);
+
+  function handleReferenceFile(file: File) {
+    setReferenceWarn(null);
+    setReferenceUrl("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const [header, b64] = dataUrl.split(",");
+      const mime = header.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
+      setReferenceB64(b64);
+      setReferenceType(mime);
+      setReferencePreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }
 
   async function handleGenerateStrategy() {
     setStrategyLoading(true);
@@ -137,7 +157,12 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       if (strategy.dor_desejo)        body.dor_desejo        = strategy.dor_desejo;
       if (strategy.hook_type)         body.hook_type         = strategy.hook_type;
     }
-    if (referenceUrl.trim()) body.reference_url = referenceUrl.trim();
+    if (referenceB64) {
+      body.reference_image_base64 = referenceB64;
+      body.reference_image_type   = referenceType;
+    } else if (referenceUrl.trim()) {
+      body.reference_url = referenceUrl.trim();
+    }
     body.image_provider = freepikModel;
 
     setCopyError(null);
@@ -147,8 +172,13 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       body:    JSON.stringify(body),
     });
     const data = await res.json();
-    if (res.ok) { setResult(data); onGenerated(); }
-    else { setCopyError((data as { error?: string }).error ?? "Erro ao gerar copy. Tente novamente."); }
+    if (res.ok) {
+      setResult(data);
+      onGenerated();
+      if (data.reference_warning) setReferenceWarn(data.reference_warning);
+    } else {
+      setCopyError((data as { error?: string }).error ?? "Erro ao gerar copy. Tente novamente.");
+    }
     setLoading(false);
   }
 
@@ -491,20 +521,66 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
               </div>
 
               {/* Referência visual (opcional) */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
                   <ScanSearch className="w-3.5 h-3.5 text-emerald-500" />
                   Referência visual <span className="text-slate-400 font-normal">(opcional)</span>
                 </Label>
-                <Input
-                  value={referenceUrl}
-                  onChange={e => setReferenceUrl(e.target.value)}
-                  placeholder="Cole URL de um post que gostou (Instagram, imagem direta...)"
-                  type="url"
-                />
-                {referenceUrl.trim() && (
-                  <p className="text-xs text-emerald-600">
-                    ✓ A IA vai usar este post como inspiração visual para o visual_prompt e layout deste post.
+
+                {/* Upload zone */}
+                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+                  referenceB64
+                    ? "border-emerald-400 bg-emerald-50"
+                    : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
+                }`}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => { if (e.target.files?.[0]) handleReferenceFile(e.target.files[0]); }}
+                  />
+                  {referencePreview ? (
+                    <>
+                      <img src={referencePreview} alt="Referência" className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-emerald-700">Imagem carregada ✓</p>
+                        <p className="text-xs text-slate-400 truncate">A IA vai usar como inspiração visual</p>
+                      </div>
+                      <button type="button" onClick={e => { e.preventDefault(); setReferenceB64(null); setReferencePreview(null); setReferenceType("image/jpeg"); }}
+                        className="text-slate-400 hover:text-red-500 flex-shrink-0">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                        <Camera className="w-5 h-5 text-slate-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-slate-600">Arraste ou clique para enviar</p>
+                        <p className="text-xs text-slate-400">Salve o post do Instagram como imagem e faça upload</p>
+                      </div>
+                    </>
+                  )}
+                </label>
+
+                {/* URL fallback */}
+                {!referenceB64 && (
+                  <div className="space-y-1">
+                    <Input
+                      value={referenceUrl}
+                      onChange={e => { setReferenceUrl(e.target.value); setReferenceWarn(null); }}
+                      placeholder="Ou cole URL direta de imagem (não Instagram)"
+                      type="url"
+                      className="text-xs"
+                    />
+                    <p className="text-xs text-slate-400">⚠️ URLs do Instagram bloqueiam acesso server-side — prefira o upload acima.</p>
+                  </div>
+                )}
+
+                {referenceWarn && (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    ⚠️ {referenceWarn}
                   </p>
                 )}
               </div>
@@ -523,6 +599,14 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
           {/* ─── Result ─── */}
           {result && (
             <div className="space-y-4">
+
+              {/* Reference warning */}
+              {referenceWarn && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                  <span className="text-amber-500 mt-0.5 flex-shrink-0">⚠️</span>
+                  <p className="text-xs text-amber-700">{referenceWarn}</p>
+                </div>
+              )}
 
               {/* Badge framework + hook */}
               {result.framework_used && (
@@ -788,6 +872,10 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setCurateReason(null);
                 setImageMode("freepik");
                 setFreepikModel("mystic");
+                setReferenceB64(null);
+                setReferenceType("image/jpeg");
+                setReferencePreview(null);
+                setReferenceWarn(null);
                 setComposedUrl(null);
                 setViewComposed(true);
                 setLibraryPhotos([]);
