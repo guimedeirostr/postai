@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Sharp requires native binaries — must be external on Vercel/Lambda
-  serverExternalPackages: ["sharp"],
+  // Pacotes com bindings nativos/WASM — não podem ser empacotados pelo Turbopack
+  serverExternalPackages: ["sharp", "@resvg/resvg-js", "satori"],
 
   async redirects() {
     return [
