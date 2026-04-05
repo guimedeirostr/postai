@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import {
   ImageIcon, Loader2, Hash, Copy, Check, X,
-  Calendar, Tag, Download, Wand2, Layers,
+  Calendar, Tag, Download, Wand2, Layers, RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -184,8 +184,67 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
 
           {/* Premium (composed) — exibe só a imagem final, sem canvas adicional */}
           {viewComposed && composedUrl ? (
-            <div className="rounded-xl overflow-hidden border bg-slate-50">
-              <img src={composedUrl} alt={post.headline} className="w-full object-cover" />
+            <div className="space-y-2">
+              {/* Barra de ações rápidas */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Re-compor */}
+                <button
+                  onClick={handleCompose}
+                  disabled={compLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50"
+                  title="Re-compor post (após trocar logo ou cores)"
+                >
+                  {compLoading
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <RefreshCw className="w-3.5 h-3.5" />}
+                  Atualizar
+                </button>
+
+                <div className="w-px h-4 bg-slate-200 mx-0.5" />
+
+                {/* Copiar legenda */}
+                <button
+                  onClick={() => copyText(post.caption, "caption_quick")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                  title="Copiar legenda"
+                >
+                  {copied === "caption_quick"
+                    ? <Check className="w-3.5 h-3.5 text-green-500" />
+                    : <Copy className="w-3.5 h-3.5" />}
+                  Legenda
+                </button>
+
+                {/* Copiar hashtags */}
+                <button
+                  onClick={() => copyText(post.hashtags.map(h => `#${h}`).join(" "), "hashtags_quick")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                  title="Copiar hashtags"
+                >
+                  {copied === "hashtags_quick"
+                    ? <Check className="w-3.5 h-3.5 text-green-500" />
+                    : <Hash className="w-3.5 h-3.5" />}
+                  Hashtags
+                </button>
+
+                {/* Copiar legenda + hashtags juntos */}
+                <button
+                  onClick={() => copyText(
+                    `${post.caption}\n\n${post.hashtags.map(h => `#${h}`).join(" ")}`,
+                    "full_copy"
+                  )}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors ml-auto"
+                  title="Copiar legenda + hashtags (pronto para colar no Instagram)"
+                >
+                  {copied === "full_copy"
+                    ? <Check className="w-3.5 h-3.5 text-green-500" />
+                    : <Copy className="w-3.5 h-3.5" />}
+                  Copiar tudo
+                </button>
+              </div>
+
+              <div className="rounded-xl overflow-hidden border bg-slate-50">
+                <img src={composedUrl} alt={post.headline} className="w-full object-cover" />
+              </div>
             </div>
 
           /* IA Bruta — PostComposer (canvas) com a imagem raw */
