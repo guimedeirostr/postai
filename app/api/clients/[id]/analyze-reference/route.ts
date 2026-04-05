@@ -16,6 +16,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  SKILLS_BETA, CODE_EXEC_BETA,
+  CODE_EXECUTION_TOOL, CONTAINER_ANALISADOR,
+} from "@/lib/skills";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
@@ -129,10 +133,14 @@ export async function POST(
     const imgBuffer   = await imgResponse.arrayBuffer();
     const base64Data  = Buffer.from(imgBuffer).toString("base64");
 
-    // ── Chamar Claude claude-opus-4-5 com a imagem ─────────────────────────────────────
-    const message = await anthropic.messages.create({
-      model:      "claude-opus-4-5",   // Melhor visão para análise visual detalhada
+    // ── Chamar Claude claude-opus-4-5 com a imagem + Analisador Visual Skill ───────────
+    const message = await anthropic.beta.messages.create({
+      model:      "claude-opus-4-5",
       max_tokens: 4096,
+      betas:      [SKILLS_BETA, CODE_EXEC_BETA],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      container:  CONTAINER_ANALISADOR as any,
+      tools:      [CODE_EXECUTION_TOOL],
       system:     ANALYZER_SYSTEM,
       messages: [
         {
