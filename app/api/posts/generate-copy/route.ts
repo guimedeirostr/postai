@@ -7,6 +7,8 @@ import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import type { BrandProfile, StrategyContext } from "@/types";
 
+export const maxDuration = 60;
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL     = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
 

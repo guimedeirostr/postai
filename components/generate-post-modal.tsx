@@ -71,6 +71,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [libraryLoading,     setLibraryLoading]     = useState(false);
   const [selectedLibPhoto,   setSelectedLibPhoto]   = useState<string | null>(null);
   const [referenceUrl,       setReferenceUrl]       = useState("");
+  const [copyError,          setCopyError]          = useState<string | null>(null);
 
   // Fetch library photos when mode = "library" and we have a result
   useEffect(() => {
@@ -137,6 +138,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     }
     if (referenceUrl.trim()) body.reference_url = referenceUrl.trim();
 
+    setCopyError(null);
     const res  = await fetch("/api/posts/generate-copy", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -144,6 +146,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     });
     const data = await res.json();
     if (res.ok) { setResult(data); onGenerated(); }
+    else { setCopyError((data as { error?: string }).error ?? "Erro ao gerar copy. Tente novamente."); }
     setLoading(false);
   }
 
@@ -766,13 +769,20 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
             )}
 
             {step === 1 && (
-              <Button onClick={handleGenerate}
-                disabled={loading || !theme || !objective}
-                className="bg-violet-600 hover:bg-violet-700 text-white min-w-[140px]">
-                {loading
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
-                  : <><Sparkles className="w-4 h-4 mr-2" />Gerar post</>}
-              </Button>
+              <div className="flex flex-col items-end gap-2">
+                {copyError && (
+                  <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 text-right max-w-xs">
+                    {copyError}
+                  </p>
+                )}
+                <Button onClick={handleGenerate}
+                  disabled={loading || !theme || !objective}
+                  className="bg-violet-600 hover:bg-violet-700 text-white min-w-[140px]">
+                  {loading
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
+                    : <><Sparkles className="w-4 h-4 mr-2" />Gerar post</>}
+                </Button>
+              </div>
             )}
           </div>
         )}
