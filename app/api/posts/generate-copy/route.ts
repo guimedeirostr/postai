@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       dor_desejo,
       hook_type,
       reference_url,
+      image_provider,
     } = await req.json() as {
       client_id: string;
       theme: string;
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
       dor_desejo?: string;
       hook_type?: string;
       reference_url?: string;
+      image_provider?: string;
     };
 
     if (!client_id || !theme || !objective || !format) {
@@ -159,6 +161,7 @@ export async function POST(req: NextRequest) {
       hook_type:       copy.hook_type,
       image_url:       null,
       reference_url:   reference_url ?? null,
+      image_provider:  image_provider ?? "mystic",
       status:          "ready",
       created_at:      FieldValue.serverTimestamp(),
     });

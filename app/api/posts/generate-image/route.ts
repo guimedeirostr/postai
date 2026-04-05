@@ -4,21 +4,17 @@
  * Kicks off (or executes) image generation for an existing post that
  * already has a visual_prompt but no image yet.
  *
- * Supports two providers via IMAGE_PROVIDER env var:
- *
- * IMAGE_PROVIDER=imagen4  (default when set)
- *   → Synchronous: Imagen 4 generates the image, uploads to R2, updates post.
- *   → Response: { image_url, post_id }  (no task_id, no polling needed)
- *
- * IMAGE_PROVIDER=freepik  (or unset)
- *   → Async: Freepik Mystic creates a task.
- *   → Response: { task_id, post_id }  (frontend polls /api/posts/check-image)
+ * Provider priority (highest to lowest):
+ *   1. FAL.ai — if FAL_KEY env is set
+ *   2. Imagen 4 — if IMAGE_PROVIDER=imagen4
+ *   3. Seedream V5 Lite — if post.image_provider="seedream" (set by user in modal)
+ *   4. Mystic — default (post.image_provider="mystic" or IMAGE_PROVIDER env fallback)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { createTask, createSeedreamTask, isSeedreamEnabled, freepikAspect, FreepikAuthError } from "@/lib/freepik";
+import { createTask, createSeedreamTask, freepikAspect, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 
@@ -69,8 +65,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ image_url, post_id });
     }
 
-    // ── Seedream V5 Lite path (async — frontend polls check-image) ───────────────
-    if (isSeedreamEnabled()) {
+    // ── Seedream V5 Lite path — chosen by user in modal OR env fallback ──────────
+    const postProvider = (post.image_provider as string | undefined) ?? process.env.IMAGE_PROVIDER ?? "mystic";
+
+    if (postProvider === "seedream") {
       const aspect      = freepikAspect(post.format as string, "seedream");
       const { task_id } = await createSeedreamTask({
         prompt:       post.visual_prompt as string,
@@ -80,7 +78,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ task_id, post_id });
     }
 
-    // ── Freepik Mystic path (async — frontend polls check-image) ─────────────────
+    // ── Freepik Mystic path (default) ────────────────────────────────────────────
     const clientDoc    = await adminDb.collection("clients").doc(post.client_id).get();
     const primaryColor = clientDoc.data()?.primary_color ?? "#6d28d9";
     const aspect       = freepikAspect(post.format as string, "mystic");

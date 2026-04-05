@@ -72,6 +72,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [selectedLibPhoto,   setSelectedLibPhoto]   = useState<string | null>(null);
   const [referenceUrl,       setReferenceUrl]       = useState("");
   const [copyError,          setCopyError]          = useState<string | null>(null);
+  const [freepikModel,       setFreepikModel]       = useState<"mystic" | "seedream">("mystic");
 
   // Fetch library photos when mode = "library" and we have a result
   useEffect(() => {
@@ -137,6 +138,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       if (strategy.hook_type)         body.hook_type         = strategy.hook_type;
     }
     if (referenceUrl.trim()) body.reference_url = referenceUrl.trim();
+    body.image_provider = freepikModel;
 
     setCopyError(null);
     const res  = await fetch("/api/posts/generate-copy", {
@@ -648,6 +650,34 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                     </button>
                   </div>
 
+                  {/* Freepik model selector */}
+                  {imageMode === "freepik" && (
+                    <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setFreepikModel("mystic")}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+                          freepikModel === "mystic"
+                            ? "bg-white text-violet-700 shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        ✦ Mystic
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFreepikModel("seedream")}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+                          freepikModel === "seedream"
+                            ? "bg-white text-violet-700 shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        ✦ Seedream V5
+                      </button>
+                    </div>
+                  )}
+
                   {/* Library photo picker */}
                   {imageMode === "library" && (
                     <div className="space-y-2">
@@ -733,6 +763,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setImgError(null);
                 setCurateReason(null);
                 setImageMode("freepik");
+                setFreepikModel("mystic");
                 setComposedUrl(null);
                 setViewComposed(true);
                 setLibraryPhotos([]);
