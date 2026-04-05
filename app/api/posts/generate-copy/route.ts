@@ -5,7 +5,6 @@ import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
-import { SKILLS_BETA, CONTAINER_INSTAGRAM } from "@/lib/skills";
 import type { BrandProfile, StrategyContext } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -72,12 +71,9 @@ export async function POST(req: NextRequest) {
     if (dor_desejo)        strategy.dor_desejo        = dor_desejo;
     if (hook_type)         strategy.hook_type         = hook_type;
 
-    const response = await anthropic.beta.messages.create({
+    const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
-      betas:      [SKILLS_BETA],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      container:  CONTAINER_INSTAGRAM as any,
       system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined),
       messages: [{
         role:    "user",
@@ -85,10 +81,8 @@ export async function POST(req: NextRequest) {
       }],
     });
 
-    // Busca o primeiro bloco de texto (pode haver tool_use antes em respostas beta)
-    const textBlock = response.content.find(b => b.type === "text");
-    const raw       = textBlock?.type === "text" ? textBlock.text : "";
-    const cleaned   = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const raw     = response.content[0].type === "text" ? response.content[0].text : "";
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 
     let copy: CopyResult;
     try {
