@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2 } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,7 @@ interface CopyResult {
   framework_used?: string;
   hook_type?:      string;
   image_url?:      string | null;
+  composed_url?:   string | null;
 }
 
 interface Props {
@@ -63,6 +64,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [imgError,       setImgError]       = useState<string | null>(null);
   const [imageMode,      setImageMode]      = useState<"freepik" | "real">("freepik");
   const [curateReason,   setCurateReason]   = useState<string | null>(null);
+  const [composedUrl,    setComposedUrl]    = useState<string | null>(null);
+  const [viewComposed,   setViewComposed]   = useState(true);
 
   async function handleGenerateStrategy() {
     setStrategyLoading(true);
@@ -152,6 +155,17 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
         return;
       }
 
+      // FAL/Imagen4: sync — image_url returned immediately
+      if (data.image_url) {
+        setResult(prev => prev ? { ...prev, image_url: data.image_url } : prev);
+        if (data.composed_url) {
+          setComposedUrl(data.composed_url);
+          setViewComposed(true);
+        }
+        setImgLoading(false);
+        return;
+      }
+
       const { task_id, post_id } = data as { task_id: string; post_id: string };
 
       // 2. Polling client-side: chama check-image a cada 4s por até 90s
@@ -161,10 +175,14 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
         const check = await fetch(
           `/api/posts/check-image?task_id=${task_id}&post_id=${post_id}`
         );
-        const checkData = await check.json() as { status: string; image_url?: string; error?: string };
+        const checkData = await check.json() as { status: string; image_url?: string; composed_url?: string; error?: string };
 
         if (checkData.status === "COMPLETED" && checkData.image_url) {
           setResult(prev => prev ? { ...prev, image_url: checkData.image_url } : prev);
+          if (checkData.composed_url) {
+            setComposedUrl(checkData.composed_url);
+            setViewComposed(true);
+          }
           setImgLoading(false);
           return;
         }
@@ -486,8 +504,26 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
               {/* ── Imagem ── */}
               {result.image_url ? (
                 <div className="space-y-2">
+                  {/* Toggle raw vs composed */}
+                  {result.image_url && composedUrl && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <button onClick={() => setViewComposed(false)}
+                        className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${!viewComposed ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                        IA Bruta
+                      </button>
+                      <button onClick={() => setViewComposed(true)}
+                        className={`px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 transition-colors ${viewComposed ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                        <Layers className="w-3 h-3" /> Premium
+                      </button>
+                      <a href={(viewComposed ? composedUrl : result.image_url) ?? "#"} download={`post-${result.post_id}.jpg`} target="_blank"
+                        className="ml-auto text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100">
+                        <Download className="w-4 h-4" />
+                      </a>
+                    </div>
+                  )}
                   <div className={`rounded-xl overflow-hidden border w-full ${FORMAT_ASPECT[format]}`}>
-                    <img src={result.image_url} alt="Imagem gerada" className="w-full h-full object-cover" />
+                    <img src={(viewComposed && composedUrl) ? composedUrl : result.image_url}
+                      alt="Imagem gerada" className="w-full h-full object-cover" />
                   </div>
                   {curateReason && (
                     <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">

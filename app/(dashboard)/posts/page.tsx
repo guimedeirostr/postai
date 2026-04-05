@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import {
   ImageIcon, Loader2, Hash, Copy, Check, X,
-  Calendar, Tag,
+  Calendar, Tag, Download, Wand2, Layers,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,29 +19,72 @@ const FORMAT_LABEL: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  ready:      { label: "Pronto",    className: "bg-green-50 text-green-700 border-green-200" },
-  generating: { label: "Gerando…",  className: "bg-amber-50 text-amber-700 border-amber-200" },
-  approved:   { label: "Aprovado",  className: "bg-blue-50 text-blue-700 border-blue-200" },
-  rejected:   { label: "Rejeitado", className: "bg-red-50 text-red-600 border-red-200" },
+  pending:      { label: "Pendente",   className: "bg-slate-50 text-slate-500 border-slate-200" },
+  strategy:     { label: "Estratégia", className: "bg-sky-50 text-sky-700 border-sky-200" },
+  copy:         { label: "Copy",       className: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  art_direction:{ label: "Arte",       className: "bg-purple-50 text-purple-700 border-purple-200" },
+  generating:   { label: "Gerando…",   className: "bg-amber-50 text-amber-700 border-amber-200" },
+  composing:    { label: "Compondo…",  className: "bg-orange-50 text-orange-700 border-orange-200" },
+  ready:        { label: "Pronto",     className: "bg-green-50 text-green-700 border-green-200" },
+  approved:     { label: "Aprovado",   className: "bg-blue-50 text-blue-700 border-blue-200" },
+  rejected:     { label: "Rejeitado",  className: "bg-red-50 text-red-600 border-red-200" },
+  failed:       { label: "Falhou",     className: "bg-red-50 text-red-600 border-red-200" },
 };
 
 interface PostDetailModalProps {
   post:    GeneratedPost;
   client?: BrandProfile;
   onClose: () => void;
-  onImageGenerated?: (post_id: string, image_url: string) => void;
+  onPostUpdated?: (post_id: string, updates: Partial<GeneratedPost>) => void;
 }
 
-function PostDetailModal({ post, client, onClose, onImageGenerated }: PostDetailModalProps) {
-  const [copied,     setCopied]     = useState<string | null>(null);
-  const [imgLoading, setImgLoading] = useState(false);
-  const [imgError,   setImgError]   = useState<string | null>(null);
-  const [imageUrl,   setImageUrl]   = useState(post.image_url ?? null);
+function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailModalProps) {
+  const [copied,       setCopied]       = useState<string | null>(null);
+  const [imgLoading,   setImgLoading]   = useState(false);
+  const [imgError,     setImgError]     = useState<string | null>(null);
+  const [compLoading,  setCompLoading]  = useState(false);
+  const [compError,    setCompError]    = useState<string | null>(null);
+  const [imageUrl,     setImageUrl]     = useState(post.image_url ?? null);
+  const [composedUrl,  setComposedUrl]  = useState(post.composed_url ?? null);
+  // show composed (branded) by default if available, raw otherwise
+  const [viewComposed, setViewComposed] = useState(!!post.composed_url);
+
+  const displayUrl = viewComposed ? composedUrl : imageUrl;
 
   function copyText(text: string, key: string) {
     navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  async function handleDownload() {
+    const url = composedUrl ?? imageUrl;
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href  = url;
+    a.download = `post-${post.id}.jpg`;
+    a.target = "_blank";
+    a.click();
+  }
+
+  async function handleCompose() {
+    setCompLoading(true);
+    setCompError(null);
+    try {
+      const res  = await fetch("/api/posts/compose", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ post_id: post.id }),
+      });
+      const data = await res.json() as { composed_url?: string; error?: string };
+      if (!res.ok) { setCompError(data.error ?? "Erro ao compor"); return; }
+      if (data.composed_url) {
+        setComposedUrl(data.composed_url);
+        setViewComposed(true);
+        onPostUpdated?.(post.id, { composed_url: data.composed_url, status: "ready" });
+      }
+    } catch { setCompError("Erro inesperado. Tente novamente."); }
+    setCompLoading(false);
   }
 
   async function handleGenerateImage() {
@@ -56,14 +99,29 @@ function PostDetailModal({ post, client, onClose, onImageGenerated }: PostDetail
       const data = await res.json();
       if (!res.ok) { setImgError(data.error ?? "Erro ao iniciar geração"); setImgLoading(false); return; }
 
+      // FAL/Imagen4: sync — returns image_url directly
+      if (data.image_url) {
+        setImageUrl(data.image_url);
+        onPostUpdated?.(post.id, { image_url: data.image_url });
+        setImgLoading(false);
+        // auto-compose
+        if (!composedUrl) await handleCompose();
+        return;
+      }
+
+      // Freepik: async — poll
       const { task_id, post_id } = data as { task_id: string; post_id: string };
       for (let i = 0; i < 22; i++) {
         await new Promise(r => setTimeout(r, 4000));
         const check     = await fetch(`/api/posts/check-image?task_id=${task_id}&post_id=${post_id}`);
-        const checkData = await check.json() as { status: string; image_url?: string; error?: string };
+        const checkData = await check.json() as { status: string; image_url?: string; composed_url?: string; error?: string };
         if (checkData.status === "COMPLETED" && checkData.image_url) {
           setImageUrl(checkData.image_url);
-          onImageGenerated?.(post.id, checkData.image_url);
+          if (checkData.composed_url) {
+            setComposedUrl(checkData.composed_url);
+            setViewComposed(true);
+          }
+          onPostUpdated?.(post.id, { image_url: checkData.image_url, composed_url: checkData.composed_url ?? null, status: "ready" });
           setImgLoading(false);
           return;
         }
@@ -93,26 +151,52 @@ function PostDetailModal({ post, client, onClose, onImageGenerated }: PostDetail
               <Badge variant="outline" className={`text-xs ${status.className}`}>{status.label}</Badge>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {(composedUrl ?? imageUrl) && (
+              <button onClick={handleDownload}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100"
+                title="Baixar imagem">
+                <Download className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
 
-          {/* Compositor / Imagem ou botão de gerar */}
-          {imageUrl && client ? (
-            <PostComposer
-              post={{ ...post, image_url: imageUrl }}
-              client={client}
-              onImageRefined={(url) => {
-                setImageUrl(url);
-                onImageGenerated?.(post.id, url);
-              }}
-            />
-          ) : imageUrl ? (
+          {/* Imagem principal */}
+          {displayUrl && client ? (
+            <div className="space-y-2">
+              {/* Toggle raw vs composed */}
+              {imageUrl && composedUrl && (
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    onClick={() => setViewComposed(false)}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${!viewComposed ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                    IA Bruta
+                  </button>
+                  <button
+                    onClick={() => setViewComposed(true)}
+                    className={`px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 transition-colors ${viewComposed ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                    <Layers className="w-3 h-3" /> Premium
+                  </button>
+                </div>
+              )}
+              <PostComposer
+                post={{ ...post, image_url: displayUrl, composed_url: composedUrl }}
+                client={client}
+                onImageRefined={(url) => {
+                  setImageUrl(url);
+                  onPostUpdated?.(post.id, { image_url: url });
+                }}
+              />
+            </div>
+          ) : displayUrl ? (
             <div className="rounded-xl overflow-hidden border bg-slate-50">
-              <img src={imageUrl} alt={post.headline} className="w-full object-cover" />
+              <img src={displayUrl} alt={post.headline} className="w-full object-cover" />
             </div>
           ) : (
             <div className="space-y-2">
@@ -120,11 +204,27 @@ function PostDetailModal({ post, client, onClose, onImageGenerated }: PostDetail
                 className="w-full bg-violet-600 hover:bg-violet-700 text-white">
                 {imgLoading
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando imagem...</>
-                  : <><ImageIcon className="w-4 h-4 mr-2" />Gerar imagem com Freepik</>}
+                  : <><ImageIcon className="w-4 h-4 mr-2" />Gerar imagem</>}
               </Button>
               {imgError && <p className="text-xs text-red-500 text-center">{imgError}</p>}
             </div>
           )}
+
+          {/* Botão de compor (quando tem imagem mas não tem composed) */}
+          {imageUrl && !composedUrl && !compLoading && (
+            <Button onClick={handleCompose} disabled={compLoading}
+              variant="outline"
+              className="w-full border-violet-200 text-violet-700 hover:bg-violet-50">
+              <Wand2 className="w-4 h-4 mr-2" />
+              Compor post premium (headline + logo)
+            </Button>
+          )}
+          {compLoading && (
+            <div className="flex items-center justify-center gap-2 py-2 text-violet-600 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" /> Compondo arte final...
+            </div>
+          )}
+          {compError && <p className="text-xs text-red-500 text-center">{compError}</p>}
 
           {/* Headline */}
           <div className="p-4 bg-slate-50 rounded-xl space-y-1">
@@ -257,11 +357,16 @@ export default function PostsPage() {
                 className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => setSelected(post)}>
                 <CardContent className="p-0">
-                  {/* Imagem ou placeholder */}
-                  {post.image_url ? (
-                    <div className="w-full h-44 overflow-hidden rounded-t-xl">
-                      <img src={post.image_url} alt={post.headline}
+                  {/* Imagem ou placeholder — prefere a versão composta (premium) */}
+                  {(post.composed_url ?? post.image_url) ? (
+                    <div className="w-full h-44 overflow-hidden rounded-t-xl relative">
+                      <img src={(post.composed_url ?? post.image_url)!} alt={post.headline}
                         className="w-full h-full object-cover" />
+                      {post.composed_url && (
+                        <span className="absolute top-2 right-2 bg-violet-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                          ✦ Premium
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div className="w-full h-44 rounded-t-xl bg-gradient-to-br from-violet-50 to-slate-100 flex items-center justify-center">
@@ -304,9 +409,9 @@ export default function PostsPage() {
           post={selected}
           client={clients.find(c => c.id === selected.client_id)}
           onClose={() => setSelected(null)}
-          onImageGenerated={(post_id, image_url) => {
-            setPosts(prev => prev.map(p => p.id === post_id ? { ...p, image_url, status: "ready" } : p));
-            setSelected(prev => prev ? { ...prev, image_url, status: "ready" } : prev);
+          onPostUpdated={(post_id, updates) => {
+            setPosts(prev => prev.map(p => p.id === post_id ? { ...p, ...updates } : p));
+            setSelected(prev => prev ? { ...prev, ...updates } : prev);
           }}
         />
       )}
