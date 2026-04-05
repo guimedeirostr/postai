@@ -5,6 +5,10 @@ import { uploadToR2 } from "@/lib/r2";
 import { FieldValue } from "firebase-admin/firestore";
 import { processPhoto } from "@/lib/image-processor";
 
+// Aumentar limite de body para upload de fotos (Vercel padrão = 4.5 MB)
+export const config = { api: { bodyParser: false } };
+export const maxDuration = 30;
+
 // GET — list all photos for a client
 export async function GET(
   _req: NextRequest,

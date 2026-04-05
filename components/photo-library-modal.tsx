@@ -79,29 +79,64 @@ export function PhotoLibraryModal({ client, onClose }: Props) {
     setPreviewUrl(file ? URL.createObjectURL(file) : null);
   }
 
+  /** Redimensiona e comprime a imagem no browser antes de enviar (evita 413) */
+  function compressImage(file: File, maxPx = 1920, quality = 0.82): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let { width, height } = img;
+        if (width > maxPx || height > maxPx) {
+          if (width >= height) { height = Math.round(height * maxPx / width); width = maxPx; }
+          else                 { width  = Math.round(width  * maxPx / height); height = maxPx; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width  = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas não suportado")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Falha ao comprimir")),
+          "image/jpeg", quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Imagem inválida")); };
+      img.src = url;
+    });
+  }
+
   async function handleUpload() {
     if (!selectedFile) return;
     setUploading(true);
     setUploadError(null);
 
-    const form = new FormData();
-    form.append("file",        selectedFile);
-    form.append("category",    category);
-    form.append("tags",        tags);
-    form.append("description", description);
+    try {
+      // Comprime no browser — máximo 1920px, JPEG 82% (< 1 MB na maioria das fotos)
+      const compressed = await compressImage(selectedFile);
+      const fileName   = selectedFile.name.replace(/\.[^.]+$/, "") + ".jpg";
 
-    const res = await fetch(`/api/clients/${client.id}/photos`, { method: "POST", body: form });
-    if (res.ok) {
-      setShowUpload(false);
-      setSelectedFile(null);
-      setPreviewUrl(null);
-      setTags("");
-      setDescription("");
-      setCategory("outro");
-      load();
-    } else {
-      const data = await res.json();
-      setUploadError(data.error ?? "Erro ao fazer upload");
+      const form = new FormData();
+      form.append("file",        compressed, fileName);
+      form.append("category",    category);
+      form.append("tags",        tags);
+      form.append("description", description);
+
+      const res = await fetch(`/api/clients/${client.id}/photos`, { method: "POST", body: form });
+      if (res.ok) {
+        setShowUpload(false);
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        setTags("");
+        setDescription("");
+        setCategory("outro");
+        load();
+      } else {
+        let errMsg = "Erro ao fazer upload";
+        try { const data = await res.json(); errMsg = data.error ?? errMsg; } catch { /* noop */ }
+        setUploadError(errMsg);
+      }
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Erro ao processar imagem");
     }
     setUploading(false);
   }
