@@ -260,15 +260,15 @@ function buildOverlayElement(
       <div
         style={{
           position:        "absolute",
-          top:             40,
-          left:            40,
-          height:          80,
-          minWidth:        40,
-          backgroundColor: hexToRgba(primary, 0.65),
-          borderRadius:    14,
+          top:             36,
+          left:            36,
+          height:          100,
+          minWidth:        48,
+          backgroundColor: hexToRgba(primary, 0.72),
+          borderRadius:    16,
           display:         "flex",
           alignItems:      "center",
-          padding:         "8px 16px",
+          padding:         "10px 18px",
         }}
       />
     </div>
@@ -322,12 +322,12 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
       const logoResp = await fetch(opts.logoUrl, { signal: AbortSignal.timeout(8_000) });
       if (logoResp.ok) {
         const logoBuffer  = Buffer.from(await logoResp.arrayBuffer());
-        // Redimensionar logo: máx 200×80px mantendo proporção
+        // Redimensionar logo: máx 240×80px — sem withoutEnlargement para logos pequenos crescerem
         const logoResized = await sharp(logoBuffer)
-          .resize(200, 80, { fit: "inside", withoutEnlargement: true })
+          .resize(240, 80, { fit: "inside" })
           .toBuffer();
-        // Posição: top 48px, left 56px (dentro do badge cinza do satori)
-        layers.push({ input: logoResized, top: 48, left: 56 });
+        // Posição: top 56px, left 54px (centralizado no badge 100px do satori)
+        layers.push({ input: logoResized, top: 56, left: 54 });
       }
     } catch (logoErr) {
       console.warn("[composer] Logo não carregou (non-fatal):", logoErr);
