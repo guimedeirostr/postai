@@ -10,15 +10,23 @@
  *   tools: [CODE_EXECUTION_TOOL]
  */
 
-// ── Beta headers necessários ──────────────────────────────────────────────────
+// ── Beta headers obrigatórios para usar Skills ────────────────────────────────
+// Todos os 3 são necessários simultaneamente (docs: skills-guide)
 export const SKILLS_BETA    = "skills-2025-10-02";
 export const CODE_EXEC_BETA = "code-execution-2025-08-25";
+export const FILES_API_BETA = "files-api-2025-04-14";
 
-// ── Tool de code execution (obrigatório quando se usa skills) ─────────────────
+export const ALL_SKILLS_BETAS = [CODE_EXEC_BETA, SKILLS_BETA, FILES_API_BETA] as const;
+
+// ── Tool de code execution (obrigatório com skills) ───────────────────────────
+// Nota: skills requerem claude-opus-4-5 ou superior — haiku não suporta
 export const CODE_EXECUTION_TOOL = {
   type: "code_execution_20250825" as const,
   name: "code_execution" as const,
 };
+
+// Modelos que suportam code_execution_20250825 + skills
+export const SKILLS_MODEL = "claude-opus-4-5";
 
 // ── Skill IDs ─────────────────────────────────────────────────────────────────
 export const SKILL_IDS = {
