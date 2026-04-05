@@ -49,8 +49,6 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
   // show composed (branded) by default if available, raw otherwise
   const [viewComposed, setViewComposed] = useState(!!post.composed_url);
 
-  const displayUrl = viewComposed ? composedUrl : imageUrl;
-
   function copyText(text: string, key: string) {
     navigator.clipboard.writeText(text);
     setCopied(key);
@@ -168,36 +166,46 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
 
           {/* Imagem principal */}
-          {displayUrl && client ? (
-            <div className="space-y-2">
-              {/* Toggle raw vs composed */}
-              {imageUrl && composedUrl && (
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    onClick={() => setViewComposed(false)}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${!viewComposed ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
-                    IA Bruta
-                  </button>
-                  <button
-                    onClick={() => setViewComposed(true)}
-                    className={`px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 transition-colors ${viewComposed ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
-                    <Layers className="w-3 h-3" /> Premium
-                  </button>
-                </div>
-              )}
-              <PostComposer
-                post={{ ...post, image_url: displayUrl, composed_url: composedUrl }}
-                client={client}
-                onImageRefined={(url) => {
-                  setImageUrl(url);
-                  onPostUpdated?.(post.id, { image_url: url });
-                }}
-              />
+          {/* Toggle raw vs composed */}
+          {imageUrl && composedUrl && (
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                onClick={() => setViewComposed(false)}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${!viewComposed ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                IA Bruta
+              </button>
+              <button
+                onClick={() => setViewComposed(true)}
+                className={`px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 transition-colors ${viewComposed ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                <Layers className="w-3 h-3" /> Premium
+              </button>
             </div>
-          ) : displayUrl ? (
+          )}
+
+          {/* Premium (composed) — exibe só a imagem final, sem canvas adicional */}
+          {viewComposed && composedUrl ? (
             <div className="rounded-xl overflow-hidden border bg-slate-50">
-              <img src={displayUrl} alt={post.headline} className="w-full object-cover" />
+              <img src={composedUrl} alt={post.headline} className="w-full object-cover" />
             </div>
+
+          /* IA Bruta — PostComposer (canvas) com a imagem raw */
+          ) : imageUrl && client ? (
+            <PostComposer
+              post={{ ...post, image_url: imageUrl }}
+              client={client}
+              onImageRefined={(url) => {
+                setImageUrl(url);
+                onPostUpdated?.(post.id, { image_url: url });
+              }}
+            />
+
+          /* Só imagem, sem cliente carregado */
+          ) : imageUrl ? (
+            <div className="rounded-xl overflow-hidden border bg-slate-50">
+              <img src={imageUrl} alt={post.headline} className="w-full object-cover" />
+            </div>
+
+          /* Sem imagem — botão gerar */
           ) : (
             <div className="space-y-2">
               <Button onClick={handleGenerateImage} disabled={imgLoading}
