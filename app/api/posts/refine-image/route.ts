@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { createTask, FreepikAuthError } from "@/lib/freepik";
+import { createTask, createSeedreamEditTask, isSeedreamEnabled, freepikAspect, FreepikAuthError } from "@/lib/freepik";
 
-const ASPECT_RATIO: Record<string, string> = {
-  feed:        "social_post_4_5",
-  stories:     "social_story_9_16",
-  reels_cover: "social_story_9_16",
-};
 
 /**
  * POST /api/posts/refine-image
@@ -36,11 +31,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Post não encontrado" }, { status: 404 });
     }
 
-    const post   = postDoc.data()!;
-    const aspect = ASPECT_RATIO[post.format] ?? "social_post_4_5";
-
-    const clientDoc    = await adminDb.collection("clients").doc(post.client_id).get();
-    const primaryColor = clientDoc.data()?.primary_color ?? "#6d28d9";
+    const post = postDoc.data()!;
 
     // Do NOT include visual_prompt here — it describes a new scene and would
     // cause Freepik to replace the user's chosen photo. Only send a quality
@@ -52,16 +43,29 @@ export async function POST(req: NextRequest) {
 
     await postDoc.ref.update({ status: "generating" });
 
-    const { task_id } = await createTask({
-      prompt:       combinedPrompt,
-      aspect_ratio: aspect,
-      realism:      true,
-      image:        canvas_base64,
-      image_weight: 0.85,
-      // No brand color styling — we don't want color shifts on the user's photo
-    });
+    let task_id: string;
 
-    await postDoc.ref.update({ freepik_task_id: task_id });
+    if (isSeedreamEnabled()) {
+      // Seedream Edit uses reference_images array (base64 or URL)
+      const aspect = freepikAspect(post.format as string, "seedream");
+      ({ task_id } = await createSeedreamEditTask({
+        prompt:           combinedPrompt,
+        aspect_ratio:     aspect,
+        reference_images: [canvas_base64],
+      }));
+      await postDoc.ref.update({ freepik_task_id: task_id, image_provider: "seedream" });
+    } else {
+      // Mystic img2img
+      const aspect = freepikAspect(post.format as string, "mystic");
+      ({ task_id } = await createTask({
+        prompt:       combinedPrompt,
+        aspect_ratio: aspect,
+        realism:      true,
+        image:        canvas_base64,
+        image_weight: 0.85,
+      }));
+      await postDoc.ref.update({ freepik_task_id: task_id, image_provider: "freepik" });
+    }
 
     return NextResponse.json({ task_id, post_id });
   } catch (err: unknown) {

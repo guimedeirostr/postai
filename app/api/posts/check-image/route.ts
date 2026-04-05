@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { pollTask, FreepikAuthError } from "@/lib/freepik";
+import { pollTask, pollSeedreamTask, FreepikAuthError } from "@/lib/freepik";
 import { composePost } from "@/lib/composer";
 import type { BrandProfile } from "@/types";
 
@@ -20,7 +20,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "task_id e post_id são obrigatórios" }, { status: 400 });
     }
 
-    const result = await pollTask(task_id);
+    // Determine which poll endpoint to use based on image_provider stored on the post
+    const postSnap0   = await adminDb.collection("posts").doc(post_id).get();
+    const provider    = (postSnap0.data()?.image_provider as string | undefined) ?? "freepik";
+    const result      = provider === "seedream"
+      ? await pollSeedreamTask(task_id)
+      : await pollTask(task_id);
 
     if (result.status === "COMPLETED") {
       if (!result.image_url) {

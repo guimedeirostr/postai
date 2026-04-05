@@ -18,19 +18,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { createTask, FreepikAuthError } from "@/lib/freepik";
+import { createTask, createSeedreamTask, isSeedreamEnabled, freepikAspect, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 
 // Allow up to 60s for synchronous Imagen 4 generation
 export const maxDuration = 60;
-
-// Freepik aspect ratios (only used when IMAGE_PROVIDER != imagen4)
-const FREEPIK_ASPECT: Record<string, string> = {
-  feed:        "social_post_4_5",
-  stories:     "social_story_9_16",
-  reels_cover: "social_story_9_16",
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -76,10 +69,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ image_url, post_id });
     }
 
-    // ── Freepik path (async — frontend polls check-image) ────────────────────────
+    // ── Seedream V5 Lite path (async — frontend polls check-image) ───────────────
+    if (isSeedreamEnabled()) {
+      const aspect      = freepikAspect(post.format as string, "seedream");
+      const { task_id } = await createSeedreamTask({
+        prompt:       post.visual_prompt as string,
+        aspect_ratio: aspect,
+      });
+      await postDoc.ref.update({ freepik_task_id: task_id, image_provider: "seedream" });
+      return NextResponse.json({ task_id, post_id });
+    }
+
+    // ── Freepik Mystic path (async — frontend polls check-image) ─────────────────
     const clientDoc    = await adminDb.collection("clients").doc(post.client_id).get();
     const primaryColor = clientDoc.data()?.primary_color ?? "#6d28d9";
-    const aspect       = FREEPIK_ASPECT[post.format as string] ?? "square_1_1";
+    const aspect       = freepikAspect(post.format as string, "mystic");
 
     const { task_id } = await createTask({
       prompt:       post.visual_prompt as string,
