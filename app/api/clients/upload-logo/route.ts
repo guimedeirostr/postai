@@ -23,9 +23,14 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const key    = `logos/${user.uid}/${clientId}/logo.jpg`;
 
-    const publicUrl = await uploadToR2(key, buffer, "image/jpeg");
+    // Preservar PNG com transparência — não forçar JPEG
+    const isPng    = file.type === "image/png" || file.name.endsWith(".png");
+    const mimeType = isPng ? "image/png" : "image/jpeg";
+    const fileName = isPng ? "logo.png" : "logo.jpg";
+    const key      = `logos/${user.uid}/${clientId}/${fileName}`;
+
+    const publicUrl = await uploadToR2(key, buffer, mimeType);
 
     await adminDb.collection("clients").doc(clientId).update({ logo_url: publicUrl });
 

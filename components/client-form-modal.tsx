@@ -42,6 +42,11 @@ export function ClientFormModal({ client, onClose, onSaved }: Props) {
   }
 
   async function compressImage(file: File): Promise<File> {
+    // PNGs com transparência devem ser preservados como PNG — JPEG destrói o canal alpha
+    const isPng = file.type === "image/png";
+    const mimeOut = isPng ? "image/png" : "image/jpeg";
+    const nameOut = isPng ? "logo.png" : "logo.jpg";
+
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -52,10 +57,14 @@ export function ClientFormModal({ client, onClose, onSaved }: Props) {
           const canvas = document.createElement("canvas");
           canvas.width  = Math.round(img.width  * ratio);
           canvas.height = Math.round(img.height * ratio);
-          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const ctx = canvas.getContext("2d")!;
+          // Limpar com fundo transparente antes de desenhar (importante para PNG)
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           canvas.toBlob(
-            (blob) => resolve(new File([blob!], "logo.jpg", { type: "image/jpeg" })),
-            "image/jpeg", 0.78
+            (blob) => resolve(new File([blob!], nameOut, { type: mimeOut })),
+            mimeOut,
+            isPng ? undefined : 0.85  // PNG não usa quality, JPEG usa 85%
           );
         };
         img.src = e.target!.result as string;
