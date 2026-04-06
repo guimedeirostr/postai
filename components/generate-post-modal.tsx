@@ -1,19 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch, Upload, Plus } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch, Upload, Plus, Zap, UserCircle2, Crosshair, Box, SlidersHorizontal, Dna } from "lucide-react";
 import type { BrandPhoto } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import type { BrandProfile, StrategyBriefing } from "@/types";
+import type { BrandProfile, StrategyBriefing, ReferenceDNA } from "@/types";
 import { FORMAT_OPTIONS, FORMAT_ASPECT } from "@/lib/post-formats";
 
 type Format = "feed" | "stories" | "reels_cover";
 
-// Step 0 = strategy, Step 1 = form + generate
-type Step = 0 | 1;
+// Step 0 = referência visual, Step 1 = strategy, Step 2 = form + generate
+type Step = 0 | 1 | 2;
 
 interface CopyResult {
   post_id:            string;
@@ -64,7 +64,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copied,         setCopied]         = useState<string | null>(null);
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
-  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library">("freepik");
+  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth">("freepik");
   const [curateReason,       setCurateReason]       = useState<string | null>(null);
   const [composedUrl,        setComposedUrl]        = useState<string | null>(null);
   const [viewComposed,       setViewComposed]       = useState(true);
@@ -83,6 +83,22 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [libUploadLoading,   setLibUploadLoading]   = useState(false);
   const [libUploadError,     setLibUploadError]     = useState<string | null>(null);
 
+  // ── Reference DNA state ───────────────────────────────────────────────────
+  const [referenceDna,          setReferenceDna]          = useState<ReferenceDNA | null>(null);
+  const [referenceAnalyzing,    setReferenceAnalyzing]    = useState(false);
+  const [referenceAnalysisError, setReferenceAnalysisError] = useState<string | null>(null);
+
+  // ── FAL.ai advanced state ─────────────────────────────────────────────────
+  // Photos for FAL advanced modes are picked from the brand library
+  const [falLibPhotos,       setFalLibPhotos]       = useState<BrandPhoto[]>([]);
+  const [falLibLoading,      setFalLibLoading]      = useState(false);
+  // Character Lock (PuLID): face reference photo
+  const [charLockPhoto,      setCharLockPhoto]      = useState<string | null>(null);
+  const [idWeight,           setIdWeight]           = useState(1.0);
+  // ControlNet (Canny / Depth): reference composition/depth photo
+  const [controlPhoto,       setControlPhoto]       = useState<string | null>(null);
+  const [controlStrength,    setControlStrength]    = useState(0.7);
+
   // Fetch library photos when mode = "library" and we have a result
   useEffect(() => {
     if (imageMode !== "library" || !result) return;
@@ -94,6 +110,19 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       .catch(() => setLibraryPhotos([]))
       .finally(() => setLibraryLoading(false));
   }, [imageMode, result, client.id, libraryPhotos.length]);
+
+  // Fetch library photos for FAL advanced modes (PuLID / ControlNet)
+  useEffect(() => {
+    const isFalAdvanced = imageMode === "fal_pulid" || imageMode === "fal_canny" || imageMode === "fal_depth";
+    if (!isFalAdvanced || !result) return;
+    if (falLibPhotos.length > 0) return;
+    setFalLibLoading(true);
+    fetch(`/api/clients/${client.id}/photos`)
+      .then(r => r.json())
+      .then((data: { photos?: BrandPhoto[] }) => setFalLibPhotos(data.photos ?? []))
+      .catch(() => setFalLibPhotos([]))
+      .finally(() => setFalLibLoading(false));
+  }, [imageMode, result, client.id, falLibPhotos.length]);
 
   function handleReferenceFile(file: File) {
     setReferenceWarn(null);
@@ -122,6 +151,30 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       setReferencePreview(dataUrl);
     };
     img.src = objectUrl;
+  }
+
+  async function handleAnalyzeReference() {
+    if (!referenceB64) return;
+    setReferenceAnalyzing(true);
+    setReferenceAnalysisError(null);
+    setReferenceDna(null);
+    try {
+      const res  = await fetch("/api/posts/analyze-reference", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ image_base64: referenceB64, image_mime: referenceType }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setReferenceAnalysisError(data.error ?? "Erro ao analisar referência");
+        return;
+      }
+      setReferenceDna(data as ReferenceDNA);
+    } catch {
+      setReferenceAnalysisError("Erro inesperado. Tente novamente.");
+    } finally {
+      setReferenceAnalyzing(false);
+    }
   }
 
   // Compress image via canvas before uploading to library (prevents 413 / server errors)
@@ -233,11 +286,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
 
   function handleSkipStrategy() {
     setStrategy(null);
-    setStep(1);
+    setStep(2);
   }
 
   function handleProceedWithStrategy() {
-    setStep(1);
+    setStep(2);
   }
 
   async function handleGenerate() {
@@ -252,7 +305,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       if (strategy.dor_desejo)        body.dor_desejo        = strategy.dor_desejo;
       if (strategy.hook_type)         body.hook_type         = strategy.hook_type;
     }
-    if (referenceB64) {
+    if (referenceDna) {
+      // DNA já foi extraído pelo Stage 0 — passa estruturado (mais rico)
+      (body as Record<string, unknown>).reference_dna = referenceDna;
+    } else if (referenceB64) {
+      // Fallback: imagem bruta sem análise prévia
       body.reference_image_base64 = referenceB64;
       body.reference_image_type   = referenceType;
     } else if (referenceUrl.trim()) {
@@ -305,11 +362,35 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     setImgError(null);
 
     try {
-      // 1. Submete para o Freepik → recebe task_id imediatamente
-      const res  = await fetch("/api/posts/generate-image", {
+      // Monta payload base; adiciona params avançados conforme o modo FAL
+      const payload: Record<string, unknown> = { post_id: result.post_id };
+
+      if (imageMode === "fal") {
+        payload.provider = "fal";
+      } else if (imageMode === "fal_pulid") {
+        payload.provider            = "fal_pulid";
+        payload.character_lock_url  = charLockPhoto;
+        payload.id_weight           = idWeight;
+      } else if (imageMode === "fal_canny") {
+        payload.provider          = "fal_canny";
+        payload.control_image_url = controlPhoto;
+        payload.control_type      = "canny";
+        payload.control_strength  = controlStrength;
+      } else if (imageMode === "fal_depth") {
+        payload.provider          = "fal_depth";
+        payload.control_image_url = controlPhoto;
+        payload.control_type      = "depth";
+        payload.control_strength  = controlStrength;
+      } else if (freepikModel === "seedream") {
+        payload.provider = "seedream";
+      }
+      // freepik (mystic) = default, sem provider no payload
+
+      // 1. Submete geração → recebe task_id (async) ou image_url (sync)
+      const res = await fetch("/api/posts/generate-image", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ post_id: result.post_id }),
+        body:    JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -484,17 +565,164 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-          {/* ─── STEP 0: Strategy ─── */}
+          {/* ─── STEP 0: Referência Visual ─── */}
           {step === 0 && !result && (
             <div className="space-y-5">
               {/* Step indicator */}
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-xs">1</span>
-                <span className="font-medium text-slate-600">Estratégia</span>
+                <span className="font-medium text-slate-600">Referência</span>
                 <ChevronRight className="w-3 h-3" />
                 <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center font-bold text-xs">2</span>
+                <span>Estratégia</span>
+                <ChevronRight className="w-3 h-3" />
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center font-bold text-xs">3</span>
                 <span>Conteúdo</span>
               </div>
+
+              {/* Intro */}
+              <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl">
+                <p className="text-xs font-semibold text-violet-700 mb-1 flex items-center gap-1.5">
+                  <Dna className="w-3.5 h-3.5" /> Como funciona
+                </p>
+                <p className="text-xs text-violet-600 leading-relaxed">
+                  Suba uma arte que você quer <strong>copiar o estilo</strong>. A IA lê o DNA visual exato — composição, hierarquia tipográfica, zonas de texto, mood de cores — e usa como guia em todo o pipeline de geração.
+                </p>
+              </div>
+
+              {/* Upload zone */}
+              <label
+                className={`flex items-center gap-3 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+                  referenceB64
+                    ? "border-emerald-400 bg-emerald-50"
+                    : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
+                }`}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={e => {
+                  e.preventDefault(); e.stopPropagation();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && file.type.startsWith("image/")) handleReferenceFile(file);
+                }}
+              >
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => { if (e.target.files?.[0]) handleReferenceFile(e.target.files[0]); }} />
+                {referencePreview ? (
+                  <>
+                    <img src={referencePreview} alt="Referência" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-emerald-700">Arte carregada ✓</p>
+                      <p className="text-xs text-slate-400">Pronto para análise de DNA</p>
+                    </div>
+                    <button type="button" onClick={e => {
+                      e.preventDefault();
+                      setReferenceB64(null); setReferencePreview(null);
+                      setReferenceType("image/jpeg"); setReferenceDna(null);
+                      setReferenceAnalysisError(null);
+                    }} className="text-slate-400 hover:text-red-500 flex-shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <ScanSearch className="w-6 h-6 text-slate-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-600">Arraste ou clique para enviar</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Salve o post do Instagram como imagem e faça upload</p>
+                    </div>
+                  </>
+                )}
+              </label>
+
+              {/* Botão Analisar DNA */}
+              {referenceB64 && !referenceDna && (
+                <Button
+                  onClick={handleAnalyzeReference}
+                  disabled={referenceAnalyzing}
+                  className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  {referenceAnalyzing
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Lendo DNA visual...</>
+                    : <><Dna className="w-4 h-4 mr-2" />Analisar DNA da arte</>}
+                </Button>
+              )}
+
+              {referenceAnalysisError && (
+                <p className="text-xs text-red-500 text-center">{referenceAnalysisError}</p>
+              )}
+
+              {/* Resultado do DNA */}
+              {referenceDna && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                    <Dna className="w-4 h-4 text-emerald-600" />
+                    <p className="text-xs font-semibold text-emerald-700">DNA extraído com sucesso — confirme e avance</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Zona de texto</p>
+                      <p className="text-sm font-bold text-slate-800 capitalize">{referenceDna.composition_zone}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Formato</p>
+                      <p className="text-sm font-bold text-slate-800 capitalize">{referenceDna.format}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Pilar</p>
+                      <p className="text-sm font-bold text-slate-800">{referenceDna.pilar}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Mood de cores</p>
+                      <p className="text-sm font-bold text-slate-800">{referenceDna.color_mood}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Hierarquia tipográfica</p>
+                    <p className="text-xs text-slate-700 leading-relaxed">{referenceDna.typography_hierarchy}</p>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Tratamento de fundo</p>
+                    <p className="text-xs text-slate-700 leading-relaxed">{referenceDna.background_treatment}</p>
+                  </div>
+
+                  <div className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                    <p className="text-xs font-semibold text-violet-500 uppercase tracking-wide mb-1">Análise</p>
+                    <p className="text-xs text-violet-800 leading-relaxed italic">{referenceDna.description}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── STEP 1: Strategy ─── */}
+          {step === 1 && !result && (
+            <div className="space-y-5">
+              {/* Step indicator */}
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-xs">1</span>
+                <span>Referência</span>
+                <ChevronRight className="w-3 h-3" />
+                <span className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-xs">2</span>
+                <span className="font-medium text-slate-600">Estratégia</span>
+                <ChevronRight className="w-3 h-3" />
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center font-bold text-xs">3</span>
+                <span>Conteúdo</span>
+              </div>
+
+              {/* Reference DNA badge (se vier do Stage 0) */}
+              {referenceDna && (
+                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                  <Dna className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-emerald-700">DNA da referência ativo</p>
+                    <p className="text-xs text-emerald-600 truncate">{referenceDna.description}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Campaign focus textarea */}
               <div className="space-y-1.5">
@@ -578,17 +806,35 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
             </div>
           )}
 
-          {/* ─── STEP 1: Form ─── */}
-          {step === 1 && !result && (
+          {/* ─── STEP 2: Form ─── */}
+          {step === 2 && !result && (
             <>
               {/* Step indicator */}
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-xs">1</span>
+                <span>Referência</span>
+                <ChevronRight className="w-3 h-3" />
+                <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-xs">2</span>
                 <span>Estratégia</span>
                 <ChevronRight className="w-3 h-3" />
-                <span className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-xs">2</span>
+                <span className="w-5 h-5 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-xs">3</span>
                 <span className="font-medium text-slate-600">Conteúdo</span>
               </div>
+
+              {/* Reference DNA badge (se vier do Stage 0) */}
+              {referenceDna && (
+                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                  <Dna className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-emerald-700">DNA de referência ativo — estilo guiado</p>
+                    <p className="text-xs text-slate-500 truncate">Composição: <strong>{referenceDna.composition_zone}</strong> · {referenceDna.color_mood}</p>
+                  </div>
+                  <button type="button" onClick={() => setReferenceDna(null)}
+                    className="ml-auto text-slate-400 hover:text-red-500 flex-shrink-0">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {/* Strategy used badge */}
               {strategy && (
@@ -863,21 +1109,43 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Mode selector — 3 options */}
-                  <div className="grid grid-cols-3 gap-2">
+                  {/* ── Mode selector 2×2 ── */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Freepik IA */}
                     <button type="button"
                       onClick={() => setImageMode("freepik")}
                       className={`p-3 rounded-xl border-2 text-left transition-all ${
-                        imageMode === "freepik"
+                        imageMode === "freepik" || imageMode === "fal"
                           ? "border-violet-500 bg-violet-50"
                           : "border-slate-200 hover:border-slate-300"
                       }`}>
                       <div className="flex items-center gap-1.5 mb-1">
                         <Wand2 className="w-3.5 h-3.5 text-violet-600" />
-                        <p className="text-xs font-semibold text-slate-900">Freepik IA</p>
+                        <p className="text-xs font-semibold text-slate-900">Freepik / FAL</p>
                       </div>
                       <p className="text-xs text-slate-400">Gera do zero com prompt</p>
                     </button>
+
+                    {/* FAL.ai Pro — advanced controls */}
+                    <button type="button"
+                      onClick={() => setImageMode(
+                        imageMode === "fal_pulid" || imageMode === "fal_canny" || imageMode === "fal_depth"
+                          ? imageMode
+                          : "fal_pulid"
+                      )}
+                      className={`p-3 rounded-xl border-2 text-left transition-all ${
+                        imageMode === "fal_pulid" || imageMode === "fal_canny" || imageMode === "fal_depth"
+                          ? "border-amber-500 bg-amber-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <p className="text-xs font-semibold text-slate-900">FAL Avançado</p>
+                      </div>
+                      <p className="text-xs text-slate-400">Character lock · ControlNet</p>
+                    </button>
+
+                    {/* IA Curada */}
                     <button type="button"
                       onClick={() => setImageMode("real")}
                       className={`p-3 rounded-xl border-2 text-left transition-all ${
@@ -891,6 +1159,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       </div>
                       <p className="text-xs text-slate-400">IA escolhe da biblioteca</p>
                     </button>
+
+                    {/* Minha Foto */}
                     <button type="button"
                       onClick={() => setImageMode("library")}
                       className={`p-3 rounded-xl border-2 text-left transition-all ${
@@ -906,31 +1176,149 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                     </button>
                   </div>
 
-                  {/* Freepik model selector */}
-                  {imageMode === "freepik" && (
+                  {/* ── Freepik / FAL padrão — toggle de modelo ── */}
+                  {(imageMode === "freepik" || imageMode === "fal") && (
                     <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
-                      <button
-                        type="button"
-                        onClick={() => setFreepikModel("mystic")}
-                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
-                          freepikModel === "mystic"
+                      <button type="button" onClick={() => setImageMode("freepik")}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                          imageMode === "freepik" && freepikModel === "mystic"
                             ? "bg-white text-violet-700 shadow-sm"
                             : "text-slate-500 hover:text-slate-700"
                         }`}
-                      >
+                        onClickCapture={() => { setImageMode("freepik"); setFreepikModel("mystic"); }}>
                         ✦ Mystic
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setFreepikModel("seedream")}
-                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
-                          freepikModel === "seedream"
+                      <button type="button"
+                        onClick={() => { setImageMode("freepik"); setFreepikModel("seedream"); }}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                          imageMode === "freepik" && freepikModel === "seedream"
                             ? "bg-white text-violet-700 shadow-sm"
                             : "text-slate-500 hover:text-slate-700"
-                        }`}
-                      >
+                        }`}>
                         ✦ Seedream V5
                       </button>
+                      <button type="button" onClick={() => setImageMode("fal")}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                          imageMode === "fal"
+                            ? "bg-white text-amber-600 shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}>
+                        ⚡ Flux Pro
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ── FAL Avançado — sub-seletor ── */}
+                  {(imageMode === "fal_pulid" || imageMode === "fal_canny" || imageMode === "fal_depth") && (
+                    <div className="space-y-3">
+                      {/* Sub-mode selector */}
+                      <div className="flex gap-2 p-1 bg-amber-50 border border-amber-100 rounded-xl">
+                        <button type="button" onClick={() => { setImageMode("fal_pulid"); setCharLockPhoto(null); setControlPhoto(null); }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
+                            imageMode === "fal_pulid" ? "bg-white text-amber-700 shadow-sm" : "text-slate-500 hover:text-amber-700"
+                          }`}>
+                          <UserCircle2 className="w-3.5 h-3.5" /> Pessoa
+                        </button>
+                        <button type="button" onClick={() => { setImageMode("fal_canny"); setCharLockPhoto(null); setControlPhoto(null); }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
+                            imageMode === "fal_canny" ? "bg-white text-amber-700 shadow-sm" : "text-slate-500 hover:text-amber-700"
+                          }`}>
+                          <Crosshair className="w-3.5 h-3.5" /> Composição
+                        </button>
+                        <button type="button" onClick={() => { setImageMode("fal_depth"); setCharLockPhoto(null); setControlPhoto(null); }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
+                            imageMode === "fal_depth" ? "bg-white text-amber-700 shadow-sm" : "text-slate-500 hover:text-amber-700"
+                          }`}>
+                          <Box className="w-3.5 h-3.5" /> Volume
+                        </button>
+                      </div>
+
+                      {/* Descrição do modo selecionado */}
+                      <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800 leading-relaxed">
+                        {imageMode === "fal_pulid" && (
+                          <><strong>Character Lock (PuLID):</strong> Trava a identidade/rosto de uma pessoa de referência. Ideal para manter consistência de modelo ou influencer nos posts.</>
+                        )}
+                        {imageMode === "fal_canny" && (
+                          <><strong>Structure Lock (Canny):</strong> Preserva a estrutura e composição de uma foto de referência. Ideal para replicar o layout de um post aprovado.</>
+                        )}
+                        {imageMode === "fal_depth" && (
+                          <><strong>Depth Lock:</strong> Preserva a perspectiva e volume de uma imagem de referência. Ideal para manter a relação espacial entre sujeito e fundo.</>
+                        )}
+                      </div>
+
+                      {/* Foto de referência — picker da biblioteca */}
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                          <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
+                          {imageMode === "fal_pulid" ? "Foto de referência (rosto/pessoa)" : "Imagem de referência (composição)"}
+                        </p>
+
+                        {falLibLoading ? (
+                          <div className="flex items-center justify-center py-6 text-slate-400">
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            <span className="text-xs">Carregando biblioteca...</span>
+                          </div>
+                        ) : falLibPhotos.length === 0 ? (
+                          <div className="flex items-center gap-3 p-3 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-xs text-slate-500">
+                            <Camera className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                            <span>Nenhuma foto na biblioteca. Faça upload em <strong>Fotos</strong> primeiro.</span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                            {falLibPhotos.map(photo => {
+                              const activePhoto = imageMode === "fal_pulid" ? charLockPhoto : controlPhoto;
+                              const setPhoto    = imageMode === "fal_pulid" ? setCharLockPhoto : setControlPhoto;
+                              const isSelected  = activePhoto === photo.url;
+                              return (
+                                <button key={photo.id} type="button"
+                                  onClick={() => setPhoto(isSelected ? null : photo.url)}
+                                  className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                                    isSelected
+                                      ? "border-amber-500 ring-2 ring-amber-300"
+                                      : "border-transparent hover:border-amber-300"
+                                  }`}>
+                                  <img src={photo.url} alt={photo.filename} className="w-full h-full object-cover" />
+                                  {isSelected && (
+                                    <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
+                                      <Check className="w-5 h-5 text-white drop-shadow" />
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Sliders de intensidade */}
+                      <div className="space-y-3 p-3 bg-slate-50 rounded-xl">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                          <SlidersHorizontal className="w-3.5 h-3.5" />
+                          {imageMode === "fal_pulid" ? "Força do lock de identidade" : "Força do controle de estrutura"}
+                        </div>
+                        <div className="space-y-1">
+                          <input
+                            type="range"
+                            min={imageMode === "fal_pulid" ? 0.5 : 0.3}
+                            max={imageMode === "fal_pulid" ? 1.8 : 1.0}
+                            step={0.1}
+                            value={imageMode === "fal_pulid" ? idWeight : controlStrength}
+                            onChange={e => {
+                              const v = parseFloat(e.target.value);
+                              if (imageMode === "fal_pulid") setIdWeight(v);
+                              else setControlStrength(v);
+                            }}
+                            className="w-full accent-amber-500"
+                          />
+                          <div className="flex justify-between text-xs text-slate-400">
+                            <span>{imageMode === "fal_pulid" ? "Criativo" : "Livre"}</span>
+                            <span className="font-semibold text-amber-600">
+                              {imageMode === "fal_pulid" ? idWeight.toFixed(1) : controlStrength.toFixed(1)}
+                            </span>
+                            <span>{imageMode === "fal_pulid" ? "Idêntico" : "Exato"}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1020,35 +1408,50 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   )}
 
                   {/* Action button */}
-                  <Button
-                    onClick={
-                      imageMode === "freepik" ? handleGenerateImage
-                      : imageMode === "real"   ? handleCurateImage
-                      :                         handleComposeWithLibraryPhoto
-                    }
-                    disabled={
-                      imgLoading ||
-                      (imageMode === "library" && !selectedLibPhoto)
-                    }
-                    className={`w-full text-white ${
-                      imageMode === "library"
-                        ? "bg-emerald-600 hover:bg-emerald-700"
-                        : "bg-violet-600 hover:bg-violet-700"
-                    }`}
-                  >
-                    {imgLoading ? (
-                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        {imageMode === "freepik" ? "Gerando imagem..."
-                         : imageMode === "real"   ? "Curando com IA..."
-                         :                         "Estilizando com IA..."}</>
-                    ) : imageMode === "freepik" ? (
-                      <><ImageIcon className="w-4 h-4 mr-2" />Gerar com Freepik IA</>
-                    ) : imageMode === "real" ? (
-                      <><Brain className="w-4 h-4 mr-2" />Curar foto com IA</>
-                    ) : (
-                      <><Layers className="w-4 h-4 mr-2" />Estilizar com Seedream</>
-                    )}
-                  </Button>
+                  {(() => {
+                    const isFalAdvanced = imageMode === "fal_pulid" || imageMode === "fal_canny" || imageMode === "fal_depth";
+                    const activeRef     = imageMode === "fal_pulid" ? charLockPhoto : controlPhoto;
+                    const needsRef      = isFalAdvanced && !activeRef;
+                    const isDisabled    = imgLoading || (imageMode === "library" && !selectedLibPhoto) || needsRef;
+
+                    const btnColor = imageMode === "library"
+                      ? "bg-emerald-600 hover:bg-emerald-700"
+                      : isFalAdvanced || imageMode === "fal"
+                      ? "bg-amber-500 hover:bg-amber-600"
+                      : "bg-violet-600 hover:bg-violet-700";
+
+                    const label = imgLoading
+                      ? imageMode === "real" ? "Curando com IA..." : imageMode === "library" ? "Estilizando com IA..." : "Gerando imagem..."
+                      : imageMode === "fal"      ? "Gerar com Flux Pro"
+                      : imageMode === "fal_pulid" ? "Gerar com Character Lock"
+                      : imageMode === "fal_canny" ? "Gerar com Canny Lock"
+                      : imageMode === "fal_depth" ? "Gerar com Depth Lock"
+                      : imageMode === "real"       ? "Curar foto com IA"
+                      : imageMode === "library"    ? "Estilizar com Seedream"
+                      : freepikModel === "seedream" ? "Gerar com Seedream V5"
+                      : "Gerar com Freepik IA";
+
+                    const Icon = imgLoading ? Loader2
+                      : isFalAdvanced || imageMode === "fal" ? Zap
+                      : imageMode === "real"    ? Brain
+                      : imageMode === "library" ? Layers
+                      : ImageIcon;
+
+                    return (
+                      <Button
+                        onClick={
+                          imageMode === "real"    ? handleCurateImage
+                          : imageMode === "library" ? handleComposeWithLibraryPhoto
+                          :                         handleGenerateImage
+                        }
+                        disabled={isDisabled}
+                        className={`w-full text-white ${btnColor}`}
+                      >
+                        <Icon className={`w-4 h-4 mr-2 ${imgLoading ? "animate-spin" : ""}`} />
+                        {needsRef ? "Selecione uma foto de referência" : label}
+                      </Button>
+                    );
+                  })()}
 
                   {imgError && (
                     <p className="text-xs text-red-500 text-center">{imgError}</p>
@@ -1066,6 +1469,9 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setReferenceType("image/jpeg");
                 setReferencePreview(null);
                 setReferenceWarn(null);
+                setReferenceDna(null);
+                setReferenceAnalyzing(false);
+                setReferenceAnalysisError(null);
                 setExtraInstructions("");
                 setCaptionSuggestion("");
                 setComposedUrl(null);
@@ -1074,6 +1480,12 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setSelectedLibPhoto(null);
                 setReferenceUrl("");
                 setLibUploadError(null);
+                // FAL advanced reset
+                setFalLibPhotos([]);
+                setCharLockPhoto(null);
+                setIdWeight(1.0);
+                setControlPhoto(null);
+                setControlStrength(0.7);
                 setStep(0);
                 setStrategy(null);
                 setTheme("");
@@ -1092,7 +1504,20 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
           <div className="flex justify-end gap-3 px-6 py-4 border-t">
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
 
+            {/* Stage 0: Referência */}
             {step === 0 && (
+              <Button
+                onClick={() => setStep(1)}
+                className="bg-violet-600 hover:bg-violet-700 text-white min-w-[160px]"
+              >
+                {referenceDna
+                  ? <><Dna className="w-4 h-4 mr-2" />Usar DNA extraído</>
+                  : <><ChevronRight className="w-4 h-4 mr-2" />Pular referência</>}
+              </Button>
+            )}
+
+            {/* Stage 1: Estratégia */}
+            {step === 1 && (
               <Button
                 onClick={strategy ? handleProceedWithStrategy : handleSkipStrategy}
                 disabled={strategyLoading}
@@ -1104,7 +1529,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
               </Button>
             )}
 
-            {step === 1 && (
+            {/* Stage 2: Conteúdo */}
+            {step === 2 && (
               <div className="flex flex-col items-end gap-2">
                 {copyError && (
                   <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 text-right max-w-xs">

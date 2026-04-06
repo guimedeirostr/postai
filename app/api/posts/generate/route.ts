@@ -34,7 +34,8 @@ import { createTask, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 import { composePost } from "@/lib/composer";
-import type { ArtDirection, BrandProfile, StrategyBriefing, StrategyContext, DesignExample } from "@/types";
+import { compilePromptForProvider, type ImageProvider } from "@/lib/prompt-compiler";
+import type { ArtDirection, BrandProfile, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA } from "@/types";
 
 // Allow up to 60s — Imagen 4 is synchronous and can take 5–15s
 export const maxDuration = 60;
@@ -69,9 +70,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { client_id, campaign_focus } = await req.json() as {
+    const { client_id, campaign_focus, reference_dna } = await req.json() as {
       client_id:       string;
       campaign_focus?: string;
+      reference_dna?:  ReferenceDNA;
     };
 
     if (!client_id) {
@@ -126,6 +128,12 @@ export async function POST(req: NextRequest) {
       rationale:          briefing.rationale,
     });
 
+    // ── Step 2a: Se reference_dna fornecido, salva no Firestore ─────────────
+    // Converte o DNA em um DesignExample temporário e armazena para o Art Director
+    if (reference_dna) {
+      await postRef.update({ reference_dna });
+    }
+
     // ── Step 2: Load client design examples (few-shot for Copy agent) ────────
     // Fetch up to 5 examples matching this pilar + format. Falls back to
     // any format if not enough pilar-specific examples exist.
@@ -163,6 +171,26 @@ export async function POST(req: NextRequest) {
       // Non-fatal — generation continues without examples
     }
 
+    // Se reference_dna fornecido, injeta como DesignExample primário (prioridade máxima)
+    if (reference_dna) {
+      const syntheticExample: DesignExample = {
+        id:                    "reference_dna",
+        agency_id:             user.uid,
+        client_id,
+        visual_prompt:         reference_dna.visual_prompt,
+        layout_prompt:         reference_dna.layout_prompt,
+        visual_headline_style: reference_dna.visual_headline_style,
+        pilar:                 reference_dna.pilar as DesignExample["pilar"],
+        format:                reference_dna.format,
+        description:           reference_dna.description,
+        color_mood:            reference_dna.color_mood,
+        composition_zone:      reference_dna.composition_zone,
+        created_at:            { seconds: Date.now() / 1000, nanoseconds: 0 } as import("firebase/firestore").Timestamp,
+      };
+      // Coloca na frente — Art Director prioriza os primeiros exemplos
+      designExamples = [syntheticExample, ...designExamples].slice(0, 5);
+    }
+
     // ── Step 3: Copy agent ────────────────────────────────────────────────────
     await postRef.update({ status: "copy" });
 
@@ -173,14 +201,22 @@ export async function POST(req: NextRequest) {
       hook_type:          briefing.hook_type,
     };
 
+    const copyUserContent = reference_dna
+      ? [
+          `DNA VISUAL DA REFERÊNCIA — guia prioritário:\n`,
+          `Zona: ${reference_dna.composition_zone} | Hierarquia: ${reference_dna.typography_hierarchy}`,
+          `Visual prompt base: "${reference_dna.visual_prompt}"`,
+          `Layout prompt base: "${reference_dna.layout_prompt}"`,
+          `\nTema: ${briefing.tema}\nObjetivo: ${briefing.objetivo}`,
+          `\n\nAdapte o estilo da referência ao tema atual. Escreva o melhor post possível.`,
+        ].join("\n")
+      : `Tema: ${briefing.tema}\nObjetivo: ${briefing.objetivo}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`;
+
     const copyRes = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
-      system:     buildCopyPrompt(client, briefing.formato_sugerido, briefing.objetivo, strategy, designExamples.length ? designExamples : undefined),
-      messages:   [{
-        role:    "user",
-        content: `Tema: ${briefing.tema}\nObjetivo: ${briefing.objetivo}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
-      }],
+      system:     buildCopyPrompt(client, briefing.formato_sugerido, briefing.objetivo, strategy, designExamples.length ? designExamples : undefined, !!reference_dna),
+      messages:   [{ role: "user", content: copyUserContent }],
     });
 
     const copyRaw = copyRes.content[0].type === "text" ? copyRes.content[0].text : "";
@@ -251,11 +287,26 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 5: Image generation ──────────────────────────────────────────────
-    // Providers (via IMAGE_PROVIDER env var):
+    // Providers (via IMAGE_PROVIDER env var ou sobrescrito por request):
     //   fal     → FAL.ai Flux Pro Ultra (sync, premium quality)
     //   imagen4 → Google Imagen 4 (sync)
     //   freepik → Freepik Mystic (async, frontend polls check-image)
+    //   seedream→ Freepik Seedream V5 Lite (async)
     await postRef.update({ status: "generating" });
+
+    // Determina o provider ativo para compilar o prompt correto
+    const activeProvider: ImageProvider = isFalEnabled()
+      ? "fal"
+      : isImagen4Enabled()
+      ? "imagen4"
+      : (process.env.IMAGE_PROVIDER as ImageProvider | undefined) ?? "freepik";
+
+    // Compila prompt otimizado para o provider ativo
+    // Se o Art Director produziu art_direction estruturado, usa o compilador;
+    // caso contrário cai no freepikPrompt (visual_prompt elevado ou raw copy)
+    const compiledFinal = artDirection
+      ? compilePromptForProvider(activeProvider, artDirection, client).final
+      : freepikPrompt;
 
     let task_id:        string | null = null;
     let image_url:      string | null = null;
@@ -266,7 +317,7 @@ export async function POST(req: NextRequest) {
       // ── FAL.ai path (synchronous) ────────────────────────────────────────────
       try {
         image_url      = await generateImageFal({
-          prompt:  freepikPrompt,
+          prompt:  compiledFinal,
           format:  briefing.formato_sugerido,
           post_id: postRef.id,
           model:   resolveFalModel(),
@@ -283,7 +334,7 @@ export async function POST(req: NextRequest) {
       // ── Imagen 4 path (synchronous) ──────────────────────────────────────────
       try {
         image_url      = await imagenGenerate({
-          prompt:  freepikPrompt,
+          prompt:  compiledFinal,
           format:  briefing.formato_sugerido,
           post_id: postRef.id,
           model:   resolveImagenModel(),
@@ -301,7 +352,7 @@ export async function POST(req: NextRequest) {
       try {
         const aspect = ASPECT_RATIO[briefing.formato_sugerido] ?? "social_post_4_5";
         const task   = await createTask({
-          prompt:       freepikPrompt,
+          prompt:       compiledFinal,
           aspect_ratio: aspect,
           realism:      true,
           styling:      { colors: [{ color: client.primary_color, weight: 0.5 }] },

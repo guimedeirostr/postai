@@ -108,14 +108,59 @@ export interface GeneratedPost {
   art_direction?: ArtDirection; // structured output from Art Director Agent
   framework_used?: string;    // PAS | AIDA | PASTOR | PPPP
   hook_type?: string;         // Dor | Curiosidade | Pergunta | etc
-  image_provider?: "freepik" | "imagen4" | "fal"; // which provider generated image_url
+  /**
+   * Provider que gerou image_url.
+   *   fal            → Flux Pro txt2img padrão
+   *   fal_pulid      → Flux com PuLID (character/face lock)
+   *   fal_canny      → Flux com ControlNet Canny (structure lock)
+   *   fal_depth      → Flux com ControlNet Depth (volume/depth lock)
+   *   freepik        → Freepik Mystic (async polling)
+   *   seedream       → Freepik Seedream V5 Lite (async polling)
+   *   seedream_edit  → Freepik Seedream Edit img2img (async polling)
+   *   imagen4        → Google Imagen 4 (sync)
+   */
+  image_provider?: "freepik" | "seedream" | "seedream_edit" | "imagen4" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth";
   freepik_task_id?: string;
   image_url: string | null;
   composed_url?: string | null;            // final branded post (compositor output)
   layout_prompt?: string;          // AI-generated composition description for img2img
   composition_zone?: "left" | "right" | "bottom" | "top" | "center"; // safe text area
+  /** URL da foto de referência para character lock (PuLID) */
+  character_lock_url?: string | null;
+  /** URL da imagem de referência para ControlNet (Canny/Depth) */
+  control_image_url?: string | null;
+  /** Tipo de controle ControlNet utilizado */
+  control_type?: "canny" | "depth" | null;
   status: "pending" | "strategy" | "copy" | "art_direction" | "generating" | "composing" | "ready" | "approved" | "rejected" | "failed";
   created_at: Timestamp;
+}
+
+// ── Reference DNA ─────────────────────────────────────────────────────────────
+// Extraído via Claude Vision de uma arte de referência enviada pelo usuário.
+// Alimenta o Art Director e o Compositor com o DNA visual exato da referência.
+
+export interface ReferenceDNA {
+  /** Zona principal onde o texto vive na imagem */
+  composition_zone:     "left" | "right" | "bottom" | "top" | "center";
+  /** Descrição precisa das zonas de texto: posição, tamanho relativo, sobreposição */
+  text_zones:           string;
+  /** Tratamento de fundo atrás do texto: "dark gradient", "solid band", "glassmorphism", "none" */
+  background_treatment: string;
+  /** Estilo do headline principal: peso, cor, caixa alta, tamanho relativo, posição */
+  headline_style:       string;
+  /** Hierarquia tipográfica completa: relação H1 > H2 > body, alinhamento */
+  typography_hierarchy: string;
+  /** Prompt visual em inglês (cena, sujeito, luz, câmera) — sem texto/gráficos */
+  visual_prompt:        string;
+  /** Composição do design em inglês para o Art Director */
+  layout_prompt:        string;
+  /** Mood de cores dominante */
+  color_mood:           string;
+  /** Descrição em pt-BR do que torna esta arte uma boa referência */
+  description:          string;
+  pilar:                string;
+  format:               "feed" | "stories" | "reels_cover";
+  visual_headline_style: string;
 }
 
 // ── Carousel types ────────────────────────────────────────────────────────────

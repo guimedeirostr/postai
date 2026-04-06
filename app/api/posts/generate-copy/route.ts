@@ -6,7 +6,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { extractPromptFromImage } from "@/lib/freepik";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
-import type { BrandProfile, StrategyContext } from "@/types";
+import type { BrandProfile, StrategyContext, ReferenceDNA } from "@/types";
 
 export const maxDuration = 60;
 
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       reference_url,
       reference_image_base64,
       reference_image_type,
+      reference_dna,
       image_provider,
       extra_instructions,
       caption_suggestion,
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
       reference_url?: string;
       reference_image_base64?: string;
       reference_image_type?: string;
+      reference_dna?: ReferenceDNA;
       image_provider?: string;
       extra_instructions?: string;
       caption_suggestion?: string;
@@ -126,36 +128,86 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const referenceTextBlock = referenceImageBase64
-      ? [
-          `REFERÊNCIA VISUAL PRIORITÁRIA: A imagem acima define o estilo visual deste post.`,
-          freepikExtractedPrompt
-            ? `\nPROMPT EXTRAÍDO PELO FREEPIK (descrição técnica fiel da imagem — use como base para visual_prompt):\n"${freepikExtractedPrompt}"`
-            : "",
-          `\n\nSua tarefa:`,
-          `1. Analise profundamente: paleta de cores, estilo fotográfico, composição, mood, tipografia, atmosfera.`,
-          `2. Crie o visual_prompt replicando FIELMENTE esse estilo e paleta — NÃO use as cores da marca na imagem.${freepikExtractedPrompt ? " Incorpore e expanda o prompt extraído acima, adaptando ao tema." : ""}`,
-          `3. Crie o layout_prompt baseado na composição e posicionamento de texto da referência.`,
-          `4. A identidade da marca aparece APENAS no copy (visual_headline, legenda) e nos overlays de texto — nunca na paleta da imagem.`,
-          `\nTema: ${theme}\nObjetivo: ${objective}${caption_suggestion ? `\n\n💬 SUGESTÃO DE LEGENDA DO USUÁRIO (use como inspiração e base — adapte ao tom da marca e ao framework, mas preserve a essência e ideias-chave):\n"${caption_suggestion}"` : ""}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}`,
-          `\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
-        ].join("")
-      : `Tema: ${theme}\nObjetivo: ${objective}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`;
+    // ── Montar contexto de referência ─────────────────────────────────────────
+    // Prioridade: reference_dna (extraído no Stage 0) > imagem bruta > nenhum
 
-    const userContent: Anthropic.MessageParam["content"] = referenceImageBase64
-      ? [
-          {
-            type: "image",
-            source: { type: "base64", media_type: referenceMediaType, data: referenceImageBase64 },
-          },
-          { type: "text", text: referenceTextBlock as string },
-        ]
-      : referenceTextBlock;
+    let referenceTextBlock: string;
+    let userContent: Anthropic.MessageParam["content"];
+
+    if (reference_dna) {
+      // Caminho preferido: DNA estruturado extraído pelo analyze-reference
+      // Muito mais rico que enviar a imagem bruta — Claude tem hierarquia, zonas, etc.
+      const dnaBlock = [
+        `DNA VISUAL DA REFERÊNCIA — guia prioritário para este post:`,
+        ``,
+        `Zona de composição: ${reference_dna.composition_zone}`,
+        `Zonas de texto: ${reference_dna.text_zones}`,
+        `Tratamento de fundo: ${reference_dna.background_treatment}`,
+        `Estilo do headline: ${reference_dna.headline_style}`,
+        `Hierarquia tipográfica: ${reference_dna.typography_hierarchy}`,
+        `Mood de cores: ${reference_dna.color_mood}`,
+        `Pilar detectado: ${reference_dna.pilar}`,
+        ``,
+        `Visual prompt da referência (base para seu visual_prompt):`,
+        `"${reference_dna.visual_prompt}"`,
+        ``,
+        `Layout prompt da referência (base para seu layout_prompt):`,
+        `"${reference_dna.layout_prompt}"`,
+        ``,
+        `INSTRUÇÕES:`,
+        `1. Use o visual_prompt da referência como base — adapte ao tema atual, mantendo paleta, estilo e atmosfera.`,
+        `2. Use o layout_prompt da referência como base — mantenha a mesma zona de composição (${reference_dna.composition_zone}) e hierarquia tipográfica.`,
+        `3. A identidade da marca (cores, logo) aparece APENAS nos overlays — nunca substitua a paleta da imagem pelas cores da marca.`,
+        ``,
+        `Tema: ${theme}`,
+        `Objetivo: ${objective}`,
+        caption_suggestion ? `\n💬 SUGESTÃO DE LEGENDA:\n"${caption_suggestion}"` : "",
+        extra_instructions  ? `\n⚡ INSTRUÇÕES ADICIONAIS (prioridade máxima):\n${extra_instructions}` : "",
+        ``,
+        `Escreva o melhor post possível seguindo o framework selecionado.`,
+      ].filter(Boolean).join("\n");
+
+      referenceTextBlock = dnaBlock;
+      userContent = dnaBlock;
+
+    } else if (referenceImageBase64) {
+      // Fallback: imagem bruta sem análise prévia (Stage 0 foi pulado)
+      referenceTextBlock = [
+        `REFERÊNCIA VISUAL PRIORITÁRIA: A imagem acima define o estilo visual deste post.`,
+        freepikExtractedPrompt
+          ? `\nPROMPT EXTRAÍDO PELO FREEPIK:\n"${freepikExtractedPrompt}"`
+          : "",
+        `\n\nSua tarefa:`,
+        `1. Analise: paleta, estilo fotográfico, composição, mood, tipografia.`,
+        `2. Crie o visual_prompt replicando FIELMENTE esse estilo.`,
+        `3. Crie o layout_prompt baseado na composição da referência.`,
+        `4. Marca aparece APENAS nos overlays — nunca na paleta da imagem.`,
+        `\nTema: ${theme}\nObjetivo: ${objective}`,
+        caption_suggestion ? `\n\n💬 SUGESTÃO DE LEGENDA:\n"${caption_suggestion}"` : "",
+        extra_instructions  ? `\n\n⚡ INSTRUÇÕES ADICIONAIS:\n${extra_instructions}` : "",
+        `\n\nEscreva o melhor post possível seguindo o framework selecionado.`,
+      ].join("");
+
+      userContent = [
+        { type: "image", source: { type: "base64", media_type: referenceMediaType, data: referenceImageBase64 } },
+        { type: "text", text: referenceTextBlock },
+      ];
+
+    } else {
+      referenceTextBlock = [
+        `Tema: ${theme}`,
+        `Objetivo: ${objective}`,
+        extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS:\n${extra_instructions}` : "",
+        `\n\nEscreva o melhor post possível seguindo o framework selecionado.`,
+      ].join("");
+
+      userContent = referenceTextBlock;
+    }
 
     const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
-      system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined, undefined, !!referenceImageBase64),
+      system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined, undefined, !!(referenceImageBase64 || reference_dna)),
       messages: [{ role: "user", content: userContent }],
     });
 
