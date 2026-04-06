@@ -123,19 +123,62 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     img.src = objectUrl;
   }
 
+  // Compress image via canvas before uploading to library (prevents 413 / server errors)
+  function compressForUpload(file: File): Promise<File> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const MAX = 1920;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else                { width  = Math.round(width  * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => {
+          resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }) : file);
+        }, "image/jpeg", 0.85);
+      };
+      img.onerror = () => resolve(file); // fallback: use original
+      img.src = objectUrl;
+    });
+  }
+
   async function handleLibraryUpload(file: File) {
     setLibUploadLoading(true);
     setLibUploadError(null);
     try {
+      const compressed = await compressForUpload(file);
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", compressed);
       fd.append("category", "outro");
-      const res  = await fetch(`/api/clients/${client.id}/photos`, { method: "POST", body: fd });
-      const data = await res.json() as { id?: string; url?: string; error?: string };
-      if (!res.ok || !data.url) {
-        setLibUploadError(data.error ?? "Erro ao fazer upload.");
+
+      let res: Response;
+      try {
+        res = await fetch(`/api/clients/${client.id}/photos`, { method: "POST", body: fd });
+      } catch {
+        setLibUploadError("Sem conexão com o servidor. Verifique sua internet.");
         return;
       }
+
+      // Guard against non-JSON responses (500 HTML, 413, etc.)
+      let data: { id?: string; url?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        setLibUploadError(`Erro ${res.status} ao fazer upload. Tente novamente.`);
+        return;
+      }
+
+      if (!res.ok || !data.url) {
+        setLibUploadError(data.error ?? `Erro ${res.status} ao fazer upload.`);
+        return;
+      }
+
       const newPhoto = {
         id:          data.id ?? "",
         url:         data.url,
@@ -150,8 +193,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       } satisfies BrandPhoto;
       setLibraryPhotos(prev => [newPhoto, ...prev]);
       setSelectedLibPhoto(data.url);
-    } catch {
-      setLibUploadError("Erro de conexão ao fazer upload.");
+    } catch (err) {
+      setLibUploadError(err instanceof Error ? err.message : "Erro inesperado ao fazer upload.");
     } finally {
       setLibUploadLoading(false);
     }
