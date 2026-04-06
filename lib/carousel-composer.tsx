@@ -2,14 +2,9 @@
  * lib/carousel-composer.tsx
  *
  * Compositor de slides de carrossel para Instagram.
- * Todos os slides são quadrados (1080×1080).
+ * Formato: 1080×1350 (4:5) — padrão Instagram feed/carrossel.
  *
  * Stack: satori → SVG → resvg → PNG overlay → sharp composite → JPEG → R2
- *
- * Tipos de slide:
- *   hook     — slide 0: imagem AI como fundo + overlay com headline
- *   content  — slides intermediários: fundo sólido + texto
- *   cta      — último slide: fundo sólido + CTA centralizado
  */
 
 import React from "react";
@@ -19,11 +14,11 @@ import sharp from "sharp";
 import { uploadToR2 } from "./r2";
 import type { CarouselSlide, BrandProfile } from "@/types";
 
-// ── Dimensões ─────────────────────────────────────────────────────────────────
+// ── Dimensões Instagram 4:5 ───────────────────────────────────────────────────
 const W = 1080;
-const H = 1080;
+const H = 1350;
 
-// ── Font cache (shared with composer.tsx warm invocations) ────────────────────
+// ── Font cache ────────────────────────────────────────────────────────────────
 interface FontCache { montserrat900: ArrayBuffer; inter700: ArrayBuffer; }
 let _fontCache: FontCache | null = null;
 
@@ -53,14 +48,15 @@ async function ensureFonts(): Promise<FontCache> {
 }
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
-function ensureHex(c: string): string { return c?.startsWith("#") ? c : `#${c ?? "6d28d9"}`; }
+function ensureHex(c: string | null | undefined): string {
+  if (!c) return "#6d28d9";
+  return c.startsWith("#") ? c : `#${c}`;
+}
 function hexToRgba(hex: string, a: number): string {
   const h = ensureHex(hex).replace("#","");
   const r = parseInt(h.slice(0,2),16)||0, g=parseInt(h.slice(2,4),16)||0, b=parseInt(h.slice(4,6),16)||0;
   return `rgba(${r},${g},${b},${a})`;
 }
-
-// Darkens hex color by percent (0-100)
 function darken(hex: string, pct: number): string {
   const h = ensureHex(hex).replace("#","");
   const factor = 1 - pct/100;
@@ -69,8 +65,6 @@ function darken(hex: string, pct: number): string {
   const b = Math.round((parseInt(h.slice(4,6),16)||0)*factor);
   return `#${r.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${b.toString(16).padStart(2,"0")}`;
 }
-
-// Resolve background color from bg_style
 function resolveBg(style: CarouselSlide["bg_style"], primary: string, secondary: string): string {
   switch(style) {
     case "brand":  return ensureHex(primary);
@@ -80,21 +74,20 @@ function resolveBg(style: CarouselSlide["bg_style"], primary: string, secondary:
     default:       return ensureHex(primary);
   }
 }
-
-// Choose text color that contrasts with bg
 function contrastText(bg: string): string {
   const h = bg.replace("#","");
   const r = parseInt(h.slice(0,2),16)||0, g=parseInt(h.slice(2,4),16)||0, b=parseInt(h.slice(4,6),16)||0;
   const lum = (0.299*r + 0.587*g + 0.114*b)/255;
   return lum > 0.55 ? "#111111" : "#ffffff";
 }
+function isDarkBg(bg: string): boolean { return contrastText(bg) === "#ffffff"; }
 
-// Auto-scale headline font size
 function headlineFontSize(text: string): number {
   const l = text.length;
-  if (l <= 15) return 88;
-  if (l <= 25) return 72;
-  if (l <= 35) return 60;
+  if (l <= 12) return 96;
+  if (l <= 20) return 82;
+  if (l <= 30) return 70;
+  if (l <= 40) return 60;
   return 52;
 }
 
@@ -105,7 +98,7 @@ function splitHeadline(text: string): [string, string] {
   return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
 }
 
-// ── Satori font config helper ─────────────────────────────────────────────────
+// ── Satori config ─────────────────────────────────────────────────────────────
 function satoriConfig(fonts: FontCache): Parameters<typeof satori>[1] {
   return {
     width: W, height: H,
@@ -116,46 +109,45 @@ function satoriConfig(fonts: FontCache): Parameters<typeof satori>[1] {
   };
 }
 
-// ── Render overlay → PNG buffer via satori + resvg ────────────────────────────
 async function renderOverlay(element: React.ReactElement, fonts: FontCache): Promise<Buffer> {
   const svg = await satori(element, satoriConfig(fonts));
   const png = new Resvg(svg, { fitTo: { mode: "width", value: W } }).render().asPng();
   return Buffer.from(png);
 }
 
-// ── Slide counter pill element ────────────────────────────────────────────────
+// ── Slide counter ─────────────────────────────────────────────────────────────
 function SlideCounter({ current, total, textColor }: { current: number; total: number; textColor: string }) {
   return (
     <div style={{
-      position: "absolute", top: 32, right: 40,
-      backgroundColor: "rgba(0,0,0,0.28)", borderRadius: 40,
-      padding: "8px 20px", display: "flex", alignItems: "center",
+      position: "absolute", top: 40, right: 48,
+      backgroundColor: "rgba(0,0,0,0.30)", borderRadius: 40,
+      padding: "10px 24px", display: "flex", alignItems: "center",
     }}>
-      <span style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 22, color: textColor, letterSpacing: 1 }}>
+      <span style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 24, color: textColor, letterSpacing: 1 }}>
         {String(current).padStart(2,"0")} / {String(total).padStart(2,"0")}
       </span>
     </div>
   );
 }
 
-// ── Brand strip element ───────────────────────────────────────────────────────
+// ── Brand strip ───────────────────────────────────────────────────────────────
 function BrandStrip({ clientName, handle, primary, secondary }: {
   clientName: string; handle: string; primary: string; secondary: string;
 }) {
-  const bg = ensureHex(primary);
+  const bg  = ensureHex(primary);
   const acc = ensureHex(secondary);
   return (
     <div style={{
-      position: "absolute", bottom: 0, left: 0, right: 0, height: 90,
-      backgroundColor: bg, borderTop: `3px solid ${acc}`,
+      position: "absolute", bottom: 0, left: 0, right: 0, height: 96,
+      backgroundColor: bg,
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "0 48px",
+      padding: "0 56px",
     }}>
-      <span style={{ color: "#fff", fontSize: 26, fontFamily: "Inter", fontWeight: 700, letterSpacing: 1 }}>
+      <span style={{ color: "#fff", fontSize: 28, fontFamily: "Inter", fontWeight: 700, letterSpacing: 1.5 }}>
         {clientName.toUpperCase()}
       </span>
       {handle && (
-        <span style={{ color: acc, fontSize: 26, fontFamily: "Inter", fontWeight: 700 }}>
+        <span style={{ color: acc, fontSize: 28, fontFamily: "Inter", fontWeight: 700 }}>
           @{handle.replace(/^@/,"")}
         </span>
       )}
@@ -163,22 +155,23 @@ function BrandStrip({ clientName, handle, primary, secondary }: {
   );
 }
 
-// ── HOOK SLIDE overlay (satori template) ─────────────────────────────────────
+// ── HOOK SLIDE overlay ────────────────────────────────────────────────────────
 function buildHookOverlay(
   slide: CarouselSlide, client: BrandProfile, slideNum: number, total: number
 ): React.ReactElement {
-  const primary   = ensureHex(client.primary_color ?? "#6d28d9");
-  const secondary = ensureHex(client.secondary_color ?? "#f59e0b");
+  const primary   = ensureHex(client.primary_color);
+  const secondary = ensureHex(client.secondary_color);
   const [line1, line2] = splitHeadline(slide.headline);
-  const hasTwoLines    = !!line2;
   const fs = headlineFontSize(slide.headline);
 
   return (
     <div style={{ width: W, height: H, display: "flex", position: "relative", overflow: "hidden" }}>
-      {/* Gradient overlay */}
+
+      {/* Gradient overlay — covers bottom 65% */}
       <div style={{
-        position: "absolute", bottom: 90, left: 0, right: 0, height: Math.round(H * 0.6),
-        background: `linear-gradient(to bottom, ${hexToRgba(primary,0)} 0%, ${hexToRgba(primary,0.65)} 55%, ${hexToRgba(primary,0.95)} 100%)`,
+        position: "absolute", bottom: 96, left: 0, right: 0,
+        height: Math.round(H * 0.65),
+        background: `linear-gradient(to bottom, ${hexToRgba(primary,0)} 0%, ${hexToRgba(primary,0.60)} 50%, ${hexToRgba(primary,0.96)} 100%)`,
         display: "flex",
       }} />
 
@@ -190,122 +183,107 @@ function buildHookOverlay(
 
       {/* Swipe hint */}
       <div style={{
-        position: "absolute", bottom: 106, right: 40,
+        position: "absolute", bottom: 112, right: 48,
         display: "flex", alignItems: "center", gap: 6,
       }}>
-        <span style={{ color: "rgba(255,255,255,0.75)", fontSize: 18, fontFamily: "Inter", fontWeight: 700, letterSpacing: 1 }}>
-          Deslize →
+        <span style={{ color: "rgba(255,255,255,0.78)", fontSize: 20, fontFamily: "Inter", fontWeight: 700, letterSpacing: 1 }}>
+          Deslize ≡
         </span>
       </div>
 
-      {/* Headline */}
+      {/* Headline block */}
       <div style={{
-        position: "absolute", bottom: 160, left: 48, right: 48,
+        position: "absolute", bottom: 180, left: 52, right: 52,
         display: "flex", flexDirection: "column",
       }}>
+        {slide.subheadline && (
+          <span style={{
+            fontSize: 26, fontWeight: 700, fontFamily: "Inter",
+            color: "rgba(255,255,255,0.78)", marginBottom: 10, lineHeight: 1.3,
+          }}>
+            {slide.subheadline}
+          </span>
+        )}
         <span style={{ fontSize: fs, fontWeight: 900, fontFamily: "Montserrat", color: "#ffffff", lineHeight: 1.0, letterSpacing: -1 }}>
           {line1}
         </span>
-        {hasTwoLines && (
+        {line2 && (
           <span style={{ fontSize: fs, fontWeight: 900, fontFamily: "Montserrat", color: secondary, lineHeight: 1.05, letterSpacing: -1 }}>
             {line2}
           </span>
         )}
-        {slide.subheadline && (
-          <span style={{ fontSize: 28, fontWeight: 700, fontFamily: "Inter", color: "rgba(255,255,255,0.82)", marginTop: 12, lineHeight: 1.3 }}>
-            {slide.subheadline}
-          </span>
-        )}
       </div>
 
-      {/* Logo placeholder (filled by sharp composite) */}
-      <div style={{
-        position: "absolute", top: 32, left: 36, height: 80, minWidth: 48,
-        backgroundColor: hexToRgba(primary, 0.72), borderRadius: 14,
-        display: "flex", alignItems: "center", padding: "8px 16px",
-      }} />
+      {/* Logo area — NO background, just reserve space; sharp composites logo here */}
+      <div style={{ position: "absolute", top: 40, left: 44, height: 80, width: 200, display: "flex" }} />
     </div>
   );
 }
 
-// ── CONTENT SLIDE element (pure satori — no background image) ─────────────────
+// ── CONTENT SLIDE overlay ─────────────────────────────────────────────────────
 function buildContentOverlay(
   slide: CarouselSlide, client: BrandProfile, slideNum: number, total: number
 ): React.ReactElement {
-  const primary   = ensureHex(client.primary_color ?? "#6d28d9");
-  const secondary = ensureHex(client.secondary_color ?? "#f59e0b");
+  const primary   = ensureHex(client.primary_color);
+  const secondary = ensureHex(client.secondary_color);
   const bg        = resolveBg(slide.bg_style, primary, secondary);
   const textColor = contrastText(bg);
-  const accentColor = textColor === "#ffffff" ? secondary : darken(secondary, 20);
-
+  const dark      = isDarkBg(bg);
+  const accentColor = dark ? secondary : darken(secondary, 20);
   const [line1, line2] = splitHeadline(slide.headline);
-  const hasTwoLines    = !!line2;
   const fs = headlineFontSize(slide.headline);
-
-  // Content block vertical centering: emoji at top third, then headline, then body
-  const hasEmoji  = !!slide.icon_emoji;
-  const hasNum    = !!slide.number_highlight;
-  const hasBody   = !!slide.body_text;
 
   return (
     <div style={{ width: W, height: H, display: "flex", position: "relative", overflow: "hidden", backgroundColor: bg }}>
-      {/* Subtle top accent bar */}
+
+      {/* Top accent bar */}
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, backgroundColor: accentColor }} />
 
       {/* Slide counter */}
-      <SlideCounter current={slideNum} total={total} textColor={textColor === "#ffffff" ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.5)"} />
+      <SlideCounter current={slideNum} total={total} textColor={dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.45)"} />
 
-      {/* Main content block — vertically centered */}
+      {/* Main content — vertically centered between logo area and brand strip */}
       <div style={{
-        position: "absolute", top: 80, left: 48, right: 48, bottom: 90,
+        position: "absolute", top: 130, left: 56, right: 56, bottom: 96,
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         gap: 0,
       }}>
-        {/* Emoji */}
-        {hasEmoji && (
-          <div style={{ fontSize: 80, lineHeight: 1, marginBottom: 16, display: "flex" }}>
+        {slide.icon_emoji && (
+          <div style={{ fontSize: 88, lineHeight: 1, marginBottom: 20, display: "flex" }}>
             {slide.icon_emoji}
           </div>
         )}
-
-        {/* Number highlight */}
-        {hasNum && (
-          <div style={{ fontSize: 140, fontWeight: 900, fontFamily: "Montserrat", color: accentColor, lineHeight: 0.9, marginBottom: 8, display: "flex" }}>
+        {slide.number_highlight && (
+          <div style={{ fontSize: 150, fontWeight: 900, fontFamily: "Montserrat", color: accentColor, lineHeight: 0.85, marginBottom: 10, display: "flex" }}>
             {slide.number_highlight}
           </div>
         )}
-
-        {/* Subheadline */}
         {slide.subheadline && (
           <div style={{
-            fontSize: 24, fontWeight: 700, fontFamily: "Inter",
-            color: textColor === "#ffffff" ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.5)",
-            letterSpacing: 2, textTransform: "uppercase" as const, marginBottom: 12,
+            fontSize: 26, fontWeight: 700, fontFamily: "Inter",
+            color: dark ? "rgba(255,255,255,0.60)" : "rgba(0,0,0,0.50)",
+            letterSpacing: 2.5, textTransform: "uppercase" as const, marginBottom: 14,
             display: "flex",
           }}>
             {slide.subheadline}
           </div>
         )}
-
-        {/* Headline */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
           <span style={{ fontSize: fs, fontWeight: 900, fontFamily: "Montserrat", color: textColor, lineHeight: 1.0, letterSpacing: -1, textAlign: "center" as const }}>
             {line1}
           </span>
-          {hasTwoLines && (
+          {line2 && (
             <span style={{ fontSize: fs, fontWeight: 900, fontFamily: "Montserrat", color: accentColor, lineHeight: 1.05, letterSpacing: -1, textAlign: "center" as const }}>
               {line2}
             </span>
           )}
         </div>
-
-        {/* Body text */}
-        {hasBody && (
+        {slide.body_text && (
           <div style={{
-            fontSize: 26, fontWeight: 700, fontFamily: "Inter",
-            color: textColor === "#ffffff" ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.72)",
-            lineHeight: 1.45, textAlign: "center" as const,
-            marginTop: 20, maxWidth: 880,
+            fontSize: 28, fontWeight: 700, fontFamily: "Inter",
+            color: dark ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.72)",
+            lineHeight: 1.50, textAlign: "center" as const,
+            marginTop: 24, maxWidth: 900,
             display: "flex", flexWrap: "wrap" as const, justifyContent: "center",
           }}>
             {slide.body_text}
@@ -316,53 +294,46 @@ function buildContentOverlay(
       {/* Brand strip */}
       <BrandStrip clientName={client.name} handle={client.instagram_handle ?? ""} primary={primary} secondary={secondary} />
 
-      {/* Logo placeholder */}
-      <div style={{
-        position: "absolute", top: 32, left: 36, height: 64, minWidth: 40,
-        backgroundColor: textColor === "#ffffff" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)",
-        borderRadius: 12, display: "flex", alignItems: "center", padding: "8px 14px",
-      }} />
+      {/* Logo area — NO background; sharp composites logo here */}
+      <div style={{ position: "absolute", top: 40, left: 44, height: 70, width: 200, display: "flex" }} />
     </div>
   );
 }
 
-// ── CTA SLIDE element ─────────────────────────────────────────────────────────
+// ── CTA SLIDE overlay ─────────────────────────────────────────────────────────
 function buildCTAOverlay(
   slide: CarouselSlide, client: BrandProfile, slideNum: number, total: number
 ): React.ReactElement {
-  const primary   = ensureHex(client.primary_color ?? "#6d28d9");
-  const secondary = ensureHex(client.secondary_color ?? "#f59e0b");
-  // CTA always uses brand bg
-  const bg        = darken(primary, 10); // slightly darker for depth
+  const primary   = ensureHex(client.primary_color);
+  const secondary = ensureHex(client.secondary_color);
+  const bg        = darken(primary, 10);
 
   return (
     <div style={{ width: W, height: H, display: "flex", position: "relative", overflow: "hidden", backgroundColor: bg }}>
+
       {/* Radial glow */}
       <div style={{
-        position: "absolute", top: "20%", left: "50%",
-        width: 600, height: 600, borderRadius: "50%",
-        background: `radial-gradient(circle, ${hexToRgba(secondary,0.18)} 0%, transparent 70%)`,
+        position: "absolute", top: "18%", left: "50%",
+        width: 700, height: 700, borderRadius: "50%",
+        background: `radial-gradient(circle, ${hexToRgba(secondary,0.20)} 0%, transparent 70%)`,
         transform: "translateX(-50%)",
         display: "flex",
       }} />
 
       {/* Slide counter */}
-      <SlideCounter current={slideNum} total={total} textColor="rgba(255,255,255,0.6)" />
+      <SlideCounter current={slideNum} total={total} textColor="rgba(255,255,255,0.55)" />
 
       {/* Center content */}
       <div style={{
-        position: "absolute", top: 80, left: 48, right: 48, bottom: 90,
+        position: "absolute", top: 130, left: 56, right: 56, bottom: 96,
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         gap: 0,
       }}>
-        {/* Emoji */}
         {slide.icon_emoji && (
-          <div style={{ fontSize: 80, lineHeight: 1, marginBottom: 24, display: "flex" }}>
+          <div style={{ fontSize: 88, lineHeight: 1, marginBottom: 28, display: "flex" }}>
             {slide.icon_emoji}
           </div>
         )}
-
-        {/* Headline */}
         <div style={{
           fontSize: headlineFontSize(slide.headline), fontWeight: 900, fontFamily: "Montserrat",
           color: "#ffffff", lineHeight: 1.0, letterSpacing: -1,
@@ -370,30 +341,25 @@ function buildCTAOverlay(
         }}>
           {slide.headline.toUpperCase()}
         </div>
-
-        {/* Subheadline */}
         {slide.subheadline && (
           <div style={{
-            fontSize: 28, fontWeight: 700, fontFamily: "Inter",
-            color: secondary, lineHeight: 1.35, textAlign: "center" as const,
-            marginTop: 16, maxWidth: 820,
+            fontSize: 30, fontWeight: 700, fontFamily: "Inter",
+            color: secondary, lineHeight: 1.40, textAlign: "center" as const,
+            marginTop: 20, maxWidth: 880,
             display: "flex", flexWrap: "wrap" as const, justifyContent: "center",
           }}>
             {slide.subheadline}
           </div>
         )}
-
-        {/* CTA Button */}
         {slide.cta_text && (
           <div style={{
-            marginTop: 40,
-            backgroundColor: secondary, borderRadius: 60,
-            padding: "22px 56px", display: "flex", alignItems: "center",
+            marginTop: 48,
+            backgroundColor: secondary, borderRadius: 64,
+            padding: "26px 64px", display: "flex", alignItems: "center",
           }}>
             <span style={{
-              fontFamily: "Inter", fontWeight: 700, fontSize: 30,
-              color: contrastText(ensureHex(secondary)),
-              letterSpacing: 0.5,
+              fontFamily: "Inter", fontWeight: 700, fontSize: 32,
+              color: contrastText(ensureHex(secondary)), letterSpacing: 0.5,
             }}>
               {slide.cta_text}
             </span>
@@ -404,28 +370,43 @@ function buildCTAOverlay(
       {/* Brand strip */}
       <BrandStrip clientName={client.name} handle={client.instagram_handle ?? ""} primary={primary} secondary={secondary} />
 
-      {/* Logo placeholder (large — composited by sharp) */}
-      <div style={{
-        position: "absolute", top: 32, left: 36, height: 64, minWidth: 40,
-        backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 12,
-        display: "flex", alignItems: "center", padding: "8px 14px",
-      }} />
+      {/* Logo area — NO background */}
+      <div style={{ position: "absolute", top: 40, left: 44, height: 70, width: 200, display: "flex" }} />
     </div>
   );
 }
 
 // ── Composite logo via sharp ──────────────────────────────────────────────────
+/**
+ * Composites the brand logo onto the slide.
+ * - If the background is dark and `logoWhiteUrl` is available, uses the white version.
+ * - If the background is dark and no white logo, negates the original (dark→white).
+ * - Always drops a subtle shadow pill behind the logo for contrast.
+ */
 async function compositeLogo(
-  base: Buffer, logoUrl: string | null | undefined
+  base: Buffer,
+  logoUrl: string | null | undefined,
+  logoWhiteUrl: string | null | undefined,
+  dark: boolean,
 ): Promise<Buffer> {
-  if (!logoUrl) return base;
+  const url = dark && logoWhiteUrl ? logoWhiteUrl : logoUrl;
+  if (!url) return base;
   try {
-    const r = await fetch(logoUrl, { signal: AbortSignal.timeout(8_000) });
+    const r = await fetch(url, { signal: AbortSignal.timeout(8_000) });
     if (!r.ok) return base;
-    const logo = await sharp(Buffer.from(await r.arrayBuffer()))
-      .resize(200, 64, { fit: "inside" })
+
+    let logoSharp = sharp(Buffer.from(await r.arrayBuffer()))
+      .resize(200, 70, { fit: "inside", withoutEnlargement: false });
+
+    // If dark bg and no white logo available, negate colors to make logo appear white
+    if (dark && !logoWhiteUrl) {
+      logoSharp = logoSharp.negate({ alpha: false });
+    }
+
+    const logo = await logoSharp.png().toBuffer();
+    return await sharp(base)
+      .composite([{ input: logo, top: 44, left: 50 }])
       .toBuffer();
-    return await sharp(base).composite([{ input: logo, top: 44, left: 50 }]).toBuffer();
   } catch { return base; }
 }
 
@@ -454,15 +435,25 @@ export async function composeHookSlide(opts: ComposeHookSlideOptions): Promise<s
   const overlay = buildHookOverlay(opts.slide, opts.client, opts.slideNum, opts.total);
   const ovPng   = await renderOverlay(overlay, fonts);
 
-  // Background: download + resize to square
+  // Background: download + resize to 4:5
   const imgRes = await fetch(opts.imageUrl);
   if (!imgRes.ok) throw new Error(`[carousel-composer] Falha ao baixar imageUrl: ${imgRes.status}`);
   const bg = await sharp(Buffer.from(await imgRes.arrayBuffer()))
     .resize(W, H, { fit: "cover", position: "attention" })
     .toBuffer();
 
-  let composed = await sharp(bg).composite([{ input: ovPng, top: 0, left: 0 }]).jpeg({ quality: 95 }).toBuffer();
-  composed = await compositeLogo(composed, opts.client.logo_url);
+  let composed = await sharp(bg)
+    .composite([{ input: ovPng, top: 0, left: 0 }])
+    .jpeg({ quality: 95 })
+    .toBuffer();
+
+  // Hook slide has photo over it — logo on dark overlay → use white version
+  composed = await compositeLogo(
+    composed,
+    opts.client.logo_url,
+    opts.client.logo_white_url,
+    true, // hook always has dark overlay
+  );
 
   const key = `carousels/${opts.carouselId}/slide-${opts.slide.index}.jpg`;
   return uploadToR2(key, composed, "image/jpeg");
@@ -472,16 +463,28 @@ export async function composeHookSlide(opts: ComposeHookSlideOptions): Promise<s
 export async function composeContentSlide(opts: ComposeContentSlideOptions): Promise<string> {
   const fonts = await ensureFonts();
 
+  const primary   = ensureHex(opts.client.primary_color);
+  const secondary = ensureHex(opts.client.secondary_color);
+
   const isCTA = opts.slide.type === "cta";
+  const bg = isCTA
+    ? darken(primary, 10)
+    : resolveBg(opts.slide.bg_style, primary, secondary);
+  const dark = isDarkBg(bg);
+
   const element = isCTA
     ? buildCTAOverlay(opts.slide, opts.client, opts.slideNum, opts.total)
     : buildContentOverlay(opts.slide, opts.client, opts.slideNum, opts.total);
 
   const ovPng = await renderOverlay(element, fonts);
 
-  // Content slides don't need a background image — satori fills the entire canvas
   let composed = await sharp(ovPng).jpeg({ quality: 95 }).toBuffer();
-  composed = await compositeLogo(composed, opts.client.logo_url);
+  composed = await compositeLogo(
+    composed,
+    opts.client.logo_url,
+    opts.client.logo_white_url,
+    dark,
+  );
 
   const key = `carousels/${opts.carouselId}/slide-${opts.slide.index}.jpg`;
   return uploadToR2(key, composed, "image/jpeg");

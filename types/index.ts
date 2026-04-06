@@ -13,6 +13,7 @@ export interface BrandProfile {
   agency_id: string;
   name: string;
   logo_url: string | null;
+  logo_white_url?: string | null; // Versão negativa/branca da logo (para fundos escuros)
   primary_color: string;
   secondary_color: string;
   fonts: string[];

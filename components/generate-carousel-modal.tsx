@@ -225,6 +225,11 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
   }
 
   // ── Download ────────────────────────────────────────────────────────────────
+  // Usa proxy server-side para evitar erros de CORS ao fazer fetch de URLs do R2
+  function proxyUrl(url: string): string {
+    return `/api/proxy/image?url=${encodeURIComponent(url)}`;
+  }
+
   async function downloadAll() {
     const ready = composedSlides.filter(s => s.composed_url);
     if (!ready.length) return;
@@ -232,7 +237,7 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
     for (let i = 0; i < ready.length; i++) {
       const url = ready[i].composed_url!;
       try {
-        const res  = await fetch(url);
+        const res  = await fetch(proxyUrl(url));
         const blob = await res.blob();
         const burl = URL.createObjectURL(blob);
         const a    = document.createElement("a");
@@ -251,7 +256,7 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
 
   async function downloadSlide(slide: CarouselSlide) {
     if (!slide.composed_url) return;
-    const res  = await fetch(slide.composed_url);
+    const res  = await fetch(proxyUrl(slide.composed_url));
     const blob = await res.blob();
     const burl = URL.createObjectURL(blob);
     const a    = document.createElement("a");
