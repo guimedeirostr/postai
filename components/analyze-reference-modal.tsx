@@ -68,16 +68,37 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
   function handleUploadFile(file: File) {
     setError(null);
     setPostUrl("");
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const [header, b64] = dataUrl.split(",");
-      const mime = header.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
-      setUploadB64(b64);
-      setUploadMime(mime);
+    // Compress via canvas before base64 — prevents 413 on large photos
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX = 1200;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else                { width  = Math.round(width  * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      setUploadB64(dataUrl.split(",")[1]);
+      setUploadMime("image/jpeg");
       setUploadPreview(dataUrl);
     };
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      // fallback: use FileReader without compression
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setUploadB64(dataUrl.split(",")[1]);
+        setUploadMime(file.type || "image/jpeg");
+        setUploadPreview(dataUrl);
+      };
+      reader.readAsDataURL(file);
+    };
+    img.src = objectUrl;
   }
 
   function clearUpload() {
