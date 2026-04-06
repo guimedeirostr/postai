@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { createTask, createSeedreamTask, createSeedreamEditTask, freepikAspect, FreepikAuthError } from "@/lib/freepik";
+import { createTask, createSeedreamTask, createSeedreamEditTask, freepikAspect, FreepikAuthError, extractPromptFromImage } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 
@@ -89,8 +89,20 @@ export async function POST(req: NextRequest) {
       const mimeType = ct.split(";")[0].trim();
       const dataUri  = `data:${mimeType};base64,${imgB64}`;
 
+      // Extract a faithful prompt from the actual photo via Freepik Image-to-Prompt.
+      // This replaces the Claude-generated visual_prompt (which describes the brand strategy,
+      // not the actual image content), removing conflicts that cause Seedream Edit to drift
+      // away from the reference photo's composition, angle, and visual elements.
+      const extractedPrompt = await extractPromptFromImage({
+        imageBase64: imgB64,
+        imageMime:   mimeType,
+      });
+
+      // Use extracted prompt if available; fall back to the Claude visual_prompt.
+      const editPrompt = extractedPrompt ?? (post.visual_prompt as string);
+
       const { task_id } = await createSeedreamEditTask({
-        prompt:           post.visual_prompt as string,
+        prompt:           editPrompt,
         aspect_ratio:     aspect,
         reference_images: [dataUri],
       });
