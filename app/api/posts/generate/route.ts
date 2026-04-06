@@ -35,7 +35,7 @@ import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, 
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 import { composePost } from "@/lib/composer";
 import { compilePromptForProvider, type ImageProvider } from "@/lib/prompt-compiler";
-import type { ArtDirection, BrandProfile, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA } from "@/types";
+import type { ArtDirection, BrandProfile, BrandDNA, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA } from "@/types";
 
 // Allow up to 60s — Imagen 4 is synchronous and can take 5–15s
 export const maxDuration = 60;
@@ -128,10 +128,30 @@ export async function POST(req: NextRequest) {
       rationale:          briefing.rationale,
     });
 
+    // ── Step 1b: Carregar BrandDNA sintetizado (se existir) ──────────────────
+    let brandDna: BrandDNA | null = null;
+    try {
+      const dnaDoc = await adminDb
+        .collection("clients").doc(client_id)
+        .collection("brand_dna").doc("current")
+        .get();
+      if (dnaDoc.exists) {
+        brandDna = dnaDoc.data() as BrandDNA;
+      }
+    } catch {
+      // Non-fatal — geração continua sem BrandDNA
+    }
+
     // ── Step 2a: Se reference_dna fornecido, salva no Firestore ─────────────
-    // Converte o DNA em um DesignExample temporário e armazena para o Art Director
     if (reference_dna) {
       await postRef.update({ reference_dna });
+    }
+    if (brandDna) {
+      await postRef.update({
+        brand_dna_used:       true,
+        brand_dna_confidence: brandDna.confidence_score,
+        brand_dna_examples:   brandDna.examples_count,
+      });
     }
 
     // ── Step 2: Load client design examples (few-shot for Copy agent) ────────
@@ -267,6 +287,7 @@ export async function POST(req: NextRequest) {
             layout_prompt:   copy.layout_prompt,
           },
           designExamples.length ? designExamples : undefined,
+          brandDna ?? undefined,
         ),
         messages: [{ role: "user", content: "Gere a direção de arte profissional para este post." }],
       });

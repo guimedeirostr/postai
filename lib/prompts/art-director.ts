@@ -1,4 +1,4 @@
-import type { BrandProfile, StrategyBriefing, DesignExample } from "@/types";
+import type { BrandProfile, StrategyBriefing, DesignExample, BrandDNA } from "@/types";
 
 export interface ArtDirection {
   visual_style:       string;
@@ -90,13 +90,49 @@ export function buildArtDirectorPrompt(
   client:          BrandProfile,
   briefing:        StrategyBriefing,
   copy:            CopyContext,
-  designExamples?: DesignExample[]
+  designExamples?: DesignExample[],
+  brandDna?:       BrandDNA
 ): string {
   const defaults = PILAR_STYLE_MAP[briefing.pilar] ?? PILAR_STYLE_MAP["Engajamento"];
+
+  // Bloco de BrandDNA sintetizado — injetado como lei primária quando disponível
+  const brandDnaBlock = brandDna ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧬 DNA VISUAL DA MARCA — APRENDIDO DE ${brandDna.examples_count} POSTS REAIS (confiança: ${brandDna.confidence_score}/100)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRIORIDADE MÁXIMA. Este DNA foi sintetizado automaticamente de posts REAIS aprovados pela marca.
+Estas são as leis visuais desta marca — seguir antes de qualquer outra instrução.
+
+IDENTIDADE VISUAL:
+${brandDna.brand_visual_identity}
+
+REGRAS QUE ESTA MARCA NUNCA QUEBRA:
+${brandDna.design_rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}
+
+PADRÕES APRENDIDOS:
+Zona dominante:       ${brandDna.dominant_composition_zone}
+Posicionamento texto: ${brandDna.text_placement_pattern}
+Fundo nos textos:     ${brandDna.background_treatment}
+Tipografia padrão:    ${brandDna.typography_pattern}
+Fotografia:           ${brandDna.photography_style}
+Cores:                ${brandDna.color_treatment}
+Mood visual:          ${brandDna.image_mood}
+Iluminação:           ${brandDna.lighting_pattern}
+
+TEMPLATE VISUAL BASE (adapte ao tema "${briefing.tema}" — mantenha o estilo):
+${brandDna.visual_prompt_template}
+
+TEMPLATE DE LAYOUT BASE (adapte ao texto "${copy.visual_headline}" — mantenha a composição):
+${brandDna.layout_prompt_template}
+
+INSTRUÇÃO: use os templates acima como ponto de partida obrigatório.
+Adapte ao tema e ao visual_headline — mas NÃO altere o estilo, composição e tipografia aprendidos.
+` : "";
 
   return `Você é um Diretor de Arte sênior especializado em social media para marcas brasileiras, com 15 anos de experiência em campanhas para Instagram.
 
 Sua função: receber um briefing estratégico e uma copy já escrita, e transformar isso em uma DIREÇÃO DE ARTE PROFISSIONAL completa — elevando o visual_prompt de genérico para cinematográfico, digno de agência.
+${brandDnaBlock}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PERFIL DA MARCA — ${client.name.toUpperCase()}

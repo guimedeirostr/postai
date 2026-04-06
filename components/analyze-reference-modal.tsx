@@ -11,13 +11,13 @@
  * Integra o Analisador Visual Blueprint diretamente no PostAI.
  */
 
-import { useState } from "react";
-import { X, ScanSearch, Loader2, Check, ExternalLink, Palette, Type, Layout, Camera } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, ScanSearch, Loader2, Check, ExternalLink, Palette, Type, Layout, Camera, Dna, Sparkles, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import type { BrandProfile } from "@/types";
+import type { BrandProfile, BrandDNA } from "@/types";
 
 interface Props {
   client:  BrandProfile;
@@ -55,8 +55,12 @@ const PILAR_COLORS: Record<string, string> = {
 };
 
 export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
+  // Tab: "add" = adicionar referência individual, "synthesize" = sintetizar DNA
+  const [tab, setTab] = useState<"add" | "synthesize">("add");
+
+  // ── Estado — Adicionar Referência ─────────────────────────────────────────
   const [postUrl,        setPostUrl]        = useState("");
-  const [imageUrl,       setImageUrl]       = useState("");   // URL resolvida (preview)
+  const [imageUrl,       setImageUrl]       = useState("");
   const [uploadB64,      setUploadB64]      = useState<string | null>(null);
   const [uploadMime,     setUploadMime]     = useState("image/jpeg");
   const [uploadPreview,  setUploadPreview]  = useState<string | null>(null);
@@ -64,6 +68,49 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState<string | null>(null);
   const [result,         setResult]         = useState<AnalysisResult | null>(null);
+
+  // ── Estado — Síntese de DNA ───────────────────────────────────────────────
+  const [currentDna,       setCurrentDna]       = useState<BrandDNA | null>(null);
+  const [examplesCount,    setExamplesCount]    = useState(0);
+  const [dnaLoading,       setDnaLoading]       = useState(false);
+  const [synthesizing,     setSynthesizing]     = useState(false);
+  const [synthesisError,   setSynthesisError]   = useState<string | null>(null);
+  const [synthesisMessage, setSynthesisMessage] = useState<string | null>(null);
+
+  // Carrega DNA atual quando abre aba de síntese
+  useEffect(() => {
+    if (tab !== "synthesize") return;
+    setDnaLoading(true);
+    fetch(`/api/clients/${client.id}/synthesize-dna`)
+      .then(r => r.json())
+      .then((data: { dna?: BrandDNA; examples_count?: number }) => {
+        setCurrentDna(data.dna ?? null);
+        setExamplesCount(data.examples_count ?? 0);
+      })
+      .catch(() => {})
+      .finally(() => setDnaLoading(false));
+  }, [tab, client.id]);
+
+  async function handleSynthesize() {
+    setSynthesizing(true);
+    setSynthesisError(null);
+    setSynthesisMessage(null);
+    try {
+      const res  = await fetch(`/api/clients/${client.id}/synthesize-dna`, { method: "POST" });
+      const data = await res.json() as { dna?: BrandDNA; message?: string; error?: string };
+      if (!res.ok) {
+        setSynthesisError(data.error ?? "Erro na síntese");
+        return;
+      }
+      setCurrentDna(data.dna ?? null);
+      setSynthesisMessage(data.message ?? "DNA sintetizado com sucesso!");
+      onSaved();
+    } catch {
+      setSynthesisError("Erro inesperado. Tente novamente.");
+    } finally {
+      setSynthesizing(false);
+    }
+  }
 
   function handleUploadFile(file: File) {
     setError(null);
@@ -175,8 +222,8 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
               <ScanSearch className="w-3.5 h-3.5 text-white" />
             </div>
             <div>
-              <p className="font-semibold text-slate-900 text-sm">Salvar DNA Visual</p>
-              <p className="text-xs text-slate-400">{client.name} · referência para posts futuros</p>
+              <p className="font-semibold text-slate-900 text-sm">DNA Visual — {client.name}</p>
+              <p className="text-xs text-slate-400">Adicione referências ou sintetize o padrão da marca</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
@@ -184,9 +231,156 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
           </button>
         </div>
 
+        {/* Tab switcher */}
+        <div className="flex gap-1 p-1.5 bg-slate-100 mx-6 mt-4 rounded-xl">
+          <button
+            onClick={() => setTab("add")}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+              tab === "add" ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <ScanSearch className="w-3.5 h-3.5" /> Adicionar Referência
+          </button>
+          <button
+            onClick={() => setTab("synthesize")}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+              tab === "synthesize" ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <Dna className="w-3.5 h-3.5" /> Sintetizar DNA
+            {currentDna && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />}
+          </button>
+        </div>
+
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-          {!result ? (
+          {/* ── TAB: Sintetizar DNA ── */}
+          {tab === "synthesize" && (
+            <div className="space-y-5">
+              {dnaLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-5 h-5 animate-spin text-violet-400 mr-2" />
+                  <span className="text-sm text-slate-400">Carregando DNA...</span>
+                </div>
+              ) : (
+                <>
+                  {/* Status atual */}
+                  <div className={`p-4 rounded-xl border ${currentDna ? "bg-emerald-50 border-emerald-100" : "bg-slate-50 border-slate-200"}`}>
+                    <div className="flex items-start gap-3">
+                      <Dna className={`w-5 h-5 mt-0.5 flex-shrink-0 ${currentDna ? "text-emerald-600" : "text-slate-400"}`} />
+                      <div>
+                        {currentDna ? (
+                          <>
+                            <p className="text-sm font-semibold text-emerald-700">DNA ativo — {currentDna.examples_count} posts analisados</p>
+                            <p className="text-xs text-emerald-600 mt-0.5">Confiança: {currentDna.confidence_score}/100 · Art Director usa este DNA em todas as gerações</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-slate-700">Sem DNA sintetizado ainda</p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {examplesCount < 3
+                                ? `Adicione pelo menos 3 referências (você tem ${examplesCount}) para sintetizar o DNA.`
+                                : `Você tem ${examplesCount} referências — pronto para sintetizar!`}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Como funciona */}
+                  <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl space-y-2">
+                    <p className="text-xs font-semibold text-violet-700 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> Como funciona o Machine Learning
+                    </p>
+                    <p className="text-xs text-violet-600 leading-relaxed">
+                      O agente de síntese analisa <strong>visualmente</strong> todos os posts de referência desta marca — vê as imagens reais + os metadados — e extrai os <strong>padrões consistentes</strong>: onde o texto sempre vive, qual é o background típico, o estilo fotográfico, a hierarquia tipográfica.
+                    </p>
+                    <p className="text-xs text-violet-600 leading-relaxed">
+                      O resultado alimenta o <strong>Art Director</strong> como lei primária em toda geração futura. Quanto mais referências, mais preciso o DNA.
+                    </p>
+                  </div>
+
+                  {/* Botão de síntese */}
+                  <Button
+                    onClick={handleSynthesize}
+                    disabled={synthesizing || examplesCount < 3}
+                    className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+                  >
+                    {synthesizing
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analisando {examplesCount} posts com IA...</>
+                      : currentDna
+                      ? <><Dna className="w-4 h-4 mr-2" />Re-sintetizar DNA ({examplesCount} posts)</>
+                      : <><Dna className="w-4 h-4 mr-2" />Sintetizar DNA da Marca</>}
+                  </Button>
+
+                  {synthesisError && (
+                    <p className="text-xs text-red-500 text-center">{synthesisError}</p>
+                  )}
+                  {synthesisMessage && (
+                    <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <p className="text-xs text-emerald-700">{synthesisMessage}</p>
+                    </div>
+                  )}
+
+                  {/* Resultado do DNA */}
+                  {currentDna && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> DNA Sintetizado
+                      </p>
+
+                      <div className="p-3 bg-slate-50 rounded-xl">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Identidade Visual</p>
+                        <p className="text-xs text-slate-700 leading-relaxed italic">{currentDna.brand_visual_identity}</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="p-3 bg-slate-50 rounded-xl">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Zona Dominante</p>
+                          <p className="text-sm font-bold text-slate-800 capitalize">{currentDna.dominant_composition_zone}</p>
+                        </div>
+                        <div className="p-3 bg-slate-50 rounded-xl">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Confiança</p>
+                          <p className="text-sm font-bold text-slate-800">{currentDna.confidence_score}/100</p>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-xl">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Regras da Marca</p>
+                        <ul className="space-y-1">
+                          {currentDna.design_rules.map((rule, i) => (
+                            <li key={i} className="text-xs text-slate-700 flex gap-1.5">
+                              <span className="text-violet-500 font-bold flex-shrink-0">{i + 1}.</span>
+                              {rule}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        {[
+                          ["Posicionamento de Texto", currentDna.text_placement_pattern],
+                          ["Fundo nos Textos",        currentDna.background_treatment],
+                          ["Tipografia",              currentDna.typography_pattern],
+                          ["Fotografia",              currentDna.photography_style],
+                          ["Cores",                   currentDna.color_treatment],
+                        ].map(([label, value]) => (
+                          <div key={label} className="p-3 bg-slate-50 rounded-xl">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">{label}</p>
+                            <p className="text-xs text-slate-700 leading-relaxed">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {tab === "add" && !result ? (
             <>
               {/* Upload zone — método principal */}
               <div className="space-y-1.5">
@@ -287,7 +481,7 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </p>
               )}
             </>
-          ) : (
+          ) : tab === "add" && result ? (
             /* ── Resultado da análise ── */
             <div className="space-y-4">
               {/* Sucesso banner */}
@@ -372,12 +566,14 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 <p className="text-sm text-slate-700 mt-2 leading-relaxed">{result.layout_prompt}</p>
               </details>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t">
-          {result ? (
+          {tab === "synthesize" ? (
+            <Button onClick={onClose} className="bg-violet-600 hover:bg-violet-700 text-white">Fechar</Button>
+          ) : result ? (
             <>
               <Button variant="outline" onClick={handleNew}>Analisar outra</Button>
               <Button onClick={onClose} className="bg-violet-600 hover:bg-violet-700 text-white">Fechar</Button>

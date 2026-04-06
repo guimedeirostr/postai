@@ -135,6 +135,43 @@ export interface GeneratedPost {
   created_at: Timestamp;
 }
 
+// ── Brand DNA (sintetizado de N posts) ────────────────────────────────────────
+// Gerado pelo agente de síntese após analisar múltiplos DesignExamples reais.
+// Armazenado em clients/{client_id}/brand_dna/current no Firestore.
+// O Art Director usa este DNA como lei primária em toda geração.
+
+export interface BrandDNA {
+  client_id:  string;
+  agency_id:  string;
+
+  // Aprendizado
+  examples_count:   number;   // Quantos posts foram analisados
+  confidence_score: number;   // 0–100: quão consistente é o padrão
+
+  // Padrões visuais aprendidos
+  dominant_composition_zone: "left" | "right" | "bottom" | "top" | "center";
+  text_placement_pattern:    string;  // Como e onde o texto vive na imagem
+  background_treatment:      string;  // O que existe atrás do texto (gradiente, faixa, nada)
+  typography_pattern:        string;  // Peso, cor, caixa, hierarquia tipográfica
+  photography_style:         string;  // Estilo fotográfico dominante
+  color_treatment:           string;  // Como as cores são trabalhadas
+  image_mood:                string;  // Mood visual que aparece consistentemente
+  lighting_pattern:          string;  // Padrão de iluminação
+
+  // Regras extraídas (o que a marca SEMPRE faz)
+  design_rules: string[];
+
+  // Templates prontos para injetar no Art Director
+  visual_prompt_template: string;  // Prompt visual base desta marca (inglês)
+  layout_prompt_template: string;  // Prompt de layout base desta marca (inglês)
+
+  // Narrativa pt-BR da identidade visual da marca
+  brand_visual_identity: string;
+
+  updated_at: Timestamp;
+  created_at: Timestamp;
+}
+
 // ── Reference DNA ─────────────────────────────────────────────────────────────
 // Extraído via Claude Vision de uma arte de referência enviada pelo usuário.
 // Alimenta o Art Director e o Compositor com o DNA visual exato da referência.
