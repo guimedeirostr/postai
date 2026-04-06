@@ -83,9 +83,10 @@ export interface FreepikTaskResult {
 // ── Aspect ratio maps ────────────────────────────────────────────────────────
 /** Mystic supports social_post_4_5 (exact Instagram feed ratio) */
 const MYSTIC_ASPECT: Record<string, string> = {
-  feed:        "social_post_4_5",
-  stories:     "social_story_9_16",
-  reels_cover: "social_story_9_16",
+  feed:               "social_post_4_5",
+  carousel_panoramic: "widescreen_16_9",  // wide para panorâmica 2 slides (2160×1350)
+  stories:            "social_story_9_16",
+  reels_cover:        "social_story_9_16",
 };
 
 /**

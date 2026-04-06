@@ -223,13 +223,20 @@ export async function POST(req: NextRequest) {
     let hookTaskId: string | null = null;
     let imageProvider: string = "mystic";
 
+    // Mystic usa 16:9 panorâmico para o efeito de continuidade entre slides 0 e 1.
+    // Seedream não tem 16:9 adequado — usa portrait 3:4 sem panorâmica.
+    const useSeedream   = isSeedreamEnabled();
+    const isPanoramic   = !useSeedream; // panorâmico apenas com Mystic
+
     if (hookSlide?.visual_prompt) {
-      const aspect = freepikAspect("feed", isSeedreamEnabled() ? "seedream" : "mystic");
-      if (isSeedreamEnabled()) {
+      if (useSeedream) {
+        const aspect = freepikAspect("feed", "seedream");
         const task = await createSeedreamTask({ prompt: hookSlide.visual_prompt, aspect_ratio: aspect });
         hookTaskId = task.task_id;
         imageProvider = "seedream";
       } else {
+        // Mystic: solicita wide 16:9 para panorâmica
+        const aspect = freepikAspect("carousel_panoramic", "mystic");
         const params: FreepikGenerateParams = {
           prompt:       hookSlide.visual_prompt,
           aspect_ratio: aspect,
@@ -259,6 +266,7 @@ export async function POST(req: NextRequest) {
       hook_task_id:     hookTaskId,
       hook_image_url:   null,
       image_provider:   imageProvider,
+      is_panoramic:     isPanoramic,
       dna_reference_url: null,
       status:           hookTaskId ? "generating_hook" : "composing",
     };

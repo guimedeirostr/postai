@@ -152,6 +152,7 @@ export interface GeneratedCarousel {
   hook_task_id?:       string | null;
   hook_image_url?:     string | null;
   image_provider?:     string;
+  is_panoramic?:       boolean;   // true = hook wide 16:9, slides 0+1 compartilham imagem
   dna_reference_url?:  string | null;
   status:              "pending" | "generating_hook" | "composing" | "ready" | "failed";
   created_at:          Timestamp;
