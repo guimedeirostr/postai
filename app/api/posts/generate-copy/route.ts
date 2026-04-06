@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
       reference_image_type,
       image_provider,
       extra_instructions,
+      caption_suggestion,
     } = await req.json() as {
       client_id: string;
       theme: string;
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
       reference_image_type?: string;
       image_provider?: string;
       extra_instructions?: string;
+      caption_suggestion?: string;
     };
 
     if (!client_id || !theme || !objective || !format) {
@@ -135,7 +137,7 @@ export async function POST(req: NextRequest) {
           `2. Crie o visual_prompt replicando FIELMENTE esse estilo e paleta — NÃO use as cores da marca na imagem.${freepikExtractedPrompt ? " Incorpore e expanda o prompt extraído acima, adaptando ao tema." : ""}`,
           `3. Crie o layout_prompt baseado na composição e posicionamento de texto da referência.`,
           `4. A identidade da marca aparece APENAS no copy (visual_headline, legenda) e nos overlays de texto — nunca na paleta da imagem.`,
-          `\nTema: ${theme}\nObjetivo: ${objective}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}`,
+          `\nTema: ${theme}\nObjetivo: ${objective}${caption_suggestion ? `\n\n💬 SUGESTÃO DE LEGENDA DO USUÁRIO (use como inspiração e base — adapte ao tom da marca e ao framework, mas preserve a essência e ideias-chave):\n"${caption_suggestion}"` : ""}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}`,
           `\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`,
         ].join("")
       : `Tema: ${theme}\nObjetivo: ${objective}${extra_instructions ? `\n\n⚡ INSTRUÇÕES ADICIONAIS DO USUÁRIO (prioridade máxima — siga à risca):\n${extra_instructions}` : ""}\n\nEscreva o melhor post possível para este cliente seguindo o framework selecionado.`;

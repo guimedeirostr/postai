@@ -79,6 +79,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copyError,          setCopyError]          = useState<string | null>(null);
   const [freepikModel,       setFreepikModel]       = useState<"mystic" | "seedream">("mystic");
   const [extraInstructions,  setExtraInstructions]  = useState("");
+  const [captionSuggestion,  setCaptionSuggestion]  = useState("");
   const [libUploadLoading,   setLibUploadLoading]   = useState(false);
   const [libUploadError,     setLibUploadError]     = useState<string | null>(null);
 
@@ -258,7 +259,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       body.reference_url = referenceUrl.trim();
     }
     body.image_provider = freepikModel;
-    if (extraInstructions.trim()) body.extra_instructions = extraInstructions.trim();
+    if (extraInstructions.trim())  body.extra_instructions  = extraInstructions.trim();
+    if (captionSuggestion.trim())  body.caption_suggestion  = captionSuggestion.trim();
 
     setCopyError(null);
     const res  = await fetch("/api/posts/generate-copy", {
@@ -703,6 +705,20 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 )}
               </div>
 
+              {/* Sugestão de legenda */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">
+                  Sugestão de legenda <span className="text-slate-400 font-normal">(opcional)</span>
+                </Label>
+                <textarea
+                  value={captionSuggestion}
+                  onChange={e => setCaptionSuggestion(e.target.value)}
+                  placeholder={'Cole aqui uma legenda que você gostou, um trecho de texto ou ideia base — a IA vai usar como inspiração e adaptar para a marca.'}
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+
               {/* Instruções extras */}
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium text-slate-700">
@@ -1051,6 +1067,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setReferencePreview(null);
                 setReferenceWarn(null);
                 setExtraInstructions("");
+                setCaptionSuggestion("");
                 setComposedUrl(null);
                 setViewComposed(true);
                 setLibraryPhotos([]);
