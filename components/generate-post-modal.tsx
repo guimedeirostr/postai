@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch, Upload, Plus } from "lucide-react";
 import type { BrandPhoto } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copyError,          setCopyError]          = useState<string | null>(null);
   const [freepikModel,       setFreepikModel]       = useState<"mystic" | "seedream">("mystic");
   const [extraInstructions,  setExtraInstructions]  = useState("");
+  const [libUploadLoading,   setLibUploadLoading]   = useState(false);
+  const [libUploadError,     setLibUploadError]     = useState<string | null>(null);
 
   // Fetch library photos when mode = "library" and we have a result
   useEffect(() => {
@@ -105,6 +107,40 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       setReferencePreview(dataUrl);
     };
     reader.readAsDataURL(file);
+  }
+
+  async function handleLibraryUpload(file: File) {
+    setLibUploadLoading(true);
+    setLibUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", "outro");
+      const res  = await fetch(`/api/clients/${client.id}/photos`, { method: "POST", body: fd });
+      const data = await res.json() as { id?: string; url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setLibUploadError(data.error ?? "Erro ao fazer upload.");
+        return;
+      }
+      const newPhoto = {
+        id:          data.id ?? "",
+        url:         data.url,
+        filename:    file.name,
+        category:    "outro" as const,
+        tags:        [] as string[],
+        description: "",
+        agency_id:   client.agency_id ?? "",
+        client_id:   client.id,
+        r2_key:      "",
+        created_at:  { seconds: Date.now() / 1000 } as unknown as import("firebase/firestore").Timestamp,
+      } satisfies BrandPhoto;
+      setLibraryPhotos(prev => [newPhoto, ...prev]);
+      setSelectedLibPhoto(data.url);
+    } catch {
+      setLibUploadError("Erro de conexão ao fazer upload.");
+    } finally {
+      setLibUploadLoading(false);
+    }
   }
 
   async function handleGenerateStrategy() {
@@ -820,12 +856,33 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                           <span className="text-sm">Carregando fotos...</span>
                         </div>
                       ) : libraryPhotos.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
-                          <ImageIcon className="w-8 h-8 opacity-40" />
-                          <p className="text-sm">Nenhuma foto na biblioteca</p>
-                          <p className="text-xs text-slate-300">Faça upload em "Biblioteca de Fotos"</p>
-                        </div>
+                        /* ── Empty state: upload zone ── */
+                        <label
+                          className="flex flex-col items-center justify-center gap-2 py-8 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors text-slate-400"
+                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                          onDrop={e => {
+                            e.preventDefault(); e.stopPropagation();
+                            const file = e.dataTransfer.files[0];
+                            if (file) handleLibraryUpload(file);
+                          }}
+                        >
+                          {libUploadLoading ? (
+                            <>
+                              <Loader2 className="w-7 h-7 animate-spin text-emerald-500" />
+                              <p className="text-sm text-emerald-600">Fazendo upload...</p>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-7 h-7 opacity-40" />
+                              <p className="text-sm font-medium">Arraste uma foto ou clique para escolher</p>
+                              <p className="text-xs text-slate-300">A foto será salva na biblioteca automaticamente</p>
+                            </>
+                          )}
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleLibraryUpload(f); }} />
+                        </label>
                       ) : (
+                        /* ── Grid with inline "add" cell ── */
                         <div className="grid grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
                           {libraryPhotos.map(photo => (
                             <button
@@ -849,7 +906,28 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                               )}
                             </button>
                           ))}
+                          {/* "+ Add" cell */}
+                          <label
+                            className="relative aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors text-slate-400"
+                            title="Adicionar foto à biblioteca"
+                            onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                            onDrop={e => {
+                              e.preventDefault(); e.stopPropagation();
+                              const file = e.dataTransfer.files[0];
+                              if (file) handleLibraryUpload(file);
+                            }}
+                          >
+                            {libUploadLoading
+                              ? <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+                              : <Plus className="w-5 h-5 opacity-50" />
+                            }
+                            <input type="file" accept="image/*" className="hidden"
+                              onChange={e => { const f = e.target.files?.[0]; if (f) handleLibraryUpload(f); }} />
+                          </label>
                         </div>
+                      )}
+                      {libUploadError && (
+                        <p className="text-xs text-red-500 mt-1">{libUploadError}</p>
                       )}
                     </div>
                   )}
@@ -907,6 +985,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setLibraryPhotos([]);
                 setSelectedLibPhoto(null);
                 setReferenceUrl("");
+                setLibUploadError(null);
                 setStep(0);
                 setStrategy(null);
                 setTheme("");
