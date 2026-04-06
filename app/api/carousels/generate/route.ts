@@ -109,8 +109,8 @@ export async function POST(req: NextRequest) {
       : body.dna_image_base64
         ? [{ b64: body.dna_image_base64, mime: body.dna_image_type ?? "image/jpeg" }]
         : [];
-    // Limitar a 3 imagens — evitar timeout (cada imagem = ~1s de processamento extra)
-    const dnaImages = dnaImagesAll.slice(0, 3);
+    // Limitar a 5 imagens — Sonnet com 5 imagens de 500px fica ~20-30s, dentro do timeout de 60s
+    const dnaImages = dnaImagesAll.slice(0, 5);
 
     if (!body.client_id || !body.theme || !body.objective) {
       return NextResponse.json({ error: "client_id, theme e objective são obrigatórios" }, { status: 400 });
