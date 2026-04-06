@@ -297,9 +297,17 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
                   Faça upload do carrossel completo que você quer copiar. Quanto mais slides, melhor o resultado.
                 </p>
 
-                {/* Thumbnails dos slides já adicionados */}
+                {/* Thumbnails dos slides já adicionados — toda a área aceita drop */}
                 {dnaImages.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
+                  <div
+                    className="flex flex-wrap gap-2 mb-3"
+                    onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={e => {
+                      e.preventDefault(); e.stopPropagation();
+                      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+                      if (files.length) handleDnaFiles(files);
+                    }}
+                  >
                     {dnaImages.map((img, i) => (
                       <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-violet-200 flex-none">
                         <img src={img.preview} alt={`Slide ${i+1}`} className="w-full h-full object-cover" />
@@ -315,9 +323,17 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
                         </span>
                       </div>
                     ))}
-                    {/* Botão de adicionar mais */}
+                    {/* Botão de adicionar mais — com drag-and-drop */}
                     {dnaImages.length < 20 && (
-                      <label className="w-16 h-16 rounded-lg border-2 border-dashed border-violet-200 flex flex-col items-center justify-center cursor-pointer hover:border-violet-400 hover:bg-violet-50 transition-colors text-slate-400 flex-none">
+                      <label
+                        className="w-16 h-16 rounded-lg border-2 border-dashed border-violet-200 flex flex-col items-center justify-center cursor-pointer hover:border-violet-400 hover:bg-violet-50 transition-colors text-slate-400 flex-none"
+                        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                        onDrop={e => {
+                          e.preventDefault(); e.stopPropagation();
+                          const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+                          if (files.length) handleDnaFiles(files);
+                        }}
+                      >
                         <Upload className="w-4 h-4 opacity-60" />
                         <span className="text-[9px] mt-0.5">Mais</span>
                         <input type="file" accept="image/*" multiple className="hidden"
