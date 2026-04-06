@@ -37,9 +37,7 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
   const [objective,       setObjective]       = useState("Educar");
   const [slideCount,      setSlideCount]      = useState(7);
   const [extraInstructions, setExtraInstructions] = useState("");
-  const [dnaB64,          setDnaB64]          = useState<string | null>(null);
-  const [dnaMime,         setDnaMime]         = useState<string>("image/jpeg");
-  const [dnaPreview,      setDnaPreview]      = useState<string | null>(null);
+  const [dnaImages,       setDnaImages]       = useState<{ b64: string; mime: string; preview: string }[]>([]);
 
   // Step 1 — generation progress
   const [statusMsg,       setStatusMsg]       = useState("");
@@ -54,18 +52,48 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
   const [copied,          setCopied]          = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── DNA upload ──────────────────────────────────────────────────────────────
-  function handleDnaFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const [header, b64] = dataUrl.split(",");
-      const mime = header.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
-      setDnaB64(b64);
-      setDnaMime(mime);
-      setDnaPreview(dataUrl);
-    };
-    reader.readAsDataURL(file);
+  // ── DNA upload — múltiplos slides ──────────────────────────────────────────
+  async function compressDnaImage(file: File): Promise<{ b64: string; mime: string; preview: string }> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const MAX = 1200;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        const b64     = dataUrl.split(",")[1];
+        resolve({ b64, mime: "image/jpeg", preview: dataUrl });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        // Fallback to FileReader without compression
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const [header, b64] = dataUrl.split(",");
+          const mime = header.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
+          resolve({ b64, mime, preview: dataUrl });
+        };
+        reader.readAsDataURL(file);
+      };
+      img.src = objectUrl;
+    });
+  }
+
+  async function handleDnaFiles(files: File[]) {
+    const MAX_SLIDES = 20;
+    const toProcess = files.slice(0, MAX_SLIDES - dnaImages.length);
+    const compressed = await Promise.all(toProcess.map(compressDnaImage));
+    setDnaImages(prev => [...prev, ...compressed].slice(0, MAX_SLIDES));
+  }
+
+  function removeDnaImage(idx: number) {
+    setDnaImages(prev => prev.filter((_, i) => i !== idx));
   }
 
   // ── Generate ────────────────────────────────────────────────────────────────
@@ -83,9 +111,8 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
         slide_count: slideCount,
       };
       if (extraInstructions.trim()) body.extra_instructions = extraInstructions.trim();
-      if (dnaB64) {
-        body.dna_image_base64 = dnaB64;
-        body.dna_image_type   = dnaMime;
+      if (dnaImages.length > 0) {
+        body.dna_images = dnaImages.map(({ b64, mime }) => ({ b64, mime }));
       }
 
       const res  = await fetch("/api/carousels/generate", {
@@ -226,7 +253,7 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
     setObjective("Educar");
     setSlideCount(7);
     setExtraInstructions("");
-    setDnaB64(null); setDnaPreview(null); setDnaMime("image/jpeg");
+    setDnaImages([]);
     setStatusMsg(""); setGenerateError(null);
     setResult(null); setComposedSlides([]);
     setPolling(false); setSelectedSlide(0);
@@ -261,37 +288,68 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
           {/* ── STEP 0: Config ── */}
           {step === 0 && (
             <>
-              {/* DNA Reference */}
+              {/* DNA Reference — múltiplos slides */}
               <div>
-                <Label className="text-sm font-semibold text-slate-700 mb-2 block">
+                <Label className="text-sm font-semibold text-slate-700 mb-1 block">
                   📸 DNA Visual de Referência (opcional)
                 </Label>
                 <p className="text-xs text-slate-400 mb-3">
-                  Faça upload de um slide de carrossel que você admira. A IA vai copiar o estilo visual.
+                  Faça upload do carrossel completo que você quer copiar. Quanto mais slides, melhor o resultado.
                 </p>
-                {dnaPreview ? (
-                  <div className="flex items-center gap-3 p-3 bg-violet-50 rounded-xl border border-violet-200">
-                    <img src={dnaPreview} alt="DNA" className="w-14 h-14 object-cover rounded-lg flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-violet-700">DNA carregado ✓</p>
-                      <p className="text-xs text-slate-400">A IA vai replicar este estilo visual</p>
-                    </div>
-                    <button type="button" onClick={() => { setDnaB64(null); setDnaPreview(null); }}
-                      className="text-slate-400 hover:text-red-500">
-                      <X className="w-4 h-4" />
-                    </button>
+
+                {/* Thumbnails dos slides já adicionados */}
+                {dnaImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {dnaImages.map((img, i) => (
+                      <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-violet-200 flex-none">
+                        <img src={img.preview} alt={`Slide ${i+1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removeDnaImage(i)}
+                          className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white hover:bg-red-600 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                        <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/50 text-white px-1 rounded">
+                          {i+1}
+                        </span>
+                      </div>
+                    ))}
+                    {/* Botão de adicionar mais */}
+                    {dnaImages.length < 20 && (
+                      <label className="w-16 h-16 rounded-lg border-2 border-dashed border-violet-200 flex flex-col items-center justify-center cursor-pointer hover:border-violet-400 hover:bg-violet-50 transition-colors text-slate-400 flex-none">
+                        <Upload className="w-4 h-4 opacity-60" />
+                        <span className="text-[9px] mt-0.5">Mais</span>
+                        <input type="file" accept="image/*" multiple className="hidden"
+                          onChange={e => { const files = Array.from(e.target.files ?? []); if (files.length) handleDnaFiles(files); e.target.value = ""; }} />
+                      </label>
+                    )}
                   </div>
-                ) : (
+                )}
+
+                {/* Drop zone — aparece se ainda não tem nenhum */}
+                {dnaImages.length === 0 && (
                   <label
                     className="flex flex-col items-center justify-center gap-2 py-6 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-violet-400 hover:bg-violet-50/40 transition-colors text-slate-400"
                     onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
-                    onDrop={e => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files[0]; if (f) handleDnaFile(f); }}
+                    onDrop={e => {
+                      e.preventDefault(); e.stopPropagation();
+                      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+                      if (files.length) handleDnaFiles(files);
+                    }}
                   >
                     <Upload className="w-6 h-6 opacity-40" />
-                    <p className="text-sm">Arraste ou clique para selecionar um slide de referência</p>
-                    <input type="file" accept="image/*" className="hidden"
-                      onChange={e => { const f = e.target.files?.[0]; if (f) handleDnaFile(f); }} />
+                    <p className="text-sm font-medium">Arraste os slides ou clique para selecionar</p>
+                    <p className="text-xs opacity-60">Selecione múltiplos arquivos de uma vez (até 20 slides)</p>
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => { const files = Array.from(e.target.files ?? []); if (files.length) handleDnaFiles(files); }} />
                   </label>
+                )}
+
+                {dnaImages.length > 0 && (
+                  <p className="text-xs text-violet-600 font-medium mt-1">
+                    {dnaImages.length} slide{dnaImages.length > 1 ? "s" : ""} de referência carregado{dnaImages.length > 1 ? "s" : ""} ✓
+                  </p>
                 )}
               </div>
 

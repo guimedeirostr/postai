@@ -12,9 +12,12 @@
  *   theme:              string        — tema/assunto do carrossel
  *   objective:          string        — ex: "Educar", "Engajar", "Vender"
  *   slide_count:        number        — 3-20 (default: 7)
- *   dna_image_base64?:  string        — slide de referência para copiar DNA visual
- *   dna_image_type?:    string        — mime type da referência
+ *   dna_images?:         { b64: string; mime: string }[]  — slides do carrossel de referência (até 20)
  *   extra_instructions?: string
+ *
+ * Legado (ainda aceito):
+ *   dna_image_base64?:  string
+ *   dna_image_type?:    string
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -92,10 +95,18 @@ export async function POST(req: NextRequest) {
       theme:               string;
       objective:           string;
       slide_count?:        number;
-      dna_image_base64?:   string;
+      dna_images?:         { b64: string; mime: string }[]; // array de slides do carrossel de referência
+      dna_image_base64?:   string;  // legado — aceito como dna_images[0]
       dna_image_type?:     string;
       extra_instructions?: string;
     };
+
+    // Normalizar: unificar dna_image_base64 legado + novo dna_images
+    const dnaImages: { b64: string; mime: string }[] = body.dna_images?.length
+      ? body.dna_images
+      : body.dna_image_base64
+        ? [{ b64: body.dna_image_base64, mime: body.dna_image_type ?? "image/jpeg" }]
+        : [];
 
     if (!body.client_id || !body.theme || !body.objective) {
       return NextResponse.json({ error: "client_id, theme e objective são obrigatórios" }, { status: 400 });
@@ -132,20 +143,28 @@ export async function POST(req: NextRequest) {
       "\nRetorne SOMENTE o JSON. Sem markdown, sem backticks.",
     ].join("\n");
 
-    const userContent: Anthropic.MessageParam["content"] = body.dna_image_base64
+    // ── Montar user content — múltiplos slides de referência ─────────────────
+    type ImageBlock = { type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; data: string } };
+    type TextBlock  = { type: "text"; text: string };
+
+    const userContent: Anthropic.MessageParam["content"] = dnaImages.length > 0
       ? [
-          {
+          // Todos os slides de referência como blocos de imagem
+          ...dnaImages.map((img): ImageBlock => ({
             type: "image",
             source: {
               type:       "base64",
-              media_type: (body.dna_image_type ?? "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
-              data:       body.dna_image_base64,
+              media_type: (img.mime || "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+              data:       img.b64,
             },
-          },
+          })),
+          // Instrução de DNA contextualizada
           {
             type: "text",
-            text: `DNA VISUAL DE REFERÊNCIA: A imagem acima é um slide de referência. Copie fielmente o estilo visual, paleta de cores e mood no visual_prompt do slide hook.\n\n${userText}`,
-          },
+            text: dnaImages.length === 1
+              ? `DNA VISUAL DE REFERÊNCIA: A imagem acima é um slide do carrossel de referência. Analise a paleta, tipografia, layout e mood. Copie fielmente o estilo visual no visual_prompt do slide hook.\n\n${userText}`
+              : `DNA VISUAL DE REFERÊNCIA: As ${dnaImages.length} imagens acima são os slides completos do carrossel de referência. Analise o sistema visual completo: paleta de cores consistente entre slides, estilo tipográfico, hierarquia visual, mood e composição. Replique esse sistema visual fielmente no visual_prompt do slide hook e descreva o estilo nos slides de conteúdo.\n\n${userText}`,
+          } as TextBlock,
         ]
       : userText;
 
