@@ -39,7 +39,9 @@ import type { BrandProfile, CarouselSlide, GeneratedCarousel } from "@/types";
 export const maxDuration = 60;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const FALLBACK_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
+const FALLBACK_MODEL  = process.env.ANTHROPIC_MODEL        ?? "claude-haiku-4-5-20251001";
+// Quando há imagens de DNA, usa Sonnet (mais rápido que Opus com visão, evita timeout de 60s)
+const VISION_MODEL    = process.env.CAROUSEL_VISION_MODEL  ?? "claude-sonnet-4-5-20251001";
 
 interface CarouselJSON {
   topic:    string;
@@ -102,11 +104,13 @@ export async function POST(req: NextRequest) {
     };
 
     // Normalizar: unificar dna_image_base64 legado + novo dna_images
-    const dnaImages: { b64: string; mime: string }[] = body.dna_images?.length
+    const dnaImagesAll: { b64: string; mime: string }[] = body.dna_images?.length
       ? body.dna_images
       : body.dna_image_base64
         ? [{ b64: body.dna_image_base64, mime: body.dna_image_type ?? "image/jpeg" }]
         : [];
+    // Limitar a 3 imagens — evitar timeout (cada imagem = ~1s de processamento extra)
+    const dnaImages = dnaImagesAll.slice(0, 3);
 
     if (!body.client_id || !body.theme || !body.objective) {
       return NextResponse.json({ error: "client_id, theme e objective são obrigatórios" }, { status: 400 });
@@ -169,7 +173,21 @@ export async function POST(req: NextRequest) {
       : userText;
 
     // ── Chamar Claude ─────────────────────────────────────────────────────────
-    const rawText = await callCarouselSkill(systemPrompt, userContent);
+    // Com imagens de DNA: usar Sonnet direto (Opus com visão pode exceder 60s no Vercel)
+    const rawText = dnaImages.length > 0
+      ? await (async () => {
+          const resp = await anthropic.messages.create({
+            model:      VISION_MODEL,
+            max_tokens: 8192,
+            system:     systemPrompt,
+            messages:   [{ role: "user", content: userContent }],
+          });
+          return resp.content
+            .filter(b => b.type === "text")
+            .map(b => (b as { type: "text"; text: string }).text)
+            .join("");
+        })()
+      : await callCarouselSkill(systemPrompt, userContent);
 
     function extractJson(text: string): CarouselJSON | null {
       const stripped = text.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/m, "").trim();

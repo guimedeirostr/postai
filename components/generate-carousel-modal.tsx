@@ -59,15 +59,25 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
       const objectUrl = URL.createObjectURL(file);
       img.onload = () => {
         URL.revokeObjectURL(objectUrl);
-        const MAX = 1200;
-        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        // Preview em tamanho maior para exibição
+        const PREVIEW_MAX = 800;
+        const previewScale = Math.min(1, PREVIEW_MAX / Math.max(img.width, img.height));
+        const previewCanvas = document.createElement("canvas");
+        previewCanvas.width  = Math.round(img.width  * previewScale);
+        previewCanvas.height = Math.round(img.height * previewScale);
+        previewCanvas.getContext("2d")!.drawImage(img, 0, 0, previewCanvas.width, previewCanvas.height);
+        const previewUrl = previewCanvas.toDataURL("image/jpeg", 0.80);
+
+        // Envio ao Claude muito menor — só precisa mostrar estilo visual
+        const SEND_MAX = 500;
+        const sendScale = Math.min(1, SEND_MAX / Math.max(img.width, img.height));
         const canvas = document.createElement("canvas");
-        canvas.width  = Math.round(img.width  * scale);
-        canvas.height = Math.round(img.height * scale);
+        canvas.width  = Math.round(img.width  * sendScale);
+        canvas.height = Math.round(img.height * sendScale);
         canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
         const b64     = dataUrl.split(",")[1];
-        resolve({ b64, mime: "image/jpeg", preview: dataUrl });
+        resolve({ b64, mime: "image/jpeg", preview: previewUrl });
       };
       img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
@@ -120,7 +130,19 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json() as CarouselResult & { error?: string };
+
+      // Tratar resposta não-JSON (ex: 504 Gateway Timeout retorna HTML)
+      let data: CarouselResult & { error?: string };
+      try {
+        data = await res.json() as CarouselResult & { error?: string };
+      } catch {
+        const statusMsg = res.status === 504
+          ? "Timeout: a geração demorou demais. Tente com menos slides de DNA ou menos slides no carrossel."
+          : `Erro do servidor (${res.status}). Tente novamente.`;
+        setGenerateError(statusMsg);
+        setStep(0);
+        return;
+      }
 
       if (!res.ok) {
         setGenerateError(data.error ?? "Erro ao gerar carrossel.");
