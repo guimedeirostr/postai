@@ -97,16 +97,30 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   function handleReferenceFile(file: File) {
     setReferenceWarn(null);
     setReferenceUrl("");
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const [header, b64] = dataUrl.split(",");
-      const mime = header.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
+
+    // Compress via canvas before base64 — prevents 413 on large photos
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX = 1200;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else                { width  = Math.round(width  * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width  = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      const b64 = dataUrl.split(",")[1];
       setReferenceB64(b64);
-      setReferenceType(mime);
+      setReferenceType("image/jpeg");
       setReferencePreview(dataUrl);
     };
-    reader.readAsDataURL(file);
+    img.src = objectUrl;
   }
 
   async function handleLibraryUpload(file: File) {
@@ -209,13 +223,27 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(body),
     });
-    const data = await res.json();
+
+    // Guard against non-JSON responses (413 Payload Too Large, 502 Gateway, etc.)
+    let data: Record<string, unknown> = {};
+    try {
+      data = await res.json();
+    } catch {
+      if (res.status === 413) {
+        setCopyError("A imagem de referência é grande demais. Tente com uma imagem menor.");
+      } else {
+        setCopyError(`Erro ${res.status}: resposta inesperada do servidor.`);
+      }
+      setLoading(false);
+      return;
+    }
+
     if (res.ok) {
-      setResult(data);
+      setResult(data as unknown as CopyResult);
       onGenerated();
-      if (data.reference_warning) setReferenceWarn(data.reference_warning);
+      if (data.reference_warning) setReferenceWarn(data.reference_warning as string);
     } else {
-      setCopyError((data as { error?: string }).error ?? "Erro ao gerar copy. Tente novamente.");
+      setCopyError((data.error as string | undefined) ?? "Erro ao gerar copy. Tente novamente.");
     }
     setLoading(false);
   }
