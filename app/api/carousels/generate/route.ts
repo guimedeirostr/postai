@@ -151,13 +151,28 @@ export async function POST(req: NextRequest) {
 
     // ── Chamar Claude ─────────────────────────────────────────────────────────
     const rawText = await callCarouselSkill(systemPrompt, userContent);
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 
-    let carouselData: CarouselJSON;
-    try {
-      carouselData = JSON.parse(cleaned) as CarouselJSON;
-    } catch {
-      console.error("[generate-carousel] JSON inválido:", cleaned.slice(0, 400));
+    function extractJson(text: string): CarouselJSON | null {
+      const stripped = text.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/m, "").trim();
+      try { return JSON.parse(stripped) as CarouselJSON; } catch { /* continua */ }
+      const first = text.indexOf("{");
+      const last  = text.lastIndexOf("}");
+      if (first !== -1 && last > first) {
+        try { return JSON.parse(text.slice(first, last + 1)) as CarouselJSON; } catch { /* continua */ }
+      }
+      if (first !== -1) {
+        const partial = text.slice(first);
+        const opens   = (partial.match(/\{/g) ?? []).length;
+        const closes  = (partial.match(/\}/g) ?? []).length;
+        const patched = partial + "}".repeat(Math.max(0, opens - closes));
+        try { return JSON.parse(patched) as CarouselJSON; } catch { /* desiste */ }
+      }
+      return null;
+    }
+
+    const carouselData = extractJson(rawText);
+    if (!carouselData) {
+      console.error("[generate-carousel] JSON inválido:", rawText.slice(0, 400));
       return NextResponse.json({ error: "Claude retornou JSON inválido. Tente novamente." }, { status: 500 });
     }
 
