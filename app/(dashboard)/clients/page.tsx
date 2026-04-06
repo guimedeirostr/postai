@@ -3,11 +3,12 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch, GalleryHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientFormModal } from "@/components/client-form-modal";
 import { GeneratePostModal } from "@/components/generate-post-modal";
+import { GenerateCarouselModal } from "@/components/generate-carousel-modal";
 import { PhotoLibraryModal } from "@/components/photo-library-modal";
 import { AnalyzeReferenceModal } from "@/components/analyze-reference-modal";
 import type { BrandProfile } from "@/types";
@@ -38,6 +39,7 @@ export default function ClientsPage() {
   const [generating,  setGenerating]   = useState<BrandProfile | undefined>();
   const [viewPhotos,  setViewPhotos]   = useState<BrandProfile | undefined>();
   const [analyzing,   setAnalyzing]    = useState<BrandProfile | undefined>();
+  const [carouseling, setCarouseling]  = useState<BrandProfile | undefined>();
 
   async function load() {
     setLoading(true);
@@ -154,8 +156,13 @@ export default function ClientsPage() {
                   </Button>
                   <Button size="sm" variant="outline"
                     onClick={() => setGenerating(client)}
-                    className="flex-1 text-violet-700 border-violet-200 hover:bg-violet-50">
-                    <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Gerar post
+                    className="text-violet-700 border-violet-200 hover:bg-violet-50">
+                    <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Post
+                  </Button>
+                  <Button size="sm" variant="outline"
+                    onClick={() => setCarouseling(client)}
+                    className="flex-1 text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-50">
+                    <GalleryHorizontal className="w-3.5 h-3.5 mr-1.5" /> Carrossel
                   </Button>
                 </div>
               </CardContent>
@@ -200,6 +207,13 @@ export default function ClientsPage() {
           client={analyzing}
           onClose={() => setAnalyzing(undefined)}
           onSaved={() => {/* reference saved — no list reload needed */}}
+        />
+      )}
+
+      {carouseling && (
+        <GenerateCarouselModal
+          client={carouseling}
+          onClose={() => setCarouseling(undefined)}
         />
       )}
     </div>

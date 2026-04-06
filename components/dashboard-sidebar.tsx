@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   LayoutDashboard, Users, ImageIcon, Settings,
-  Sparkles, LogOut, Loader2,
+  Sparkles, LogOut, Loader2, GalleryHorizontal,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -16,12 +16,13 @@ const navItems = [
   { href: "/",          label: "Dashboard",     icon: LayoutDashboard },
   { href: "/clients",   label: "Clientes",      icon: Users },
   { href: "/posts",     label: "Posts Gerados", icon: ImageIcon },
+  { href: "/carousels", label: "Carrosseis",    icon: GalleryHorizontal },
   { href: "/settings",  label: "Configurações", icon: Settings },
 ];
 
 interface Props {
   userEmail: string;
-  userName: string;
+  userName:  string;
 }
 
 export function DashboardSidebar({ userEmail, userName }: Props) {
@@ -86,7 +87,9 @@ export function DashboardSidebar({ userEmail, userName }: Props) {
           disabled={loading}
           className="w-full justify-start text-slate-500 hover:text-red-600 hover:bg-red-50"
         >
-          {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogOut className="w-4 h-4 mr-2" />}
+          {loading
+            ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            : <LogOut  className="w-4 h-4 mr-2" />}
           Sair
         </Button>
       </div>

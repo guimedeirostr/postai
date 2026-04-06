@@ -116,3 +116,43 @@ export interface GeneratedPost {
   status: "pending" | "strategy" | "copy" | "art_direction" | "generating" | "composing" | "ready" | "approved" | "rejected" | "failed";
   created_at: Timestamp;
 }
+
+// ── Carousel types ────────────────────────────────────────────────────────────
+
+export type SlideType = "hook" | "content" | "cta";
+export type SlideBgStyle = "brand" | "dark" | "accent" | "light";
+
+export interface CarouselSlide {
+  index:             number;
+  type:              SlideType;
+  headline:          string;
+  subheadline?:      string;
+  body_text?:        string;
+  cta_text?:         string;
+  visual_prompt?:    string;     // English — only for hook slide (index 0)
+  bg_style:          SlideBgStyle;
+  icon_emoji?:       string;
+  number_highlight?: string;
+  composed_url?:     string | null;
+}
+
+export interface GeneratedCarousel {
+  id:                  string;
+  agency_id:           string;
+  client_id:           string;
+  client_name:         string;
+  theme:               string;
+  objective:           string;
+  topic:               string;
+  caption:             string;
+  hashtags:            string[];
+  slides:              CarouselSlide[];
+  slide_count:         number;
+  hook_task_id?:       string | null;
+  hook_image_url?:     string | null;
+  image_provider?:     string;
+  dna_reference_url?:  string | null;
+  status:              "pending" | "generating_hook" | "composing" | "ready" | "failed";
+  created_at:          Timestamp;
+  updated_at?:         Timestamp;
+}
