@@ -41,7 +41,7 @@ export const maxDuration = 60;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const FALLBACK_MODEL  = process.env.ANTHROPIC_MODEL        ?? "claude-haiku-4-5-20251001";
 // Quando há imagens de DNA, usa Sonnet (mais rápido que Opus com visão, evita timeout de 60s)
-const VISION_MODEL    = process.env.CAROUSEL_VISION_MODEL  ?? "claude-sonnet-4-5-20251001";
+const VISION_MODEL    = process.env.CAROUSEL_VISION_MODEL  ?? "claude-sonnet-4-6";
 
 interface CarouselJSON {
   topic:    string;
