@@ -82,7 +82,8 @@ Retorne JSON com esta estrutura:
 
 // ── Anthropic client ─────────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
+// Análise visual requer raciocínio estruturado — Sonnet é mínimo, Haiku falha no schema complexo
+const MODEL = process.env.ANALYZER_MODEL ?? "claude-sonnet-4-6";
 
 // ── Route handler ────────────────────────────────────────────────────────────
 export async function POST(
@@ -190,17 +191,37 @@ export async function POST(
       .map(b => (b as { type: "text"; text: string }).text)
       .join("");
 
-    // Remove markdown fences se presentes
-    const cleaned = rawText
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/, "")
-      .trim();
+    // Extrair JSON de forma robusta — tenta múltiplas estratégias
+    function extractJson(text: string): Record<string, unknown> | null {
+      // 1. Remove markdown fences e tenta parse direto
+      const stripped = text
+        .replace(/^```(?:json)?\s*/im, "")
+        .replace(/\s*```\s*$/m, "")
+        .trim();
+      try { return JSON.parse(stripped); } catch { /* continua */ }
 
-    let blueprint: Record<string, unknown>;
-    try {
-      blueprint = JSON.parse(cleaned);
-    } catch {
-      console.error("[analyze-reference] JSON inválido:", cleaned.slice(0, 500));
+      // 2. Extrai o maior bloco JSON (do primeiro { até o último })
+      const first = text.indexOf("{");
+      const last  = text.lastIndexOf("}");
+      if (first !== -1 && last > first) {
+        try { return JSON.parse(text.slice(first, last + 1)); } catch { /* continua */ }
+      }
+
+      // 3. Tenta reparar JSON truncado adicionando chaves fechantes
+      if (first !== -1) {
+        const partial = text.slice(first);
+        const opens   = (partial.match(/\{/g) ?? []).length;
+        const closes  = (partial.match(/\}/g) ?? []).length;
+        const patched = partial + "}".repeat(Math.max(0, opens - closes));
+        try { return JSON.parse(patched); } catch { /* desiste */ }
+      }
+
+      return null;
+    }
+
+    const blueprint = extractJson(rawText);
+    if (!blueprint) {
+      console.error("[analyze-reference] JSON inválido:", rawText.slice(0, 600));
       return NextResponse.json(
         { error: "Claude retornou JSON inválido. Tente novamente." },
         { status: 500 }
