@@ -669,6 +669,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 <p className="text-xs text-violet-600 leading-relaxed">
                   Suba uma arte nova <strong>ou</strong> escolha uma referência já salva na biblioteca da marca. A IA lê o DNA visual exato — composição, hierarquia tipográfica, zonas de texto, mood de cores — e usa como guia em todo o pipeline de geração.
                 </p>
+                {refSource === "library" && (
+                  <p className="text-[11px] text-violet-500/80 mt-1.5 italic">
+                    Selecionar daqui reaproveita o DNA já analisado — sem reprocessar nem gastar créditos.
+                  </p>
+                )}
               </div>
 
               {/* Sub-toggle: Upload novo / Da biblioteca */}
@@ -745,15 +750,23 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                               </div>
                             )}
                             <div className="p-2 bg-white">
-                              <div className="flex items-center gap-1 mb-1">
+                              <div className="flex items-center gap-1 mb-1 flex-wrap">
                                 <Badge className={`${PILAR_COLORS[ex.pilar] ?? "bg-slate-100 text-slate-600"} text-[10px] px-1.5 py-0`}>
                                   {ex.pilar}
                                 </Badge>
                                 {ex.intent === "stage0" && (
                                   <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">Stage 0</Badge>
                                 )}
+                                {ex.intent === "library" && (
+                                  <Badge className="bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0">Biblioteca</Badge>
+                                )}
                               </div>
-                              <p className="text-[11px] text-slate-600 leading-snug line-clamp-2">{ex.description}</p>
+                              <p className="text-[11px] text-slate-700 font-medium leading-snug line-clamp-1">
+                                {ex.headline_style || ex.visual_headline_style || ex.description}
+                              </p>
+                              <p className="text-[10px] text-slate-400 leading-snug line-clamp-1 mt-0.5">
+                                {ex.color_mood}
+                              </p>
                             </div>
                             {isSelected && (
                               <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-violet-600 text-white flex items-center justify-center">
@@ -1692,9 +1705,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 onClick={() => setStep(1)}
                 className="bg-violet-600 hover:bg-violet-700 text-white min-w-[160px]"
               >
-                {referenceDna
-                  ? <><Dna className="w-4 h-4 mr-2" />Usar DNA extraído</>
-                  : <><ChevronRight className="w-4 h-4 mr-2" />Pular referência</>}
+                {selectedExampleId
+                  ? <><Check className="w-4 h-4 mr-2" />Usar esta referência</>
+                  : referenceDna
+                    ? <><Dna className="w-4 h-4 mr-2" />Usar DNA extraído</>
+                    : <><ChevronRight className="w-4 h-4 mr-2" />Pular referência</>}
               </Button>
             )}
 

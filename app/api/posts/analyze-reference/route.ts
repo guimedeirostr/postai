@@ -19,6 +19,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildReferenceDNAPrompt } from "@/lib/prompts/design-example-analysis";
+import { uploadToR2 } from "@/lib/r2";
 import type { DesignExample, ReferenceDNA } from "@/types";
 
 // Claude Vision pode levar 20-40s — sem maxDuration default é 10s (504 no Vercel)
@@ -105,6 +106,19 @@ export async function POST(req: NextRequest) {
           .collection("clients").doc(client_id!)
           .collection("design_examples").doc();
 
+        // ── Upload da imagem original pro R2 (best-effort) ─────────────────
+        // Sem isso o thumbnail no library picker fica vazio. Como o Stage 0
+        // recebe a imagem como base64 do browser, é a única chance de persistir.
+        let image_url: string | undefined;
+        try {
+          const buf = Buffer.from(image_base64, "base64");
+          const ext = mediaType.split("/")[1] ?? "jpg";
+          const key = `design-examples/${client_id}/${ref.id}.${ext}`;
+          image_url = await uploadToR2(key, buf, mediaType);
+        } catch (uploadErr) {
+          console.warn("[posts/analyze-reference] R2 upload falhou (non-fatal):", uploadErr);
+        }
+
         const example: Omit<DesignExample, "id" | "created_at"> = {
           agency_id:            user.uid,
           client_id:            client_id!,
@@ -121,6 +135,7 @@ export async function POST(req: NextRequest) {
           headline_style:       dna.headline_style,
           typography_hierarchy: dna.typography_hierarchy,
           ...(dna.logo_placement ? { logo_placement: dna.logo_placement } : {}),
+          ...(image_url ? { image_url } : {}),
           intent:               "stage0",
         };
 
