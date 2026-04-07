@@ -55,25 +55,28 @@ export async function GET(
       return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
     }
 
-    const dnaDoc = await adminDb
-      .collection("clients").doc(client_id)
-      .collection("brand_dna").doc("current")
-      .get();
+    // Busca DNA atual e contagem de exemplos em paralelo
+    const [dnaDoc, exSnap] = await Promise.all([
+      adminDb
+        .collection("clients").doc(client_id)
+        .collection("brand_dna").doc("current")
+        .get(),
+      adminDb
+        .collection("clients").doc(client_id)
+        .collection("design_examples")
+        .count()
+        .get(),
+    ]);
+
+    const examples_count = exSnap.data().count;
 
     if (!dnaDoc.exists) {
-      return NextResponse.json({ dna: null, examples_count: 0 });
+      return NextResponse.json({ dna: null, examples_count });
     }
 
-    // Conta quantos examples existem para exibir no UI
-    const exSnap = await adminDb
-      .collection("clients").doc(client_id)
-      .collection("design_examples")
-      .count()
-      .get();
-
     return NextResponse.json({
-      dna:            dnaDoc.data() as BrandDNA,
-      examples_count: exSnap.data().count,
+      dna: dnaDoc.data() as BrandDNA,
+      examples_count,
     });
 
   } catch (err: unknown) {
