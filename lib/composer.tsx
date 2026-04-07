@@ -127,16 +127,21 @@ function sanitizeHandle(handle: string): string {
 // ── Template JSX (renderizado pelo satori) ───────────────────────────────────
 
 /**
- * Deriva a opacidade máxima do gradiente com base no background_treatment da referência.
- * "none / no gradient / natural" → gradiente sutil (0.50)
- * "heavy / solid / dense"        → gradiente intenso (0.93)
- * default                        → moderado (0.75)
+ * Detecta se o tratamento de fundo da referência indica ausência de overlay.
+ * Quando true → modo "clean": sem gradiente colorido, sem faixa sólida.
  */
-function resolveMaxOpacity(backgroundTreatment?: string): number {
+function isNoOverlayStyle(backgroundTreatment?: string): boolean {
   const t = (backgroundTreatment ?? "").toLowerCase();
-  if (/none|no.?gradient|no.?overlay|direct|natural|transparent/.test(t)) return 0.50;
-  if (/heavy|solid|dense|strong/.test(t))                                  return 0.93;
-  return 0.75;
+  return /none|no.?gradient|no.?overlay|direct|natural|transparent|without/.test(t);
+}
+
+/**
+ * Opacidade do gradiente de marca para os modos COM overlay.
+ * "heavy/solid/dense" → 0.93  |  default → 0.82
+ */
+function resolveGradientOpacity(backgroundTreatment?: string): number {
+  const t = (backgroundTreatment ?? "").toLowerCase();
+  return /heavy|solid|dense|strong/.test(t) ? 0.93 : 0.82;
 }
 
 function buildOverlayElement(
@@ -147,31 +152,123 @@ function buildOverlayElement(
   const primary   = ensureHex(opts.primaryColor);
   const secondary = ensureHex(opts.secondaryColor);
   const zone      = opts.compositionZone ?? "bottom";
+  const handle    = opts.instagramHandle ? sanitizeHandle(opts.instagramHandle) : "";
 
-  const STRIP_H        = 110;
   const [line1, line2] = splitHeadline(opts.visualHeadline);
   const hasTwoLines    = !!line2;
   const fontSize       = hasTwoLines ? 86 : 108;
   const lineH          = fontSize * 1.05;
-  const handle         = opts.instagramHandle ? sanitizeHandle(opts.instagramHandle) : "";
+  const textH          = lineH * (hasTwoLines ? 2.1 : 1.1);
 
-  // ── Intensidade do gradiente ───────────────────────────────────────────────
-  const maxOp = resolveMaxOpacity(opts.backgroundTreatment);
-  const c0    = hexToRgba(primary, 0);
-  const c1    = hexToRgba(primary, maxOp * 0.67);
-  const c2    = hexToRgba(primary, maxOp);
+  // ── MODO CLEAN: referência sem overlay ────────────────────────────────────
+  // Quando o DNA da referência indica que não há gradiente ou overlay colorido
+  // (ex: "none — text directly on image", "natural dark background", etc.),
+  // o compositor protótipa o estilo original:
+  //   • scrim escuro mínimo (20-25%) apenas para garantir leiturabilidade
+  //   • zero faixa sólida de cor primária
+  //   • nome do cliente e @handle flutuam no rodapé como texto simples
+  //   • logo com badge transparente sutil
+  if (isNoOverlayStyle(opts.backgroundTreatment)) {
+    // Posição do bloco de texto baseada na zona (sem offset de strip)
+    type CSSp = React.CSSProperties;
+    const textStyle: CSSp = (() => {
+      switch (zone) {
+        case "top":
+          return { position: "absolute", top: 80, left: 56, right: 56, display: "flex", flexDirection: "column" };
+        case "center":
+          return { position: "absolute", top: Math.round(H / 2 - textH / 2), left: 56, right: 56, display: "flex", flexDirection: "column" };
+        case "left":
+          return { position: "absolute", top: Math.round(H * 0.32), left: 56, right: Math.round(W * 0.38), display: "flex", flexDirection: "column" };
+        case "right":
+          return { position: "absolute", top: Math.round(H * 0.32), right: 56, left: Math.round(W * 0.38), display: "flex", flexDirection: "column" };
+        default: // bottom — posição baixa sem reservar espaço para strip
+          return { position: "absolute", bottom: 110, left: 56, right: 56, display: "flex", flexDirection: "column" };
+      }
+    })();
 
-  // ── Altura do bloco de texto ───────────────────────────────────────────────
-  const textH = lineH * (hasTwoLines ? 2.1 : 1.1);
+    return (
+      <div style={{ width: W, height: H, display: "flex", position: "relative", overflow: "hidden" }}>
 
-  // ── Gradiente e posição do texto por zona ─────────────────────────────────
+        {/* ── Scrim escuro mínimo — só para garantir contraste do texto ── */}
+        {/* NÃO usa cor de marca. Imita o escurecimento natural da referência */}
+        <div
+          style={{
+            position:   "absolute",
+            bottom:     0,
+            left:       0,
+            right:      0,
+            height:     Math.round(H * 0.42),
+            background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.28) 100%)",
+            display:    "flex",
+          }}
+        />
+
+        {/* ── Headline ──────────────────────────────────────────────────── */}
+        <div style={textStyle}>
+          <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: "white", lineHeight: 1.0, letterSpacing: -2 }}>
+            {line1}
+          </span>
+          {hasTwoLines && (
+            <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: secondary, lineHeight: 1.05, letterSpacing: -2 }}>
+              {line2}
+            </span>
+          )}
+        </div>
+
+        {/* ── Etiquetas de marca flutuantes (sem barra sólida) ──────────── */}
+        <div
+          style={{
+            position:       "absolute",
+            bottom:         32,
+            left:           56,
+            right:          56,
+            display:        "flex",
+            justifyContent: "space-between",
+            alignItems:     "center",
+          }}
+        >
+          <span style={{ color: "white", fontSize: 24, fontFamily: "Inter", fontWeight: 700, letterSpacing: 0.5, opacity: 0.90 }}>
+            {opts.clientName.toUpperCase()}
+          </span>
+          {handle && (
+            <span style={{ color: secondary, fontSize: 24, fontFamily: "Inter", fontWeight: 700, letterSpacing: 0.5, opacity: 0.90 }}>
+              @{handle}
+            </span>
+          )}
+        </div>
+
+        {/* ── Badge sutil para o logo ───────────────────────────────────── */}
+        <div
+          style={{
+            position:        "absolute",
+            top:             36,
+            left:            36,
+            height:          100,
+            minWidth:        48,
+            backgroundColor: hexToRgba(primary, 0.50),
+            borderRadius:    16,
+            display:         "flex",
+            alignItems:      "center",
+            padding:         "10px 18px",
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── MODO PADRÃO: gradiente de marca + faixa inferior ─────────────────────
+  // Usado quando a referência tem overlay colorido, OU quando não há referência.
+  const STRIP_H = 110;
+  const maxOp   = resolveGradientOpacity(opts.backgroundTreatment);
+  const c0      = hexToRgba(primary, 0);
+  const c1      = hexToRgba(primary, maxOp * 0.67);
+  const c2      = hexToRgba(primary, maxOp);
+
   type CSSProps = React.CSSProperties;
-
   let gradientStyle: CSSProps;
   let textContainerStyle: CSSProps;
 
   if (zone === "top") {
-    // Gradiente cobre o topo, texto no topo
     gradientStyle = {
       position:   "absolute",
       top:        0,
@@ -181,17 +278,9 @@ function buildOverlayElement(
       background: `linear-gradient(to top, ${c0} 0%, ${c1} 55%, ${c2} 100%)`,
       display:    "flex",
     };
-    textContainerStyle = {
-      position:      "absolute",
-      top:           80,
-      left:          50,
-      right:         50,
-      display:       "flex",
-      flexDirection: "column",
-    };
+    textContainerStyle = { position: "absolute", top: 80, left: 50, right: 50, display: "flex", flexDirection: "column" };
 
   } else if (zone === "center") {
-    // Gradiente central, texto ao meio
     gradientStyle = {
       position:   "absolute",
       top:        Math.round(H * 0.25),
@@ -201,17 +290,9 @@ function buildOverlayElement(
       background: `linear-gradient(to bottom, ${c0} 0%, ${c2} 50%, ${c0} 100%)`,
       display:    "flex",
     };
-    textContainerStyle = {
-      position:      "absolute",
-      top:           Math.round(H / 2 - textH / 2),
-      left:          50,
-      right:         50,
-      display:       "flex",
-      flexDirection: "column",
-    };
+    textContainerStyle = { position: "absolute", top: Math.round(H / 2 - textH / 2), left: 50, right: 50, display: "flex", flexDirection: "column" };
 
   } else if (zone === "left") {
-    // Gradiente lateral esquerdo, texto à esquerda
     gradientStyle = {
       position:   "absolute",
       top:        0,
@@ -221,17 +302,9 @@ function buildOverlayElement(
       background: `linear-gradient(to right, ${c2} 0%, ${c1} 65%, ${c0} 100%)`,
       display:    "flex",
     };
-    textContainerStyle = {
-      position:      "absolute",
-      top:           Math.round(H * 0.32),
-      left:          50,
-      right:         Math.round(W * 0.35),
-      display:       "flex",
-      flexDirection: "column",
-    };
+    textContainerStyle = { position: "absolute", top: Math.round(H * 0.32), left: 50, right: Math.round(W * 0.35), display: "flex", flexDirection: "column" };
 
   } else if (zone === "right") {
-    // Gradiente lateral direito, texto à direita
     gradientStyle = {
       position:   "absolute",
       top:        0,
@@ -241,18 +314,10 @@ function buildOverlayElement(
       background: `linear-gradient(to left, ${c2} 0%, ${c1} 65%, ${c0} 100%)`,
       display:    "flex",
     };
-    textContainerStyle = {
-      position:      "absolute",
-      top:           Math.round(H * 0.32),
-      right:         50,
-      left:          Math.round(W * 0.35),
-      display:       "flex",
-      flexDirection: "column",
-    };
+    textContainerStyle = { position: "absolute", top: Math.round(H * 0.32), right: 50, left: Math.round(W * 0.35), display: "flex", flexDirection: "column" };
 
   } else {
-    // bottom (default) — comportamento original, intensidade adaptativa
-    const headlineBottom = STRIP_H + 48 + textH;
+    // bottom (default)
     gradientStyle = {
       position:   "absolute",
       bottom:     STRIP_H,
@@ -262,30 +327,16 @@ function buildOverlayElement(
       background: `linear-gradient(to bottom, ${c0} 0%, ${c1} 55%, ${c2} 100%)`,
       display:    "flex",
     };
-    textContainerStyle = {
-      position:      "absolute",
-      bottom:        headlineBottom,
-      left:          50,
-      right:         50,
-      display:       "flex",
-      flexDirection: "column",
-    };
+    textContainerStyle = { position: "absolute", bottom: STRIP_H + 48 + textH, left: 50, right: 50, display: "flex", flexDirection: "column" };
   }
 
   return (
-    <div
-      style={{
-        width:    W,
-        height:   H,
-        display:  "flex",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* ── Gradiente (direção e intensidade adaptados ao DNA) ────────── */}
+    <div style={{ width: W, height: H, display: "flex", position: "relative", overflow: "hidden" }}>
+
+      {/* ── Gradiente de marca ────────────────────────────────────────── */}
       <div style={gradientStyle} />
 
-      {/* ── Faixa inferior (cor primária sólida — sempre presente) ───── */}
+      {/* ── Faixa inferior sólida ─────────────────────────────────────── */}
       <div
         style={{
           position:        "absolute",
@@ -301,65 +352,29 @@ function buildOverlayElement(
           padding:         "0 50px",
         }}
       >
-        <span
-          style={{
-            color:         "white",
-            fontSize:      28,
-            fontFamily:    "Inter",
-            fontWeight:    700,
-            letterSpacing: 1,
-          }}
-        >
+        <span style={{ color: "white", fontSize: 28, fontFamily: "Inter", fontWeight: 700, letterSpacing: 1 }}>
           {opts.clientName.toUpperCase()}
         </span>
-
         {handle && (
-          <span
-            style={{
-              color:         secondary,
-              fontSize:      28,
-              fontFamily:    "Inter",
-              fontWeight:    700,
-              letterSpacing: 0.5,
-            }}
-          >
+          <span style={{ color: secondary, fontSize: 28, fontFamily: "Inter", fontWeight: 700, letterSpacing: 0.5 }}>
             @{handle}
           </span>
         )}
       </div>
 
-      {/* ── Headline (posição baseada na zona do DNA) ─────────────────── */}
+      {/* ── Headline ──────────────────────────────────────────────────── */}
       <div style={textContainerStyle}>
-        <span
-          style={{
-            fontSize,
-            fontWeight:    900,
-            fontFamily:    "Montserrat",
-            color:         "white",
-            lineHeight:    1.0,
-            letterSpacing: -2,
-          }}
-        >
+        <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: "white", lineHeight: 1.0, letterSpacing: -2 }}>
           {line1}
         </span>
-
         {hasTwoLines && (
-          <span
-            style={{
-              fontSize,
-              fontWeight:    900,
-              fontFamily:    "Montserrat",
-              color:         secondary,
-              lineHeight:    1.05,
-              letterSpacing: -2,
-            }}
-          >
+          <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: secondary, lineHeight: 1.05, letterSpacing: -2 }}>
             {line2}
           </span>
         )}
       </div>
 
-      {/* ── Badge de fundo para o logo (composited depois via sharp) ──── */}
+      {/* ── Badge de fundo para o logo ────────────────────────────────── */}
       <div
         style={{
           position:        "absolute",
