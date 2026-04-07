@@ -24,6 +24,7 @@ import type {
   ArtDirection,
   BrandDNA,
   GeneratedPost,
+  LayerStack,
   LogoPlacement,
   ReferenceDNA,
 } from "@/types";
@@ -55,6 +56,8 @@ export interface ResolvedArtDirection {
   negativePrompt?:      string;
   /** Placement do logo resolvido via cascade DNA */
   logoPlacement?:       LogoPlacement;
+  /** LayerStack gerado pelo Art Direction Engine (quando disponível no post) */
+  layer_stack?:         LayerStack;
 }
 
 // ── Loader ───────────────────────────────────────────────────────────────────
@@ -147,6 +150,8 @@ export function resolveArtDirection(
       ad?.logo_placement
       ?? refDna?.logo_placement
       ?? brandDna?.dominant_logo_placement,
+
+    layer_stack: (post as Record<string, unknown>).layer_stack as import("@/types").LayerStack | undefined,
   };
 }
 
@@ -164,5 +169,6 @@ export function toComposeOverrides(ad: ResolvedArtDirection) {
     typographyPattern:   ad.typographyPattern,
     logoPlacement:       ad.logoPlacement,
     colorMood:           ad.colorMood,
+    layer_stack:         ad.layer_stack,
   };
 }

@@ -36,6 +36,7 @@ import {
   resolveGradientColor,
   isDarkMood,
 } from "./composer/color-mood";
+import type { LayerStack, WashDecision, TextZone, HeadlineParams } from "@/types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,8 @@ export interface ComposeOptions {
   logoPlacement?:       LogoPlacement;
   /** Descrição do mood de cores (reference_dna.color_mood / brand_dna.color_treatment) */
   colorMood?:           string;
+  /** LayerStack gerado pelo Art Direction Engine — quando presente, controla o output visual */
+  layer_stack?:         LayerStack;
 }
 
 // ── Font cache (persiste entre invocações warm no Lambda) ────────────────────
@@ -203,11 +206,260 @@ function resolveGradientOpacity(backgroundTreatment?: string): number {
   return /heavy|solid|dense|strong/.test(t) ? 0.93 : 0.82;
 }
 
+// ── LayerStack helpers ───────────────────────────────────────────────────────
+
+function applyCase(text: string, style: HeadlineParams["case_style"]): string {
+  if (style === "uppercase") return text.toUpperCase();
+  if (style === "titlecase") return text.replace(/\b\w/g, c => c.toUpperCase());
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function wrapText(text: string, maxChars: number): [string, string | null] {
+  if (text.length <= maxChars) return [text, null];
+  const words = text.split(" ");
+  let line1 = "";
+  for (let i = 0; i < words.length; i++) {
+    const candidate = line1 ? `${line1} ${words[i]}` : words[i];
+    if (candidate.length > maxChars && line1) return [line1, words.slice(i).join(" ")];
+    line1 = candidate;
+  }
+  return [text, null];
+}
+
+function buildWashDiv(
+  wash:       WashDecision,
+  brandColor: string,
+  W:          number,
+  H:          number,
+  footerH:    number,
+): React.ReactElement | null {
+  if (wash.type === "none") return null;
+
+  if (wash.type === "gradient") {
+    const color  = wash.color ?? "#000000";
+    const from   = wash.from_opacity ?? 0;
+    const to     = wash.to_opacity   ?? 0.5;
+    const dir    = wash.direction    ?? "bottom-up";
+    const cssDir = dir === "bottom-up" ? "to top" : dir === "top-down" ? "to bottom" : "to right";
+    // bottom-up: opaque at the bottom, transparent at top of the div
+    const [c0, c1] = dir === "bottom-up"
+      ? [hexToRgba(color, to), hexToRgba(color, from)]
+      : [hexToRgba(color, from), hexToRgba(color, to)];
+    return (
+      <div
+        style={{
+          position:   "absolute",
+          bottom:     footerH,
+          left:       0,
+          right:      0,
+          height:     Math.round(H * 0.60),
+          background: `linear-gradient(${cssDir}, ${c0} 0%, ${c1} 100%)`,
+          display:    "flex",
+        }}
+      />
+    );
+  }
+
+  if (wash.type === "solid_band") {
+    const bh    = Math.round(H * (wash.height_percent ?? 35) / 100);
+    const color = hexToRgba(wash.color ?? brandColor, wash.opacity ?? 0.9);
+    const pos   = wash.position ?? "bottom";
+    return (
+      <div
+        style={{
+          position:        "absolute",
+          [pos]:           footerH,
+          left:            0,
+          right:           0,
+          height:          bh,
+          backgroundColor: color,
+          display:         "flex",
+        }}
+      />
+    );
+  }
+
+  if (wash.type === "vignette") {
+    const op = wash.intensity === "strong" ? 0.55 : 0.28;
+    return (
+      <div
+        style={{
+          position:        "absolute",
+          top:             0,
+          bottom:          0,
+          left:            0,
+          right:           0,
+          backgroundColor: hexToRgba("#000000", op * 0.35),
+          display:         "flex",
+        }}
+      />
+    );
+  }
+
+  if (wash.type === "frosted_panel") {
+    const pw   = Math.round(W * (wash.width_percent ?? 50) / 100);
+    const side = wash.side ?? "left";
+    return (
+      <div
+        style={{
+          position:        "absolute",
+          top:             0,
+          bottom:          footerH,
+          [side]:          0,
+          width:           pw,
+          backgroundColor: hexToRgba("#000000", 0.42),
+          display:         "flex",
+        }}
+      />
+    );
+  }
+
+  return null;
+}
+
+function textZoneStyle(
+  zone:    TextZone,
+  W:       number,
+  H:       number,
+  footerH: number,
+): React.CSSProperties {
+  const pad   = zone.padding;
+  const zoneW = Math.round(W * zone.width_percent / 100);
+  const base: React.CSSProperties = {
+    position:      "absolute",
+    display:       "flex",
+    flexDirection: "column",
+  };
+  switch (zone.anchor) {
+    case "bottom-full":   return { ...base, bottom: footerH + pad, left: pad, right: pad };
+    case "bottom-left":   return { ...base, bottom: footerH + pad, left: pad, width: zoneW };
+    case "bottom-right":  return { ...base, bottom: footerH + pad, right: pad, width: zoneW };
+    case "top-full":      return { ...base, top: pad, left: pad, right: pad };
+    case "top-left":      return { ...base, top: pad, left: pad, width: zoneW };
+    case "top-right":     return { ...base, top: pad, right: pad, width: zoneW };
+    case "center":        return { ...base, top: Math.round(H * 0.38), left: pad, right: pad };
+    default:              return { ...base, bottom: footerH + pad, left: pad, right: pad };
+  }
+}
+
+/**
+ * Overlay builder driven entirely by LayerStack — sem strings livres da IA.
+ * Substitui buildOverlayElement() quando opts.layer_stack está presente.
+ */
+function buildOverlayFromLayerStack(
+  opts:  ComposeOptions,
+  stack: LayerStack,
+  W:     number,
+  H:     number,
+): React.ReactElement {
+  const { wash, text_zone, headline, brand_elements } = stack;
+  const primary   = ensureHex(opts.primaryColor);
+  const secondary = ensureHex(opts.secondaryColor);
+  const handle    = opts.instagramHandle ? sanitizeHandle(opts.instagramHandle) : "";
+
+  // Footer bar
+  const footerEnabled = brand_elements.footer_bar.enabled;
+  const footerH       = footerEnabled ? brand_elements.footer_bar.height_px : 0;
+  const footerBg      = brand_elements.footer_bar.color === "transparent"
+    ? "rgba(0,0,0,0)" : ensureHex(brand_elements.footer_bar.color);
+
+  // Text
+  const displayText        = applyCase(opts.visualHeadline, headline.case_style);
+  const [line1, line2]     = wrapText(displayText, headline.max_chars_per_line);
+  const hasTwoLines        = !!line2;
+  const fontFamily         = headline.font_weight === "900" ? "Montserrat" : "Inter";
+  const fontWeightNum      = parseInt(headline.font_weight, 10);
+  const baseSize           = hasTwoLines ? 86 : 108;
+  const accentColor        = headline.accent_color ?? secondary;
+
+  return (
+    <div style={{ width: W, height: H, display: "flex", position: "relative", overflow: "hidden" }}>
+
+      {/* ── LAYER 2: WASH ────────────────────────────────────────────────── */}
+      {buildWashDiv(wash, primary, W, H, footerH)}
+
+      {/* ── LAYER 3+4: TEXT ZONE + HEADLINE ──────────────────────────────── */}
+      <div style={textZoneStyle(text_zone, W, H, footerH)}>
+        <span style={{ fontSize: baseSize, fontWeight: fontWeightNum, fontFamily, color: headline.color, lineHeight: 1.1, letterSpacing: -0.5 }}>
+          {line1}
+        </span>
+        {hasTwoLines && (
+          <span style={{ fontSize: baseSize, fontWeight: fontWeightNum, fontFamily, color: accentColor, lineHeight: 1.1, letterSpacing: -0.5 }}>
+            {line2}
+          </span>
+        )}
+      </div>
+
+      {/* ── LAYER 5: FOOTER BAR ──────────────────────────────────────────── */}
+      {footerEnabled && (
+        <div
+          style={{
+            position:        "absolute",
+            bottom:          0,
+            left:            0,
+            right:           0,
+            height:          footerH,
+            backgroundColor: footerBg,
+            display:         "flex",
+            alignItems:      "center",
+            justifyContent:  "space-between",
+            padding:         "0 48px",
+          }}
+        >
+          <span style={{ color: "white", fontSize: 26, fontFamily: "Inter", fontWeight: 700, letterSpacing: 1 }}>
+            {opts.clientName.toUpperCase()}
+          </span>
+          {handle && (
+            <span style={{ color: accentColor, fontSize: 26, fontFamily: "Inter", fontWeight: 700, letterSpacing: 0.5 }}>
+              @{handle}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── LAYER 5: LOGO BADGE (contrast boost) ──────────────────────────── */}
+      {brand_elements.logo_contrast_boost && (() => {
+        const lp = brand_elements.logo_position;
+        if (lp === "none") return null;
+        const badgeSize = brand_elements.logo_size === "large" ? 96 : brand_elements.logo_size === "medium" ? 80 : 64;
+        const margin    = 32;
+        const posStyle: React.CSSProperties = lp === "top-left"
+          ? { top: margin, left: margin }
+          : lp === "top-right"
+          ? { top: margin, right: margin }
+          : lp === "bottom-left"
+          ? { bottom: footerH + margin, left: margin }
+          : lp === "bottom-right"
+          ? { bottom: footerH + margin, right: margin }
+          : { bottom: footerH + margin, left: "50%", marginLeft: -(badgeSize / 2) };
+        return (
+          <div
+            style={{
+              position:        "absolute",
+              width:           badgeSize + 16,
+              height:          badgeSize + 16,
+              borderRadius:    12,
+              backgroundColor: hexToRgba(primary, 0.55),
+              display:         "flex",
+              ...posStyle,
+            }}
+          />
+        );
+      })()}
+    </div>
+  );
+}
+
 function buildOverlayElement(
   opts: ComposeOptions,
   W: number,
   H: number
 ): React.ReactElement {
+  // ── LayerStack path: motor determinístico sobrepõe sistema string-based ───
+  if (opts.layer_stack) {
+    return buildOverlayFromLayerStack(opts, opts.layer_stack, W, H);
+  }
+
   const primary   = ensureHex(opts.primaryColor);
   const secondary = ensureHex(opts.secondaryColor);
   const zone      = opts.compositionZone ?? "bottom";
@@ -500,7 +752,8 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
 
   // ── 5. Logo (composite via sharp — posição driven pelo DNA) ────────────────
   const resolvedPlacement: LogoPlacement =
-    opts.logoPlacement
+    (opts.layer_stack?.brand_elements.logo_position as LogoPlacement | undefined)
+    ?? opts.logoPlacement
     ?? resolveLogoPlacement(opts.headlineStyle, opts.backgroundTreatment, opts.typographyPattern);
 
   if (opts.logoUrl && resolvedPlacement !== "none") {
@@ -508,14 +761,24 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
       const logoResp = await fetch(opts.logoUrl, { signal: AbortSignal.timeout(8_000) });
       if (logoResp.ok) {
         const logoBuffer = Buffer.from(await logoResp.arrayBuffer());
-        // Redimensionar logo: máx 240×80px — dimensões reais retornadas via info
+        // Logo size driven by layer_stack when available
+        const logoMaxW = opts.layer_stack?.brand_elements.logo_size === "large"  ? 280
+                       : opts.layer_stack?.brand_elements.logo_size === "medium" ? 240
+                       : 200;
+        const logoMaxH = opts.layer_stack?.brand_elements.logo_size === "large"  ? 100
+                       : opts.layer_stack?.brand_elements.logo_size === "medium" ? 80
+                       : 60;
         const { data: logoResized, info: logoInfo } = await sharp(logoBuffer)
-          .resize(240, 80, { fit: "inside" })
+          .resize(logoMaxW, logoMaxH, { fit: "inside" })
           .toBuffer({ resolveWithObject: true });
 
         // stripH é 0 em modo clean (sem faixa inferior)
-        const cleanMode = isNoOverlayStyle(opts.backgroundTreatment);
-        const stripH    = cleanMode ? 0 : 110;
+        const cleanMode = opts.layer_stack
+          ? opts.layer_stack.wash.type === "none" || opts.layer_stack.wash.type === "vignette"
+          : isNoOverlayStyle(opts.backgroundTreatment);
+        const stripH    = (opts.layer_stack?.brand_elements.footer_bar.enabled ?? !cleanMode)
+          ? (opts.layer_stack?.brand_elements.footer_bar.height_px ?? 110)
+          : 0;
 
         const coords = computeLogoCoords({
           placement: resolvedPlacement,
