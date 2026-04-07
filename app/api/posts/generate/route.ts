@@ -411,8 +411,8 @@ export async function POST(req: NextRequest) {
           secondaryColor:       client.secondary_color,
           format:               briefing.formato_sugerido,
           postId:               postRef.id,
-          compositionZone:      reference_dna?.composition_zone,
-          backgroundTreatment:  reference_dna?.background_treatment,
+          compositionZone:      reference_dna?.composition_zone      ?? brandDna?.dominant_composition_zone,
+          backgroundTreatment:  reference_dna?.background_treatment  ?? brandDna?.background_treatment,
         });
         await postRef.update({ composed_url, status: "ready" });
       } catch (composeErr) {

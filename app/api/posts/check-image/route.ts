@@ -3,7 +3,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { pollTask, pollSeedreamTask, pollSeedreamEditTask, FreepikAuthError } from "@/lib/freepik";
 import { composePost } from "@/lib/composer";
-import type { BrandProfile, ReferenceDNA } from "@/types";
+import type { BrandProfile, BrandDNA, ReferenceDNA } from "@/types";
 
 // Precisa de tempo para Freepik poll + compositor (satori + sharp + R2 upload)
 export const maxDuration = 60;
@@ -48,6 +48,18 @@ export async function GET(req: NextRequest) {
 
         const refDna = post.reference_dna as ReferenceDNA | undefined;
 
+        // Carrega BrandDNA como fallback de zona/tratamento quando não há reference_dna
+        let brandDna: BrandDNA | undefined;
+        if (!refDna) {
+          try {
+            const dnaSnap = await adminDb
+              .collection("clients").doc(post.client_id)
+              .collection("brand_dna").doc("current")
+              .get();
+            if (dnaSnap.exists) brandDna = dnaSnap.data() as BrandDNA;
+          } catch { /* non-fatal */ }
+        }
+
         composed_url = await composePost({
           imageUrl:             result.image_url,
           logoUrl:              client.logo_url,
@@ -58,8 +70,8 @@ export async function GET(req: NextRequest) {
           secondaryColor:       client.secondary_color,
           format:               post.format ?? "feed",
           postId:               post_id,
-          compositionZone:      refDna?.composition_zone,
-          backgroundTreatment:  refDna?.background_treatment,
+          compositionZone:      refDna?.composition_zone      ?? brandDna?.dominant_composition_zone,
+          backgroundTreatment:  refDna?.background_treatment  ?? brandDna?.background_treatment,
         });
         await postRef.update({ composed_url, status: "ready" });
       } catch (composeErr) {

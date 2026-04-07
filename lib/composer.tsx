@@ -131,8 +131,21 @@ function sanitizeHandle(handle: string): string {
  * Quando true → modo "clean": sem gradiente colorido, sem faixa sólida.
  */
 function isNoOverlayStyle(backgroundTreatment?: string): boolean {
-  const t = (backgroundTreatment ?? "").toLowerCase();
-  return /none|no.?gradient|no.?overlay|direct|natural|transparent|without/.test(t);
+  if (!backgroundTreatment) return false;
+  const t = backgroundTreatment.toLowerCase();
+
+  // Palavras que indicam ausência de overlay artificial
+  const noOverlayKeywords = [
+    "none", "no overlay", "no gradient", "no added", "no artificial",
+    "direct", "directly on", "natural", "natural dark", "natural background",
+    "transparent", "without overlay", "without gradient", "without any",
+    "text on image", "text directly", "on the surface", "on the background",
+    "drop shadow only", "shadow only", "raw image", "just image",
+    "no treatment", "untreated", "clean background", "image itself",
+    "organic", "surface provides", "background provides", "contrast from",
+  ];
+
+  return noOverlayKeywords.some(kw => t.includes(kw));
 }
 
 /**
