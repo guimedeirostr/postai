@@ -15,6 +15,26 @@ type Format = "feed" | "stories" | "reels_cover";
 // Step 0 = referência visual, Step 1 = strategy, Step 2 = form + generate
 type Step = 0 | 1 | 2;
 
+// Shape minimalista de um DesignExample vindo do GET da biblioteca
+interface DesignExampleLite {
+  id:                    string;
+  visual_prompt:         string;
+  layout_prompt:         string;
+  visual_headline_style: string;
+  description:           string;
+  pilar:                 string;
+  format:                "feed" | "stories" | "reels_cover";
+  composition_zone:      "left" | "right" | "bottom" | "top" | "center";
+  color_mood:            string;
+  image_url?:            string;
+  text_zones?:           string;
+  background_treatment?: string;
+  headline_style?:       string;
+  typography_hierarchy?: string;
+  logo_placement?:       "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-center" | "none";
+  intent?:               "library" | "stage0";
+}
+
 interface CopyResult {
   post_id:            string;
   visual_headline:    string;
@@ -88,6 +108,14 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [referenceAnalyzing,    setReferenceAnalyzing]    = useState(false);
   const [referenceAnalysisError, setReferenceAnalysisError] = useState<string | null>(null);
 
+  // ── Reference Library picker (sub-tab do Stage 0) ─────────────────────────
+  const [refSource,         setRefSource]         = useState<"upload" | "library">("upload");
+  const [refLibrary,        setRefLibrary]        = useState<DesignExampleLite[]>([]);
+  const [refLibraryLoading, setRefLibraryLoading] = useState(false);
+  const [refLibraryError,   setRefLibraryError]   = useState<string | null>(null);
+  /** ID do design_example escolhido — sent for generate-copy via reference_example_id */
+  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
+
   // ── FAL.ai advanced state ─────────────────────────────────────────────────
   // Photos for FAL advanced modes are picked from the brand library
   const [falLibPhotos,       setFalLibPhotos]       = useState<BrandPhoto[]>([]);
@@ -153,6 +181,47 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     img.src = objectUrl;
   }
 
+  // ── Reference library fetcher ────────────────────────────────────────────
+  useEffect(() => {
+    if (step !== 0 || refSource !== "library") return;
+    if (refLibrary.length > 0) return;
+    setRefLibraryLoading(true);
+    setRefLibraryError(null);
+    fetch(`/api/clients/${client.id}/design-examples`)
+      .then(r => r.json())
+      .then((data: { examples?: DesignExampleLite[] }) => {
+        setRefLibrary(data.examples ?? []);
+      })
+      .catch(() => setRefLibraryError("Não foi possível carregar a biblioteca"))
+      .finally(() => setRefLibraryLoading(false));
+  }, [step, refSource, client.id, refLibrary.length]);
+
+  /** Seleciona uma referência da biblioteca — promove para ReferenceDNA local */
+  function handleSelectLibraryExample(ex: DesignExampleLite) {
+    const isRich = !!(ex.text_zones || ex.background_treatment || ex.headline_style);
+    if (!isRich) {
+      setReferenceAnalysisError("Este exemplo é antigo (sem DNA rico). Use um mais recente ou suba uma nova arte.");
+      return;
+    }
+    setSelectedExampleId(ex.id);
+    setReferenceDna({
+      composition_zone:      ex.composition_zone,
+      text_zones:            ex.text_zones ?? "",
+      background_treatment:  ex.background_treatment ?? "",
+      headline_style:        ex.headline_style ?? "",
+      typography_hierarchy:  ex.typography_hierarchy ?? "",
+      visual_prompt:         ex.visual_prompt,
+      layout_prompt:         ex.layout_prompt,
+      color_mood:            ex.color_mood,
+      description:           ex.description,
+      pilar:                 ex.pilar,
+      format:                ex.format,
+      visual_headline_style: ex.visual_headline_style,
+      ...(ex.logo_placement ? { logo_placement: ex.logo_placement } : {}),
+    });
+    setReferenceAnalysisError(null);
+  }
+
   async function handleAnalyzeReference() {
     if (!referenceB64) return;
     setReferenceAnalyzing(true);
@@ -162,7 +231,13 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       const res  = await fetch("/api/posts/analyze-reference", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ image_base64: referenceB64, image_mime: referenceType }),
+        // client_id é enviado para que o DNA seja AUTOMATICAMENTE salvo
+        // como design_example da marca — fluxo unificado: nada se perde.
+        body:    JSON.stringify({
+          image_base64: referenceB64,
+          image_mime:   referenceType,
+          client_id:    client.id,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -170,6 +245,9 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
         return;
       }
       setReferenceDna(data as ReferenceDNA);
+      // data.design_example_id já foi gravado em design_examples (auto-save).
+      // Não precisamos guardar localmente — o backend vai poder carregá-lo
+      // pelo reference_dna inline em /api/posts/generate.
     } catch {
       setReferenceAnalysisError("Erro inesperado. Tente novamente.");
     } finally {
@@ -305,7 +383,10 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       if (strategy.dor_desejo)        body.dor_desejo        = strategy.dor_desejo;
       if (strategy.hook_type)         body.hook_type         = strategy.hook_type;
     }
-    if (referenceDna) {
+    if (selectedExampleId) {
+      // Veio da biblioteca — backend resolve o DNA por ID (evita payload pesado)
+      (body as Record<string, unknown>).reference_example_id = selectedExampleId;
+    } else if (referenceDna) {
       // DNA já foi extraído pelo Stage 0 — passa estruturado (mais rico)
       (body as Record<string, unknown>).reference_dna = referenceDna;
     } else if (referenceB64) {
@@ -586,11 +667,110 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   <Dna className="w-3.5 h-3.5" /> Como funciona
                 </p>
                 <p className="text-xs text-violet-600 leading-relaxed">
-                  Suba uma arte que você quer <strong>copiar o estilo</strong>. A IA lê o DNA visual exato — composição, hierarquia tipográfica, zonas de texto, mood de cores — e usa como guia em todo o pipeline de geração.
+                  Suba uma arte nova <strong>ou</strong> escolha uma referência já salva na biblioteca da marca. A IA lê o DNA visual exato — composição, hierarquia tipográfica, zonas de texto, mood de cores — e usa como guia em todo o pipeline de geração.
                 </p>
               </div>
 
+              {/* Sub-toggle: Upload novo / Da biblioteca */}
+              <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => { setRefSource("upload"); setSelectedExampleId(null); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    refSource === "upload"
+                      ? "bg-white text-violet-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5" /> Nova arte
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRefSource("library"); setReferenceB64(null); setReferencePreview(null); }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    refSource === "library"
+                      ? "bg-white text-violet-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" /> Biblioteca da marca
+                </button>
+              </div>
+
+              {/* ── Library picker ──────────────────────────────────────── */}
+              {refSource === "library" && (
+                <div className="space-y-3">
+                  {refLibraryLoading && (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-5 h-5 text-violet-500 animate-spin" />
+                    </div>
+                  )}
+                  {refLibraryError && (
+                    <p className="text-xs text-red-500 text-center">{refLibraryError}</p>
+                  )}
+                  {!refLibraryLoading && !refLibraryError && refLibrary.length === 0 && (
+                    <div className="p-6 bg-slate-50 rounded-xl text-center">
+                      <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-xs font-semibold text-slate-500">Nenhuma referência salva ainda</p>
+                      <p className="text-xs text-slate-400 mt-1">Suba uma arte nova para começar — ela vai ser salva automaticamente aqui.</p>
+                    </div>
+                  )}
+                  {!refLibraryLoading && refLibrary.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3 max-h-[360px] overflow-y-auto pr-1">
+                      {refLibrary.map(ex => {
+                        const isSelected = selectedExampleId === ex.id;
+                        const isRich     = !!(ex.text_zones || ex.background_treatment || ex.headline_style);
+                        return (
+                          <button
+                            key={ex.id}
+                            type="button"
+                            onClick={() => handleSelectLibraryExample(ex)}
+                            disabled={!isRich}
+                            className={`relative text-left rounded-xl border-2 overflow-hidden transition-all ${
+                              isSelected
+                                ? "border-violet-500 ring-2 ring-violet-200"
+                                : isRich
+                                  ? "border-slate-200 hover:border-violet-300"
+                                  : "border-slate-100 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            {ex.image_url ? (
+                              <div className="aspect-square bg-slate-100">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={ex.image_url} alt={ex.description} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="aspect-square bg-gradient-to-br from-violet-100 to-slate-100 flex items-center justify-center">
+                                <Dna className="w-8 h-8 text-violet-300" />
+                              </div>
+                            )}
+                            <div className="p-2 bg-white">
+                              <div className="flex items-center gap-1 mb-1">
+                                <Badge className={`${PILAR_COLORS[ex.pilar] ?? "bg-slate-100 text-slate-600"} text-[10px] px-1.5 py-0`}>
+                                  {ex.pilar}
+                                </Badge>
+                                {ex.intent === "stage0" && (
+                                  <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">Stage 0</Badge>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-600 leading-snug line-clamp-2">{ex.description}</p>
+                            </div>
+                            {isSelected && (
+                              <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-violet-600 text-white flex items-center justify-center">
+                                <Check className="w-3.5 h-3.5" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Upload zone */}
+              {refSource === "upload" && (
+              <>
               <label
                 className={`flex items-center gap-3 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
                   referenceB64
@@ -635,7 +815,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 )}
               </label>
 
-              {/* Botão Analisar DNA */}
+              {/* Botão Analisar DNA (só aparece no modo upload) */}
               {referenceB64 && !referenceDna && (
                 <Button
                   onClick={handleAnalyzeReference}
@@ -646,6 +826,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                     ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Lendo DNA visual...</>
                     : <><Dna className="w-4 h-4 mr-2" />Analisar DNA da arte</>}
                 </Button>
+              )}
+              </>
               )}
 
               {referenceAnalysisError && (
