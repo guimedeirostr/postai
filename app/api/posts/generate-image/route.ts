@@ -145,6 +145,63 @@ export async function POST(req: NextRequest) {
       : (post.visual_prompt as string);
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Foto da biblioteca: composição DIRETA — sem geração de imagem
+    // DEVE ficar antes de qualquer provider — não é geração, é composição pura.
+    // A foto escolhida pelo usuário é o fundo final. Nenhuma IA toca nela.
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (libraryImageUrl) {
+      const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
+      const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
+
+      // Análise real da foto da biblioteca via Sharp
+      let library_layer_stack: LayerStack | null = post.layer_stack as LayerStack | null ?? null;
+      try {
+        const realBg = await analyzeImage(libraryImageUrl);
+        const toneProf = (post.layer_stack as LayerStack | undefined)?.tone_profile
+          ?? (post as Record<string, unknown>).tone_profile as ToneProfile | undefined;
+        if (toneProf) {
+          library_layer_stack = composeLayerStack(realBg, toneProf, client);
+          console.log("[generate-image] LayerStack atualizado via Sharp para foto da biblioteca");
+        }
+      } catch (analysisErr) {
+        console.warn("[generate-image] analyzeImage (biblioteca) falhou (non-fatal):", analysisErr);
+      }
+
+      await postDoc.ref.update({
+        status:    "composing",
+        image_url: libraryImageUrl,
+        ...(library_layer_stack ? { layer_stack: library_layer_stack } : {}),
+      });
+
+      const composed_url = await composePost({
+        imageUrl:        libraryImageUrl,
+        logoUrl:         client.logo_url,
+        visualHeadline:  (post.visual_headline ?? post.headline ?? client.name) as string,
+        instagramHandle: client.instagram_handle as string | undefined,
+        clientName:      client.name,
+        primaryColor:    client.primary_color,
+        secondaryColor:  client.secondary_color,
+        format:          (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
+        postId:          post_id,
+        ...toComposeOverrides(ad),
+      });
+
+      await postDoc.ref.update({
+        image_url:      libraryImageUrl,
+        composed_url,
+        image_provider: "library_direct",
+        status:         "ready",
+      });
+
+      return NextResponse.json({
+        image_url:    libraryImageUrl,
+        composed_url,
+        post_id,
+        provider:     "library_direct",
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // FAL.ai — paths avançados
     // ═══════════════════════════════════════════════════════════════════════════
 
@@ -348,63 +405,6 @@ export async function POST(req: NextRequest) {
     // ═══════════════════════════════════════════════════════════════════════════
     // Freepik — paths assíncronos (frontend faz polling em check-image)
     // ═══════════════════════════════════════════════════════════════════════════
-
-    // ── Foto da biblioteca: composição DIRETA — sem geração de imagem ───────────
-    // A foto escolhida pelo usuário é o fundo final. Nenhuma IA toca nela.
-    // O overlay (headline, logo, marca) é aplicado pelo compositor usando o
-    // DNA extraído no Stage 0 para definir posição e tratamento do overlay.
-    // Análise real de pixels via Sharp roda sobre a foto para atualizar o LayerStack.
-    if (libraryImageUrl) {
-      const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
-      const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
-
-      // ── Análise real da foto da biblioteca ─────────────────────────────────
-      let library_layer_stack: LayerStack | null = post.layer_stack as LayerStack | null ?? null;
-      try {
-        const realBg = await analyzeImage(libraryImageUrl);
-        const toneProf = (post.layer_stack as LayerStack | undefined)?.tone_profile
-          ?? (post as Record<string, unknown>).tone_profile as ToneProfile | undefined;
-        if (toneProf) {
-          library_layer_stack = composeLayerStack(realBg, toneProf, client);
-          console.log("[generate-image] LayerStack atualizado via Sharp para foto da biblioteca");
-        }
-      } catch (analysisErr) {
-        console.warn("[generate-image] analyzeImage (biblioteca) falhou (non-fatal):", analysisErr);
-      }
-
-      await postDoc.ref.update({
-        status:       "composing",
-        image_url:    libraryImageUrl,
-        ...(library_layer_stack ? { layer_stack: library_layer_stack } : {}),
-      });
-
-      const composed_url = await composePost({
-        imageUrl:            libraryImageUrl,
-        logoUrl:             client.logo_url,
-        visualHeadline:      (post.visual_headline ?? post.headline ?? client.name) as string,
-        instagramHandle:     client.instagram_handle as string | undefined,
-        clientName:          client.name,
-        primaryColor:        client.primary_color,
-        secondaryColor:      client.secondary_color,
-        format:              (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
-        postId:              post_id,
-        ...toComposeOverrides(ad),
-      });
-
-      await postDoc.ref.update({
-        image_url:      libraryImageUrl,
-        composed_url,
-        image_provider: "library_direct",
-        status:         "ready",
-      });
-
-      return NextResponse.json({
-        image_url:    libraryImageUrl,
-        composed_url,
-        post_id,
-        provider:     "library_direct",
-      });
-    }
 
     // ── Seedream V5 Lite (txt2img assíncrono) ─────────────────────────────────
     if (resolvedProvider === "seedream") {
