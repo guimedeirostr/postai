@@ -6,7 +6,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { extractPromptFromImage } from "@/lib/freepik";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
-import type { BrandProfile, StrategyContext, ReferenceDNA, DesignExample } from "@/types";
+import { composeLayerStack, layerStackToLayoutPrompt } from "@/lib/art-direction-engine";
+import type { BrandProfile, StrategyContext, ReferenceDNA, DesignExample, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 export const maxDuration = 60;
 
@@ -266,6 +267,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Falha ao parsear resposta da IA", raw }, { status: 500 });
     }
 
+    // ── Art Direction Engine — deriva LayerStack das saídas estruturadas ─────
+    // Claude retorna background_analysis (percepção) + tone_profile (direção).
+    // O motor TypeScript deriva todas as decisões mecânicas de composição.
+    let layer_stack: LayerStack | null = null;
+    try {
+      const raw_copy = copy as unknown as Record<string, unknown>;
+      const bgAnalysis = raw_copy.background_analysis as BackgroundAnalysis | undefined;
+      const toneProf   = raw_copy.tone_profile        as ToneProfile        | undefined;
+      if (bgAnalysis && toneProf) {
+        layer_stack        = composeLayerStack(bgAnalysis, toneProf, client);
+        copy.layout_prompt = layerStackToLayoutPrompt(layer_stack);
+      }
+    } catch (engineErr) {
+      // Non-fatal: se o motor falhar, o layout_prompt livre do Claude é mantido
+      console.warn("[generate-copy] Art Direction Engine falhou (non-fatal):", engineErr);
+    }
+
     const ref = adminDb.collection("posts").doc();
     await ref.set({
       id:              ref.id,
@@ -281,6 +299,7 @@ export async function POST(req: NextRequest) {
       hashtags:        copy.hashtags,
       visual_prompt:   copy.visual_prompt,
       layout_prompt:   copy.layout_prompt ?? null,
+      layer_stack:     layer_stack ?? null,
       framework_used:  copy.framework_used,
       hook_type:       copy.hook_type,
       image_url:       null,

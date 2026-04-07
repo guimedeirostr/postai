@@ -232,6 +232,121 @@ export interface ReferenceDNA {
   logo_placement?:       LogoPlacement;
 }
 
+// ── Art Direction Engine types ────────────────────────────────────────────────
+// BackgroundAnalysis: Claude extrai da cena/imagem de referência (percepção).
+// ToneProfile:        Claude decide com base na personalidade da marca (criatividade).
+// O motor TypeScript deriva LayerStack completo dessas duas entradas — sem depender
+// de texto livre gerado pela IA para decisões mecânicas de composição.
+
+export interface BackgroundAnalysis {
+  /** 0.0–1.0: quão visualmente poluído/ocupado é o fundo (0 = liso; 1 = caótico) */
+  entropy_level:    number;
+  /** Onde o sujeito principal está posicionado no frame */
+  subject_position: "left" | "center" | "right" | "top" | "bottom" | "full";
+  /** Qualidade de profundidade de campo */
+  depth_of_field:   "shallow" | "deep" | "mixed";
+  /** Leitura de luminosidade por quadrante */
+  brightness_zones: {
+    top:    "light" | "dark" | "neutral";
+    bottom: "light" | "dark" | "neutral";
+    left:   "light" | "dark" | "neutral";
+    right:  "light" | "dark" | "neutral";
+  };
+  /** Temperatura de cor dominante da cena */
+  color_temperature: "warm" | "cool" | "neutral";
+  /** Quadrantes seguros para texto (sem sujeito principal) */
+  safe_areas: Array<"top-left" | "top-right" | "bottom-left" | "bottom-right" | "top-full" | "bottom-full">;
+  /** Cores dominantes aproximadas da cena (hex) */
+  dominant_colors: string[];
+}
+
+export interface ToneProfile {
+  name: "editorial_clean" | "bold_aggressive" | "minimal_luxury" | "warm_organic" | "vibrant_pop";
+  typography: {
+    weight:     "light" | "regular" | "bold" | "black";
+    spacing:    "tight" | "normal" | "wide";
+    case_style: "uppercase" | "titlecase" | "sentence";
+  };
+  color_behavior: {
+    contrast:   "low" | "medium" | "high";
+    saturation: "muted" | "natural" | "vibrant";
+  };
+  composition: {
+    density:   "minimal" | "balanced" | "dense";
+    alignment: "centered" | "left" | "asymmetric";
+  };
+  /** Derivado do entropy_level: > 0.6 → strong; 0.3–0.6 → soft; < 0.3 → none */
+  wash_preference: "none" | "soft" | "strong";
+}
+
+export interface WashDecision {
+  type: "none" | "gradient" | "solid_band" | "vignette" | "frosted_panel";
+  /** gradient */
+  direction?:      "bottom-up" | "top-down" | "left-right";
+  from_opacity?:   number;
+  to_opacity?:     number;
+  color?:          string;
+  /** solid_band */
+  position?:       "bottom" | "top";
+  height_percent?: number;
+  opacity?:        number;
+  /** vignette */
+  intensity?:      "soft" | "strong";
+  /** frosted_panel */
+  side?:           "left" | "right";
+  width_percent?:  number;
+  blur?:           number;
+}
+
+export interface TextZone {
+  anchor:         "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-full" | "top-full" | "center";
+  width_percent:  number;
+  height_percent: number;
+  padding:        number;
+  safe_margin:    boolean;
+}
+
+export interface HeadlineParams {
+  font_weight:        "400" | "700" | "800" | "900";
+  color:              string;
+  case_style:         "uppercase" | "titlecase" | "sentence";
+  max_chars_per_line: number;
+  estimated_lines:    1 | 2 | 3;
+  contrast_ratio:     "AA" | "AAA";
+  accent_color?:      string;
+}
+
+export interface BrandElementsPlacement {
+  logo_position:       LogoPlacement;
+  logo_size:           "small" | "medium" | "large";
+  logo_contrast_boost: boolean;
+  footer_bar: {
+    enabled:   boolean;
+    style:     "solid" | "transparent" | "gradient";
+    color:     string;
+    height_px: number;
+  };
+}
+
+export interface ArtDirectionValidation {
+  readability_score: number;   // 0–1
+  overlap_score:     number;   // 0–1
+  brand_consistency: number;   // 0–1
+  visual_balance:    number;   // 0–1
+  passes:            boolean;
+  warnings:          string[];
+}
+
+export interface LayerStack {
+  background_analysis: BackgroundAnalysis;
+  tone_profile:        ToneProfile;
+  wash:                WashDecision;
+  text_zone:           TextZone;
+  headline:            HeadlineParams;
+  brand_elements:      BrandElementsPlacement;
+  validation?:         ArtDirectionValidation;
+}
+
 // ── Carousel types ────────────────────────────────────────────────────────────
 
 export type SlideType = "hook" | "content" | "cta";

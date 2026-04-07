@@ -182,6 +182,8 @@ REGRAS DE OURO — NUNCA QUEBRE
    LAYER 5 — BRAND ELEMENTS: posição do logo (top-left corner | top-right | bottom-center small), rodapé (full-width footer bar with brand name left and @handle right | none), cor da barra (solid ${client.primary_color} | solid black | transparent).
    TONE: editorial clean | bold aggressive | minimal luxury | warm organic | vibrant pop
    SEMPRE termine com: "All text overlays are in Brazilian Portuguese (pt-BR)."
+9. background_analysis: Analise objetivamente a CENA descrita no visual_prompt (ou a imagem de referência, se enviada). Estime com precisão: entropy_level (0.0 = fundo liso; 1.0 = cena extremamente poluída), subject_position, depth_of_field, luminosidade por quadrante (top/bottom/left/right), temperatura de cor, quais quadrantes estão livres de sujeito (safe_areas) e as cores dominantes em hex. Se não houver imagem, estime com base no visual_prompt gerado.
+10. tone_profile: Escolha o perfil de tom com base no tom_de_voz da marca, segmento e pilar. Luxury → minimal_luxury. Restaurante/food premium → warm_organic ou editorial_clean. Produto/embalagem agressivo → bold_aggressive. Empório/bebida/pop → vibrant_pop. Derive wash_preference do entropy_level: > 0.6 → strong; 0.3–0.6 → soft; < 0.3 → none (exceto bold_aggressive que é sempre strong).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
@@ -194,6 +196,22 @@ OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
   "visual_prompt": "${referenceDnaVisualPrompt ? `Start from the reference base prompt and adapt ONLY the subject to the current theme. Preserve exact lighting, camera angle, background, color mood, photographic style. Write in English. Text overlays in Brazilian Portuguese (pt-BR).` : hasReferenceImage ? "detailed professional photography/design prompt in English — replicate the exact style, color palette, composition and mood of the reference image above. Do NOT use brand colors. Text overlays in Brazilian Portuguese (pt-BR)." : `detailed professional photography prompt in English with scene, lighting, mood, style, brand colors ${client.primary_color} and ${client.secondary_color}. Text overlays in Brazilian Portuguese (pt-BR).`}",
   "layout_prompt": "Silkscreen layer stack in English — write each layer on its own line, bottom to top: LAYER 1 — BACKGROUND: [describe photo scene and framing only, no overlays]. LAYER 2 — WASH: [none | gradient direction colors opacity | solid band position height]. LAYER 3 — TEXT ZONE: [exact quadrant and approximate frame coverage, e.g. bottom-left, bottom 35% of frame]. LAYER 4 — HEADLINE: [font weight, color, capitalization, estimated line count]. LAYER 5 — BRAND ELEMENTS: [logo position and size, footer bar style color and content]. TONE: [editorial clean | bold aggressive | minimal luxury | warm organic]. All text overlays are in Brazilian Portuguese (pt-BR). — Example: 'LAYER 1 — BACKGROUND: full-bleed product photography, woman holding stacked branded boxes, shallow depth of field, natural indoor light. LAYER 2 — WASH: none. LAYER 3 — TEXT ZONE: bottom-left, occupies bottom 30% of frame. LAYER 4 — HEADLINE: bold 900 white ALL CAPS 2 lines, accent line in ${client.primary_color}. LAYER 5 — BRAND ELEMENTS: logo top-left corner small, full-width solid black footer bar with brand name left and @handle right. TONE: editorial clean. All text overlays are in Brazilian Portuguese (pt-BR).'",
   "framework_used": "${framework}",
-  "hook_type": "${hook}"
+  "hook_type": "${hook}",
+  "background_analysis": {
+    "entropy_level": 0.0,
+    "subject_position": "center|left|right|top|bottom|full",
+    "depth_of_field": "shallow|deep|mixed",
+    "brightness_zones": { "top": "light|dark|neutral", "bottom": "light|dark|neutral", "left": "light|dark|neutral", "right": "light|dark|neutral" },
+    "color_temperature": "warm|cool|neutral",
+    "safe_areas": ["quadrantes livres de sujeito, ex: bottom-left, top-right"],
+    "dominant_colors": ["#hex1", "#hex2"]
+  },
+  "tone_profile": {
+    "name": "editorial_clean|bold_aggressive|minimal_luxury|warm_organic|vibrant_pop",
+    "typography": { "weight": "light|regular|bold|black", "spacing": "tight|normal|wide", "case_style": "uppercase|titlecase|sentence" },
+    "color_behavior": { "contrast": "low|medium|high", "saturation": "muted|natural|vibrant" },
+    "composition": { "density": "minimal|balanced|dense", "alignment": "centered|left|asymmetric" },
+    "wash_preference": "none|soft|strong"
+  }
 }`;
 }
