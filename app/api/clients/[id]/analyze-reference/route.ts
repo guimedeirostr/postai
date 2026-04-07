@@ -19,70 +19,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
+import { DESIGN_EXAMPLE_ANALYSIS_PROMPT } from "@/lib/prompts/design-example-analysis";
 import type { DesignExample } from "@/types";
 
-export const maxDuration = 60;
-
-// ── SKILL blueprint (inline — mirrors the SKILL.md prompt body) ───────────────
-// This is the same instructions as in analisador-visual-blueprint SKILL.md,
-// embedded here so the analysis works even without the skill being uploaded.
-const ANALYZER_SYSTEM = `Você é um analista visual sênior especializado em engenharia reversa de imagens para agências de marketing digital. Sua função é receber qualquer imagem e produzir um JSON extremamente detalhado que funciona como um "blueprint de DNA visual" — permitindo que o Art Director Agent do PostAI recrie o estilo com fidelidade máxima.
-
-REGRAS:
-1. Retorne SOMENTE o JSON válido. Nada de markdown, backticks, explicações ou comentários.
-2. Precisão cirúrgica: cores em HEX, posições em % relativo ao canvas, ângulos em graus.
-3. Descreva CADA elemento visível individualmente.
-4. OCR perfeito: transcreva textos EXATAMENTE como aparecem.
-5. Ordem de camadas: elementos ordenados por z_index (fundo → frente).
-6. Fontes: sugira a mais próxima disponível no Google Fonts.
-7. "visual_prompt" e "layout_prompt": SEMPRE em inglês.
-8. "recreation_prompt": em português-BR.
-
-Retorne JSON com esta estrutura:
-{
-  "canvas": { "width_px": 1080, "height_px": 1350, "aspect_ratio": "4:5", "background": { "type": "solid|gradient|image", "color": "#hex", "description": "..." } },
-  "metadata": {
-    "summary": "1-2 frases",
-    "category": "post-instagram|story|banner|carrossel",
-    "visual_style": "flat|3d|minimalista|corporativo|editorial|glassmorphism|bold-typography|commercial-photography",
-    "mood": "profissional|divertido|urgente|elegante|acolhedor|premium|descolado",
-    "dominant_colors": ["#hex1", "#hex2", "#hex3"],
-    "estimated_platform": "instagram-feed|instagram-stories",
-    "pilar": "Produto|Educação|Prova Social|Bastidores|Engajamento|Promoção|Trend",
-    "format": "feed|stories|reels_cover",
-    "composition_zone": "left|right|bottom|top|center",
-    "color_mood": "descrição em inglês do mood das cores"
-  },
-  "elements": [
-    {
-      "id": "el_01", "type": "text|shape|icon|image_region|line|decorative",
-      "z_index": 0, "position": { "x_pct": 50, "y_pct": 50 },
-      "size": { "width_pct": 80, "height_pct": 15 }, "opacity": 1.0,
-      "content": "texto exato",
-      "font": { "family": "Montserrat", "size_pt": 72, "weight": 900, "style": "normal", "color": "#FFFFFF", "align": "center", "line_height": 1.1, "text_transform": "uppercase" },
-      "fill": { "type": "solid|gradient|none", "color": "#hex" },
-      "border_radius_px": 12,
-      "region_description": "DESCRIÇÃO DETALHADA em inglês para prompt de IA",
-      "region_type": "fotografia|ilustração|textura",
-      "dominant_color": "#hex"
-    }
-  ],
-  "layout": { "type": "freeform|centered|split|layered|grid", "alignment_description": "...", "visual_hierarchy": "...", "safe_zone_respected": true },
-  "typography_system": [{ "role": "heading|subheading|body|caption|cta", "sample_text": "...", "font_family": "Montserrat", "font_weight": 900, "relative_size": "extra-large|large|medium|small" }],
-  "effects": { "overlays": "gradiente escuro | nenhum", "textures": "noise | nenhum", "filters": "nenhum|warm tone" },
-  "postai_design_example": {
-    "visual_prompt": "detailed photography/design prompt in English — scene, lighting, mood, style, colors. Ready for Freepik Mystic or FAL.ai Flux Pro Ultra.",
-    "layout_prompt": "Instagram design composition in English: text position, overlay style, typography. End with: 'All text overlays are in Brazilian Portuguese (pt-BR).'",
-    "visual_headline_style": "bold white Montserrat 900 all-caps on dark gradient | etc",
-    "description": "descrição em português do estilo visual para catalogar",
-    "color_mood": "warm golden tones | dark premium with neon accent | etc"
-  },
-  "recreation_prompt": "Prompt completo em português-BR para o Art Director Agent recriar este estilo do zero."
-}`;
+// Claude Vision pode levar 20-40s — aumentar para evitar 504
+export const maxDuration = 90;
 
 // ── Anthropic client ─────────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-// Análise visual requer raciocínio estruturado — Sonnet é mínimo, Haiku falha no schema complexo
+// Visão requer Sonnet — Haiku não suporta imagens com schema estruturado
 const MODEL = process.env.ANALYZER_MODEL ?? "claude-sonnet-4-6";
 
 // ── Route handler ────────────────────────────────────────────────────────────
@@ -157,93 +102,67 @@ export async function POST(
       resolvedImageUrl  = imageUrl;
     };
 
-    // ── Chamar Claude com visão direta (sem Skills API — mais estável) ───────
+    // ── Chamar Claude Vision com prompt compacto ──────────────────────────────
+    // Usa DESIGN_EXAMPLE_ANALYSIS_PROMPT (schema simples) em vez do blueprint
+    // completo — reduz tokens gerados de ~3000 para ~400, tempo de ~60s para ~15s.
     const message = await anthropic.messages.create({
       model:      MODEL,
-      max_tokens: 4096,
-      system:     ANALYZER_SYSTEM,
+      max_tokens: 1024,
       messages: [
         {
           role: "user",
           content: [
             {
               type: "image",
-              source: {
-                type:       "base64",
-                media_type: mediaType,
-                data:       base64Data,
-              },
+              source: { type: "base64", media_type: mediaType, data: base64Data },
             },
             {
               type: "text",
-              text: body.format
-                ? `Analise esta imagem para o formato: ${body.format}. Extraia o DNA visual completo e retorne SOMENTE o JSON estruturado, sem markdown, sem backticks.`
-                : "Analise esta imagem e extraia o DNA visual completo. Retorne SOMENTE o JSON estruturado, sem markdown, sem backticks.",
+              text: DESIGN_EXAMPLE_ANALYSIS_PROMPT
+                + (body.format ? `\n\nFormato inferido: ${body.format}` : ""),
             },
           ],
         },
       ],
     });
 
-    // ── Parsear JSON retornado pelo Claude ────────────────────────────────────
+    // ── Parsear JSON retornado ────────────────────────────────────────────────
     const rawText = message.content
       .filter(b => b.type === "text")
       .map(b => (b as { type: "text"; text: string }).text)
       .join("");
 
-    // Extrair JSON de forma robusta — tenta múltiplas estratégias
-    function extractJson(text: string): Record<string, unknown> | null {
-      // 1. Remove markdown fences e tenta parse direto
-      const stripped = text
-        .replace(/^```(?:json)?\s*/im, "")
-        .replace(/\s*```\s*$/m, "")
-        .trim();
-      try { return JSON.parse(stripped); } catch { /* continua */ }
-
-      // 2. Extrai o maior bloco JSON (do primeiro { até o último })
+    // Extrai JSON de forma robusta (remove markdown fences, tenta reparar truncamento)
+    function extractJson(text: string): Record<string, string> | null {
+      const stripped = text.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/m, "").trim();
+      try { return JSON.parse(stripped) as Record<string, string>; } catch { /* continua */ }
       const first = text.indexOf("{");
       const last  = text.lastIndexOf("}");
       if (first !== -1 && last > first) {
-        try { return JSON.parse(text.slice(first, last + 1)); } catch { /* continua */ }
+        try { return JSON.parse(text.slice(first, last + 1)) as Record<string, string>; } catch { /* continua */ }
       }
-
-      // 3. Tenta reparar JSON truncado adicionando chaves fechantes
-      if (first !== -1) {
-        const partial = text.slice(first);
-        const opens   = (partial.match(/\{/g) ?? []).length;
-        const closes  = (partial.match(/\}/g) ?? []).length;
-        const patched = partial + "}".repeat(Math.max(0, opens - closes));
-        try { return JSON.parse(patched); } catch { /* desiste */ }
-      }
-
       return null;
     }
 
-    const blueprint = extractJson(rawText);
-    if (!blueprint) {
-      console.error("[analyze-reference] JSON inválido:", rawText.slice(0, 600));
-      return NextResponse.json(
-        { error: "Claude retornou JSON inválido. Tente novamente." },
-        { status: 500 }
-      );
+    const parsed = extractJson(rawText);
+    if (!parsed) {
+      console.error("[analyze-reference] JSON inválido:", rawText.slice(0, 400));
+      return NextResponse.json({ error: "Claude retornou JSON inválido. Tente novamente." }, { status: 500 });
     }
 
-    // ── Extrair campos do blueprint ───────────────────────────────────────────
-    const pde = blueprint.postai_design_example as Record<string, string> | undefined;
-    const meta = blueprint.metadata as Record<string, string | string[]> | undefined;
-
-    const visual_prompt         = pde?.visual_prompt ?? "";
-    const layout_prompt         = pde?.layout_prompt ?? "";
-    const visual_headline_style = pde?.visual_headline_style ?? "";
-    const description           = pde?.description ?? meta?.summary as string ?? "";
-    const color_mood            = pde?.color_mood ?? meta?.color_mood as string ?? "";
-    const pilar                 = (meta?.pilar as string) ?? "Produto";
-    const format                = (body.format ?? meta?.format as string ?? "feed") as "feed" | "stories" | "reels_cover";
-    const composition_zone      = (meta?.composition_zone as string ?? "bottom") as DesignExample["composition_zone"];
+    // ── Mapear campos ─────────────────────────────────────────────────────────
+    const visual_prompt         = parsed.visual_prompt ?? "";
+    const layout_prompt         = parsed.layout_prompt ?? "";
+    const visual_headline_style = parsed.visual_headline_style ?? "";
+    const description           = parsed.description ?? "";
+    const color_mood            = parsed.color_mood ?? "";
+    const pilar                 = parsed.pilar ?? "Produto";
+    const format                = (body.format ?? parsed.format ?? "feed") as "feed" | "stories" | "reels_cover";
+    const composition_zone      = (parsed.composition_zone ?? "bottom") as DesignExample["composition_zone"];
 
     if (!visual_prompt || !layout_prompt) {
       return NextResponse.json(
-        { error: "Análise incompleta: visual_prompt ou layout_prompt ausente" },
+        { error: "Análise incompleta: visual_prompt ou layout_prompt ausente. Tente com outra imagem." },
         { status: 500 }
       );
     }
@@ -285,8 +204,7 @@ export async function POST(
       description,
       color_mood,
       composition_zone,
-      image_url:             resolvedImageUrl,   // retorna a URL resolvida para o preview
-      blueprint,
+      image_url:             resolvedImageUrl,
     }, { status: 201 });
 
   } catch (err: unknown) {

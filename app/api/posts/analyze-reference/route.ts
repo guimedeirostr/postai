@@ -19,6 +19,9 @@ import { getSessionUser } from "@/lib/session";
 import { buildReferenceDNAPrompt } from "@/lib/prompts/design-example-analysis";
 import type { ReferenceDNA } from "@/types";
 
+// Claude Vision pode levar 20-40s — sem maxDuration default é 10s (504 no Vercel)
+export const maxDuration = 60;
+
 // Visão requer Sonnet — Haiku não suporta imagens
 const VISION_MODEL = "claude-sonnet-4-6";
 
