@@ -40,7 +40,10 @@ import {
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface ComposeOptions {
-  imageUrl:             string;           // URL da imagem gerada pela IA
+  imageUrl?:            string;           // URL da imagem gerada pela IA (preferido)
+  imageBuffer?:         Buffer;           // Alternativa: buffer já em memória (preview/placeholder)
+  /** Quando true, salva como `posts/{id}/preview.jpg` (não sobrescreve composed.jpg) */
+  preview?:             boolean;
   logoUrl?:             string | null;    // URL do logo do cliente (Firebase Storage)
   visualHeadline:       string;           // Máx 6 palavras — headline em cima da foto
   instagramHandle?:     string | null;    // @handle do cliente
@@ -476,9 +479,15 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
   const overlayPng = resvg.render().asPng();
 
   // ── 3. Baixar e redimensionar imagem AI (background) ──────────────────────
-  const imgResp   = await fetch(opts.imageUrl);
-  if (!imgResp.ok) throw new Error(`[composer] Falha ao baixar imageUrl: ${imgResp.status}`);
-  const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+  let imgBuffer: Buffer;
+  if (opts.imageBuffer) {
+    imgBuffer = opts.imageBuffer;
+  } else {
+    if (!opts.imageUrl) throw new Error("[composer] imageUrl OU imageBuffer é obrigatório");
+    const imgResp = await fetch(opts.imageUrl);
+    if (!imgResp.ok) throw new Error(`[composer] Falha ao baixar imageUrl: ${imgResp.status}`);
+    imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+  }
 
   const bgBuffer = await sharp(imgBuffer)
     .resize(W, H, { fit: "cover", position: "attention" }) // attention = foca no sujeito principal
@@ -533,6 +542,7 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
     .toBuffer();
 
   // ── 7. Upload para R2 ─────────────────────────────────────────────────────
-  const key = `posts/${opts.postId}/composed.jpg`;
+  const fileName = opts.preview ? "preview.jpg" : "composed.jpg";
+  const key      = `posts/${opts.postId}/${fileName}`;
   return uploadToR2(key, finalBuffer, "image/jpeg");
 }

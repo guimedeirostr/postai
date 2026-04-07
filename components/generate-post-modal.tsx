@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch, Upload, Plus, Zap, UserCircle2, Crosshair, Box, SlidersHorizontal, Dna } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch, Upload, Plus, Zap, UserCircle2, Crosshair, Box, SlidersHorizontal, Dna, Eye } from "lucide-react";
 import type { BrandPhoto } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,6 +115,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [refLibraryError,   setRefLibraryError]   = useState<string | null>(null);
   /** ID do design_example escolhido — sent for generate-copy via reference_example_id */
   const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
+
+  // ── Preview do layout (P3) ────────────────────────────────────────────────
+  const [previewUrl,     setPreviewUrl]     = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError,   setPreviewError]   = useState<string | null>(null);
 
   // ── FAL.ai advanced state ─────────────────────────────────────────────────
   // Photos for FAL advanced modes are picked from the brand library
@@ -429,6 +434,46 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       setCopyError((data.error as string | undefined) ?? "Erro ao gerar copy. Tente novamente.");
     }
     setLoading(false);
+  }
+
+  /**
+   * Renderiza um preview do layout sem gastar crédito de IA — usa o tema
+   * truncado a 6 palavras como placeholder do visual_headline real.
+   * Útil pra validar tipografia, logo placement, mood e zona antes de gerar.
+   */
+  async function handlePreviewLayout() {
+    if (!theme) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewUrl(null);
+
+    const placeholderHeadline = theme.split(/\s+/).slice(0, 6).join(" ");
+
+    const body: Record<string, unknown> = {
+      client_id:       client.id,
+      visual_headline: placeholderHeadline,
+      format,
+    };
+    if (selectedExampleId)  body.reference_example_id = selectedExampleId;
+    else if (referenceDna)  body.reference_dna        = referenceDna;
+
+    try {
+      const res  = await fetch("/api/posts/preview", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPreviewError(data.error ?? "Erro ao gerar preview");
+      } else {
+        setPreviewUrl(data.preview_url);
+      }
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Erro de rede");
+    } finally {
+      setPreviewLoading(false);
+    }
   }
 
   function copyText(text: string, key: string) {
@@ -1072,6 +1117,40 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   placeholder="Ex: Educar e gerar curiosidade para agendar consulta" />
               </div>
 
+              {/* ── Preview do layout (sem custo de IA) ─────────────────────── */}
+              {(referenceDna || selectedExampleId) && theme && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5 text-violet-500" />
+                      <p className="text-xs font-semibold text-slate-700">Preview do layout</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePreviewLayout}
+                      disabled={previewLoading}
+                      className="text-xs font-semibold text-violet-600 hover:text-violet-700 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {previewLoading
+                        ? <><Loader2 className="w-3 h-3 animate-spin" />Renderizando...</>
+                        : previewUrl ? "Atualizar" : "Gerar preview"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    Vê tipografia, posição do logo, mood e zona <strong>antes</strong> de gerar — sem gastar crédito de IA.
+                  </p>
+                  {previewError && (
+                    <p className="text-xs text-red-500">{previewError}</p>
+                  )}
+                  {previewUrl && (
+                    <div className="rounded-lg overflow-hidden border border-slate-200 bg-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={previewUrl} alt="Preview do layout" className="w-full h-auto" />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Referência visual (opcional) */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
@@ -1687,6 +1766,9 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setObjective("");
                 setFormat("feed");
                 setCampaignFocus("");
+                setSelectedExampleId(null);
+                setPreviewUrl(null);
+                setPreviewError(null);
               }}>
                 Gerar outro post
               </Button>
