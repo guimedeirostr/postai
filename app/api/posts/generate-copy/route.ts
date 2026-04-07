@@ -207,7 +207,15 @@ export async function POST(req: NextRequest) {
     const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
-      system:     buildCopyPrompt(client, format, objective, Object.keys(strategy).length ? strategy : undefined, undefined, !!(referenceImageBase64 || reference_dna)),
+      system:     buildCopyPrompt(
+        client,
+        format,
+        objective,
+        Object.keys(strategy).length ? strategy : undefined,
+        undefined,
+        !!(referenceImageBase64 || reference_dna),
+        reference_dna?.visual_prompt,   // lock visual style to reference DNA
+      ),
       messages: [{ role: "user", content: userContent }],
     });
 

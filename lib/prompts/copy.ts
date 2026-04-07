@@ -105,7 +105,8 @@ export function buildCopyPrompt(
   objective: string,
   strategy?: StrategyContext,
   designExamples?: DesignExample[],
-  hasReferenceImage?: boolean
+  hasReferenceImage?: boolean,
+  referenceDnaVisualPrompt?: string    // quando fornecido, bloqueia o estilo visual
 ): string {
   const { framework, hook, description } = selectFramework(objective, strategy?.hook_type);
   const hookGuide    = HOOK_GUIDE[hook] ?? HOOK_GUIDE["Dor"];
@@ -160,8 +161,17 @@ REGRAS DE OURO — NUNCA QUEBRE
 4. Cada parágrafo tem uma função específica no framework — não escreva parágrafos decorativos.
 5. CTA sempre específico: nunca "clique no link da bio" sem dizer por quê.
 6. Hashtags: mix estratégico — 10 de nicho específico + 10 de médio alcance + 10 de alta relevância para o segmento. Nunca genéricas (#vida #amor).
-7. visual_prompt em inglês: descreva cena real, fotografia profissional, lighting, estilo. NÃO descreva textos, logos ou elementos gráficos na imagem. IMPORTANTE: qualquer texto ou frase visível na arte final estará em PORTUGUÊS-BR — mencione isso no prompt como "text overlays in Brazilian Portuguese".${hasReferenceImage ? `
-   ⚠️ REFERÊNCIA VISUAL ENVIADA: derive cores, estilo e composição DIRETAMENTE da imagem de referência acima — NÃO use as cores da marca (${client.primary_color} / ${client.secondary_color}) na imagem. A identidade da marca aparece no copy e nos overlays de texto, não na paleta fotográfica.` : ""}
+7. visual_prompt em inglês:${referenceDnaVisualPrompt ? `
+   ⚠️ MODO DNA DE REFERÊNCIA ATIVO — PRESERVE O ESTILO VISUAL 100%.
+   O visual_prompt DEVE começar a partir deste prompt extraído da referência e preservar EXATAMENTE:
+   estilo fotográfico, iluminação, ângulo de câmera, mood, paleta de cores e tratamento de fundo.
+   BASE OBRIGATÓRIO: "${referenceDnaVisualPrompt}"
+   ✅ PODE adaptar: o assunto específico (prato, produto, ambiente) ao tema atual.
+   ❌ NUNCA mude: lighting style, camera angle, background treatment, color mood, photographic style.
+   NÃO mencione textos, logos ou elementos gráficos. Sempre em inglês.` : hasReferenceImage ? `
+   ⚠️ REFERÊNCIA VISUAL ENVIADA: derive cores, estilo e composição DIRETAMENTE da imagem de referência — NÃO use as cores da marca (${client.primary_color} / ${client.secondary_color}) na imagem. A identidade da marca aparece no copy e nos overlays de texto, não na paleta fotográfica.
+   Descreva cena real, fotografia profissional, lighting, estilo. NÃO descreva textos, logos ou elementos gráficos.` : `
+   Descreva cena real, fotografia profissional, lighting, estilo. NÃO descreva textos, logos ou elementos gráficos na imagem. IMPORTANTE: qualquer texto ou frase visível na arte final estará em PORTUGUÊS-BR — mencione isso no prompt como "text overlays in Brazilian Portuguese".`}
 8. layout_prompt em inglês: descreva a COMPOSIÇÃO DO DESIGN — onde o texto ficará posicionado, qual overlay será usado, o estilo do layout (glassmorphism, cards, gradiente), e como a imagem e o texto vão interagir. Este prompt é enviado para o gerador de imagens img2img para que ele entenda o contexto do design final. SEMPRE inclua: "All text overlays are in Brazilian Portuguese (pt-BR)."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -172,7 +182,7 @@ OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
   "headline": "headline completa para display (máx 12 palavras)",
   "caption": "legenda completa seguindo o framework ${framework}, com emojis estratégicos e quebras de linha",
   "hashtags": ["exatamente 30 hashtags sem #, estrategicamente selecionadas"],
-  "visual_prompt": "${hasReferenceImage ? "detailed professional photography/design prompt in English — replicate the exact style, color palette, composition and mood of the reference image above. Do NOT use brand colors. Text overlays in Brazilian Portuguese (pt-BR)." : `detailed professional photography prompt in English with scene, lighting, mood, style, brand colors ${client.primary_color} and ${client.secondary_color}. Text overlays in Brazilian Portuguese (pt-BR).`}",
+  "visual_prompt": "${referenceDnaVisualPrompt ? `Start from the reference base prompt and adapt ONLY the subject to the current theme. Preserve exact lighting, camera angle, background, color mood, photographic style. Write in English. Text overlays in Brazilian Portuguese (pt-BR).` : hasReferenceImage ? "detailed professional photography/design prompt in English — replicate the exact style, color palette, composition and mood of the reference image above. Do NOT use brand colors. Text overlays in Brazilian Portuguese (pt-BR)." : `detailed professional photography prompt in English with scene, lighting, mood, style, brand colors ${client.primary_color} and ${client.secondary_color}. Text overlays in Brazilian Portuguese (pt-BR).`}",
   "layout_prompt": "Instagram design composition in English: describe text overlay position (bottom third / left panel / right side), overlay style (glassmorphism frosted panel / solid brand color strip / dark gradient), typography weight (bold 900 / display), and how subject and text interact. Always end with: 'All text overlays are in Brazilian Portuguese (pt-BR).' Example: 'Product centered right, bold headline text panel on left third with brand primary color ${client.primary_color} glassmorphism overlay, white typography, brand strip at bottom with logo. All text overlays are in Brazilian Portuguese (pt-BR).'",
   "framework_used": "${framework}",
   "hook_type": "${hook}"

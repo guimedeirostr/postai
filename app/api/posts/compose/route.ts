@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { composePost } from "@/lib/composer";
-import type { BrandProfile, GeneratedPost } from "@/types";
+import type { BrandProfile, GeneratedPost, ReferenceDNA } from "@/types";
 
 // Composição leva ~5-12s (fetch imagem + fetch logo + satori + sharp)
 export const maxDuration = 60;
@@ -74,16 +74,20 @@ export async function POST(req: NextRequest) {
     await postDoc.ref.update({ status: "composing" });
 
     // ── Compor o post ─────────────────────────────────────────────────────────
+    const refDna = (post as GeneratedPost & { reference_dna?: ReferenceDNA }).reference_dna;
+
     const composed_url = await composePost({
-      imageUrl:        imageUrl,
-      logoUrl:         client.logo_url,
-      visualHeadline:  post.visual_headline ?? post.headline ?? client.name,
-      instagramHandle: client.instagram_handle,
-      clientName:      client.name,
-      primaryColor:    client.primary_color,
-      secondaryColor:  client.secondary_color,
-      format:          post.format ?? "feed",
-      postId:          post_id,
+      imageUrl:             imageUrl,
+      logoUrl:              client.logo_url,
+      visualHeadline:       post.visual_headline ?? post.headline ?? client.name,
+      instagramHandle:      client.instagram_handle,
+      clientName:           client.name,
+      primaryColor:         client.primary_color,
+      secondaryColor:       client.secondary_color,
+      format:               post.format ?? "feed",
+      postId:               post_id,
+      compositionZone:      refDna?.composition_zone,
+      backgroundTreatment:  refDna?.background_treatment,
     });
 
     // ── Atualizar Firestore ───────────────────────────────────────────────────

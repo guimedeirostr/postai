@@ -235,7 +235,15 @@ export async function POST(req: NextRequest) {
     const copyRes = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
-      system:     buildCopyPrompt(client, briefing.formato_sugerido, briefing.objetivo, strategy, designExamples.length ? designExamples : undefined, !!reference_dna),
+      system:     buildCopyPrompt(
+        client,
+        briefing.formato_sugerido,
+        briefing.objetivo,
+        strategy,
+        designExamples.length ? designExamples : undefined,
+        !!reference_dna,
+        reference_dna?.visual_prompt,   // lock visual style to reference DNA
+      ),
       messages:   [{ role: "user", content: copyUserContent }],
     });
 
@@ -394,15 +402,17 @@ export async function POST(req: NextRequest) {
       try {
         await postRef.update({ status: "composing" });
         composed_url = await composePost({
-          imageUrl:        image_url,
-          logoUrl:         client.logo_url,
-          visualHeadline:  copy.visual_headline ?? briefing.tema,
-          instagramHandle: client.instagram_handle,
-          clientName:      client.name,
-          primaryColor:    client.primary_color,
-          secondaryColor:  client.secondary_color,
-          format:          briefing.formato_sugerido,
-          postId:          postRef.id,
+          imageUrl:             image_url,
+          logoUrl:              client.logo_url,
+          visualHeadline:       copy.visual_headline ?? briefing.tema,
+          instagramHandle:      client.instagram_handle,
+          clientName:           client.name,
+          primaryColor:         client.primary_color,
+          secondaryColor:       client.secondary_color,
+          format:               briefing.formato_sugerido,
+          postId:               postRef.id,
+          compositionZone:      reference_dna?.composition_zone,
+          backgroundTreatment:  reference_dna?.background_treatment,
         });
         await postRef.update({ composed_url, status: "ready" });
       } catch (composeErr) {

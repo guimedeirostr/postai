@@ -3,7 +3,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { pollTask, pollSeedreamTask, pollSeedreamEditTask, FreepikAuthError } from "@/lib/freepik";
 import { composePost } from "@/lib/composer";
-import type { BrandProfile } from "@/types";
+import type { BrandProfile, ReferenceDNA } from "@/types";
 
 // Precisa de tempo para Freepik poll + compositor (satori + sharp + R2 upload)
 export const maxDuration = 60;
@@ -46,16 +46,20 @@ export async function GET(req: NextRequest) {
         const clientSnap = await adminDb.collection("clients").doc(post.client_id).get();
         const client     = { id: clientSnap.id, ...clientSnap.data() } as BrandProfile;
 
+        const refDna = post.reference_dna as ReferenceDNA | undefined;
+
         composed_url = await composePost({
-          imageUrl:        result.image_url,
-          logoUrl:         client.logo_url,
-          visualHeadline:  post.visual_headline ?? post.headline ?? client.name,
-          instagramHandle: client.instagram_handle,
-          clientName:      client.name,
-          primaryColor:    client.primary_color,
-          secondaryColor:  client.secondary_color,
-          format:          post.format ?? "feed",
-          postId:          post_id,
+          imageUrl:             result.image_url,
+          logoUrl:              client.logo_url,
+          visualHeadline:       post.visual_headline ?? post.headline ?? client.name,
+          instagramHandle:      client.instagram_handle,
+          clientName:           client.name,
+          primaryColor:         client.primary_color,
+          secondaryColor:       client.secondary_color,
+          format:               post.format ?? "feed",
+          postId:               post_id,
+          compositionZone:      refDna?.composition_zone,
+          backgroundTreatment:  refDna?.background_treatment,
         });
         await postRef.update({ composed_url, status: "ready" });
       } catch (composeErr) {
