@@ -26,7 +26,9 @@ export type ImageProvider =
   | "freepik"
   | "seedream"
   | "seedream_edit"
-  | "imagen4";
+  | "imagen4"
+  | "replicate"
+  | "library_direct";
 
 export interface CompiledPrompt {
   /** Prompt positivo completo — sempre em inglês */

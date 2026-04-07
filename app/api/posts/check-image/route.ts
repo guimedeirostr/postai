@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { pollTask, pollSeedreamTask, FreepikAuthError } from "@/lib/freepik";
+import { pollReplicateImage } from "@/lib/replicate";
 import { composePost } from "@/lib/composer";
 import {
   loadDnaSources,
@@ -28,6 +29,59 @@ export async function GET(req: NextRequest) {
     // Determine which poll endpoint to use based on image_provider stored on the post
     const postSnap0 = await adminDb.collection("posts").doc(post_id).get();
     const provider  = (postSnap0.data()?.image_provider as string | undefined) ?? "freepik";
+
+    // ── Replicate polling ──────────────────────────────────────────────────────
+    if (provider === "replicate") {
+      const rep = await pollReplicateImage(task_id, post_id);
+
+      if (rep.status === "COMPLETED" && rep.image_url) {
+        const postRef = adminDb.collection("posts").doc(post_id);
+        await postRef.update({ image_url: rep.image_url, status: "composing" });
+
+        let composed_url: string | null = null;
+        try {
+          const postSnap   = await postRef.get();
+          const post       = postSnap.data() as GeneratedPost & { reference_dna?: ReferenceDNA };
+          const clientSnap = await adminDb.collection("clients").doc(post.client_id).get();
+          const client     = { id: clientSnap.id, ...clientSnap.data() } as BrandProfile;
+
+          const dna = await loadDnaSources(post);
+          const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
+
+          composed_url = await composePost({
+            imageUrl:        rep.image_url,
+            logoUrl:         client.logo_url,
+            visualHeadline:  post.visual_headline ?? post.headline ?? client.name,
+            instagramHandle: client.instagram_handle,
+            clientName:      client.name,
+            primaryColor:    client.primary_color,
+            secondaryColor:  client.secondary_color,
+            format:          post.format ?? "feed",
+            postId:          post_id,
+            ...toComposeOverrides(ad),
+          });
+          await postRef.update({ composed_url, status: "ready" });
+        } catch (composeErr) {
+          console.error("[check-image/replicate] Compositor error (non-fatal):", composeErr);
+          await postRef.update({ status: "ready" });
+        }
+
+        return NextResponse.json({
+          status:       "COMPLETED",
+          image_url:    rep.image_url,
+          composed_url,
+        });
+      }
+
+      if (rep.status === "FAILED") {
+        await adminDb.collection("posts").doc(post_id).update({ status: "failed" });
+        return NextResponse.json({ status: "FAILED", error: "Geração falhou no Replicate" });
+      }
+
+      return NextResponse.json({ status: "PENDING" });
+    }
+
+    // ── Freepik / Seedream polling ─────────────────────────────────────────────
     const result    = provider === "seedream"
       ? await pollSeedreamTask(task_id)
       : await pollTask(task_id);

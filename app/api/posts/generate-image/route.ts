@@ -59,6 +59,11 @@ import {
   compilePromptForProvider,
   type ImageProvider,
 } from "@/lib/prompt-compiler";
+import {
+  generateImageReplicate,
+  isReplicateEnabled,
+  type ReplicateImageModel,
+} from "@/lib/replicate";
 import { composePost } from "@/lib/composer";
 import {
   loadDnaSources,
@@ -86,6 +91,7 @@ export async function POST(req: NextRequest) {
       control_type,
       id_weight,
       control_strength,
+      replicate_model,
     } = await req.json() as {
       post_id:             string;
       provider?:           string;
@@ -95,6 +101,7 @@ export async function POST(req: NextRequest) {
       control_type?:       "canny" | "depth";
       id_weight?:          number;
       control_strength?:   number;
+      replicate_model?:    ReplicateImageModel;
     };
 
     if (!post_id) {
@@ -275,6 +282,67 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ image_url, post_id, provider: "imagen4" });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Replicate — hub de modelos externos (Imagen 4 grátis, Flux, Ideogram…)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    if (resolvedProvider === "replicate" || isReplicateEnabled()) {
+      const model = replicate_model ?? "google/imagen-4";
+      const result = await generateImageReplicate({
+        prompt:  basePrompt,
+        format:  post.format as "feed" | "stories" | "reels_cover",
+        post_id,
+        model,
+      });
+
+      if (result.done && result.image_url) {
+        // Resposta síncrona — imagem já disponível, dispara compositor
+        await postDoc.ref.update({
+          image_url:      result.image_url,
+          image_provider: "replicate",
+          status:         "composing",
+        });
+
+        let composed_url: string | null = null;
+        try {
+          const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
+          const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
+
+          composed_url = await composePost({
+            imageUrl:         result.image_url,
+            logoUrl:          client.logo_url,
+            visualHeadline:   (post.visual_headline ?? post.headline ?? client.name) as string,
+            instagramHandle:  client.instagram_handle as string | undefined,
+            clientName:       client.name,
+            primaryColor:     client.primary_color,
+            secondaryColor:   client.secondary_color,
+            format:           (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
+            postId:           post_id,
+            ...toComposeOverrides(ad),
+          });
+          await postDoc.ref.update({ composed_url, status: "ready" });
+        } catch (composeErr) {
+          console.error("[generate-image/replicate] Compositor error (non-fatal):", composeErr);
+          await postDoc.ref.update({ status: "ready" });
+        }
+
+        return NextResponse.json({
+          image_url:    result.image_url,
+          composed_url,
+          post_id,
+          provider:     "replicate",
+        });
+      }
+
+      // Ainda processando — frontend fará polling em check-image
+      await postDoc.ref.update({
+        freepik_task_id: result.task_id,
+        image_provider:  "replicate",
+      });
+
+      return NextResponse.json({ task_id: result.task_id, post_id, provider: "replicate" });
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

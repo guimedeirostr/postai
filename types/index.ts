@@ -146,7 +146,7 @@ export interface GeneratedPost {
    *   imagen4        → Google Imagen 4 (sync)
    *   library_direct → Foto da biblioteca usada como background SEM geração de IA
    */
-  image_provider?: "freepik" | "seedream" | "seedream_edit" | "imagen4" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "library_direct";
+  image_provider?: "freepik" | "seedream" | "seedream_edit" | "imagen4" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "library_direct" | "replicate";
   freepik_task_id?: string;
   image_url: string | null;
   composed_url?: string | null;            // final branded post (compositor output)
