@@ -71,7 +71,7 @@ import {
   toComposeOverrides,
 } from "@/lib/art-direction-resolver";
 import { analyzeImage } from "@/lib/image-analysis";
-import { composeLayerStack, layerStackToLayoutPrompt } from "@/lib/art-direction-engine";
+import { composeLayerStack, layerStackToLayoutPrompt, TONE_PROFILES } from "@/lib/art-direction-engine";
 import type { ArtDirection, BrandProfile, GeneratedPost, ReferenceDNA, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 // Aguarda até 120s — PuLID e ControlNet podem ser mais lentos
@@ -154,15 +154,18 @@ export async function POST(req: NextRequest) {
       const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
 
       // Análise real da foto da biblioteca via Sharp
-      let library_layer_stack: LayerStack | null = post.layer_stack as LayerStack | null ?? null;
+      // Sempre gera um LayerStack — mesmo sem tone_profile no post (usa fallback warm_organic).
+      // Isso garante wash, zonas de texto e posicionamento corretos para qualquer foto.
+      let library_layer_stack: LayerStack | null = null;
       try {
         const realBg = await analyzeImage(libraryImageUrl);
-        const toneProf = (post.layer_stack as LayerStack | undefined)?.tone_profile
-          ?? (post as Record<string, unknown>).tone_profile as ToneProfile | undefined;
-        if (toneProf) {
-          library_layer_stack = composeLayerStack(realBg, toneProf, client);
-          console.log("[generate-image] LayerStack atualizado via Sharp para foto da biblioteca");
-        }
+        const toneProf: ToneProfile =
+          (post.layer_stack as LayerStack | undefined)?.tone_profile
+          ?? (post as Record<string, unknown>).tone_profile as ToneProfile | undefined
+          ?? TONE_PROFILES["warm_organic"];   // fallback sensato para qualquer segmento
+
+        library_layer_stack = composeLayerStack(realBg, toneProf, client);
+        console.log("[generate-image] LayerStack gerado via Sharp para foto da biblioteca");
       } catch (analysisErr) {
         console.warn("[generate-image] analyzeImage (biblioteca) falhou (non-fatal):", analysisErr);
       }
@@ -173,6 +176,8 @@ export async function POST(req: NextRequest) {
         ...(library_layer_stack ? { layer_stack: library_layer_stack } : {}),
       });
 
+      // Merge: layer_stack recém-calculado tem prioridade sobre qualquer coisa no ad
+      const adOverrides = toComposeOverrides(ad);
       const composed_url = await composePost({
         imageUrl:        libraryImageUrl,
         logoUrl:         client.logo_url,
@@ -183,7 +188,8 @@ export async function POST(req: NextRequest) {
         secondaryColor:  client.secondary_color,
         format:          (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
         postId:          post_id,
-        ...toComposeOverrides(ad),
+        ...adOverrides,
+        ...(library_layer_stack ? { layer_stack: library_layer_stack } : {}),
       });
 
       await postDoc.ref.update({
