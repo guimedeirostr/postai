@@ -60,7 +60,12 @@ import {
   type ImageProvider,
 } from "@/lib/prompt-compiler";
 import { composePost } from "@/lib/composer";
-import type { ArtDirection, BrandDNA, BrandProfile, ReferenceDNA } from "@/types";
+import {
+  loadDnaSources,
+  resolveArtDirection,
+  toComposeOverrides,
+} from "@/lib/art-direction-resolver";
+import type { ArtDirection, BrandProfile, GeneratedPost, ReferenceDNA } from "@/types";
 
 // Aguarda até 120s — PuLID e ControlNet podem ser mais lentos
 export const maxDuration = 120;
@@ -279,18 +284,8 @@ export async function POST(req: NextRequest) {
     // O overlay (headline, logo, marca) é aplicado pelo compositor usando o
     // DNA extraído no Stage 0 para definir posição e tratamento do overlay.
     if (libraryImageUrl) {
-      const refDna = post.reference_dna as ReferenceDNA | undefined;
-
-      let brandDna: BrandDNA | undefined;
-      if (!refDna) {
-        try {
-          const dnaSnap = await adminDb
-            .collection("clients").doc(post.client_id)
-            .collection("brand_dna").doc("current")
-            .get();
-          if (dnaSnap.exists) brandDna = dnaSnap.data() as BrandDNA;
-        } catch { /* non-fatal */ }
-      }
+      const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
+      const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
 
       await postDoc.ref.update({ status: "composing", image_url: libraryImageUrl });
 
@@ -304,8 +299,7 @@ export async function POST(req: NextRequest) {
         secondaryColor:      client.secondary_color,
         format:              (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
         postId:              post_id,
-        compositionZone:     refDna?.composition_zone      ?? brandDna?.dominant_composition_zone,
-        backgroundTreatment: refDna?.background_treatment  ?? brandDna?.background_treatment,
+        ...toComposeOverrides(ad),
       });
 
       await postDoc.ref.update({

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { pollTask, pollSeedreamTask, pollSeedreamEditTask, FreepikAuthError } from "@/lib/freepik";
+import { pollTask, pollSeedreamTask, FreepikAuthError } from "@/lib/freepik";
 import { composePost } from "@/lib/composer";
-import type { BrandProfile, BrandDNA, ReferenceDNA } from "@/types";
+import {
+  loadDnaSources,
+  resolveArtDirection,
+  toComposeOverrides,
+} from "@/lib/art-direction-resolver";
+import type { BrandProfile, GeneratedPost, ReferenceDNA } from "@/types";
 
 // Precisa de tempo para Freepik poll + compositor (satori + sharp + R2 upload)
 export const maxDuration = 60;
@@ -23,11 +28,9 @@ export async function GET(req: NextRequest) {
     // Determine which poll endpoint to use based on image_provider stored on the post
     const postSnap0 = await adminDb.collection("posts").doc(post_id).get();
     const provider  = (postSnap0.data()?.image_provider as string | undefined) ?? "freepik";
-    const result    = provider === "seedream_edit"
-      ? await pollSeedreamEditTask(task_id)
-      : provider === "seedream"
-        ? await pollSeedreamTask(task_id)
-        : await pollTask(task_id);
+    const result    = provider === "seedream"
+      ? await pollSeedreamTask(task_id)
+      : await pollTask(task_id);
 
     if (result.status === "COMPLETED") {
       if (!result.image_url) {
@@ -42,23 +45,12 @@ export async function GET(req: NextRequest) {
       let composed_url: string | null = null;
       try {
         const postSnap   = await postRef.get();
-        const post       = postSnap.data()!;
+        const post       = postSnap.data() as GeneratedPost & { reference_dna?: ReferenceDNA };
         const clientSnap = await adminDb.collection("clients").doc(post.client_id).get();
         const client     = { id: clientSnap.id, ...clientSnap.data() } as BrandProfile;
 
-        const refDna = post.reference_dna as ReferenceDNA | undefined;
-
-        // Carrega BrandDNA como fallback de zona/tratamento quando não há reference_dna
-        let brandDna: BrandDNA | undefined;
-        if (!refDna) {
-          try {
-            const dnaSnap = await adminDb
-              .collection("clients").doc(post.client_id)
-              .collection("brand_dna").doc("current")
-              .get();
-            if (dnaSnap.exists) brandDna = dnaSnap.data() as BrandDNA;
-          } catch { /* non-fatal */ }
-        }
+        const dna = await loadDnaSources(post);
+        const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
 
         composed_url = await composePost({
           imageUrl:             result.image_url,
@@ -70,8 +62,7 @@ export async function GET(req: NextRequest) {
           secondaryColor:       client.secondary_color,
           format:               post.format ?? "feed",
           postId:               post_id,
-          compositionZone:      refDna?.composition_zone      ?? brandDna?.dominant_composition_zone,
-          backgroundTreatment:  refDna?.background_treatment  ?? brandDna?.background_treatment,
+          ...toComposeOverrides(ad),
         });
         await postRef.update({ composed_url, status: "ready" });
       } catch (composeErr) {

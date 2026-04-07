@@ -16,7 +16,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { composePost } from "@/lib/composer";
-import type { BrandProfile, BrandDNA, GeneratedPost, ReferenceDNA } from "@/types";
+import {
+  loadDnaSources,
+  resolveArtDirection,
+  toComposeOverrides,
+} from "@/lib/art-direction-resolver";
+import type { BrandProfile, GeneratedPost, ReferenceDNA } from "@/types";
 
 // Composição leva ~5-12s (fetch imagem + fetch logo + satori + sharp)
 export const maxDuration = 60;
@@ -73,20 +78,9 @@ export async function POST(req: NextRequest) {
     // ── Marcar como "composing" ───────────────────────────────────────────────
     await postDoc.ref.update({ status: "composing" });
 
-    // ── Compor o post ─────────────────────────────────────────────────────────
-    const refDna = (post as GeneratedPost & { reference_dna?: ReferenceDNA }).reference_dna;
-
-    // BrandDNA como fallback de zona/tratamento quando não há reference_dna
-    let brandDna: BrandDNA | undefined;
-    if (!refDna) {
-      try {
-        const dnaSnap = await adminDb
-          .collection("clients").doc(post.client_id)
-          .collection("brand_dna").doc("current")
-          .get();
-        if (dnaSnap.exists) brandDna = dnaSnap.data() as BrandDNA;
-      } catch { /* non-fatal */ }
-    }
+    // ── Resolver direção de arte (cascade: art_direction → ref_dna → brand_dna) ─
+    const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
+    const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
 
     const composed_url = await composePost({
       imageUrl:             imageUrl,
@@ -98,8 +92,7 @@ export async function POST(req: NextRequest) {
       secondaryColor:       client.secondary_color,
       format:               post.format ?? "feed",
       postId:               post_id,
-      compositionZone:      refDna?.composition_zone      ?? brandDna?.dominant_composition_zone,
-      backgroundTreatment:  refDna?.background_treatment  ?? brandDna?.background_treatment,
+      ...toComposeOverrides(ad),
     });
 
     // ── Atualizar Firestore ───────────────────────────────────────────────────

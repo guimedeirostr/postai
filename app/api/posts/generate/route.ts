@@ -34,6 +34,7 @@ import { createTask, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 import { composePost } from "@/lib/composer";
+import { resolveArtDirection, toComposeOverrides } from "@/lib/art-direction-resolver";
 import { compilePromptForProvider, type ImageProvider } from "@/lib/prompt-compiler";
 import type { ArtDirection, BrandProfile, BrandDNA, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA } from "@/types";
 
@@ -70,14 +71,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { client_id, campaign_focus, reference_dna } = await req.json() as {
-      client_id:       string;
-      campaign_focus?: string;
-      reference_dna?:  ReferenceDNA;
+    const body = await req.json() as {
+      client_id:             string;
+      campaign_focus?:       string;
+      reference_dna?:        ReferenceDNA;
+      /** Alternativa: ID de um design_example já salvo na biblioteca da marca */
+      reference_example_id?: string;
     };
+    const { client_id, campaign_focus, reference_example_id } = body;
+    let reference_dna: ReferenceDNA | undefined = body.reference_dna;
 
     if (!client_id) {
       return NextResponse.json({ error: "client_id é obrigatório" }, { status: 400 });
+    }
+
+    // ── Resolver reference_dna a partir de reference_example_id ──────────────
+    // Permite que o usuário escolha uma referência da biblioteca em vez de
+    // re-uploadar a imagem (fluxo unificado).
+    if (!reference_dna && reference_example_id) {
+      try {
+        const exDoc = await adminDb
+          .collection("clients").doc(client_id)
+          .collection("design_examples").doc(reference_example_id)
+          .get();
+
+        if (exDoc.exists) {
+          const ex = exDoc.data() as DesignExample;
+          // Só promove a ReferenceDNA se o doc tiver os campos ricos
+          if (ex.background_treatment || ex.headline_style || ex.text_zones) {
+            reference_dna = {
+              composition_zone:      ex.composition_zone,
+              text_zones:            ex.text_zones ?? "",
+              background_treatment:  ex.background_treatment ?? "",
+              headline_style:        ex.headline_style ?? "",
+              typography_hierarchy:  ex.typography_hierarchy ?? "",
+              visual_prompt:         ex.visual_prompt,
+              layout_prompt:         ex.layout_prompt,
+              color_mood:            ex.color_mood,
+              description:           ex.description,
+              pilar:                 ex.pilar,
+              format:                ex.format,
+              visual_headline_style: ex.visual_headline_style,
+              ...(ex.logo_placement ? { logo_placement: ex.logo_placement } : {}),
+            };
+          }
+        }
+      } catch (resolveErr) {
+        console.warn("[generate] Falha ao resolver reference_example_id (non-fatal):", resolveErr);
+      }
     }
 
     // ── Load client ───────────────────────────────────────────────────────────
@@ -401,6 +442,11 @@ export async function POST(req: NextRequest) {
     if (image_url && !task_id) {
       try {
         await postRef.update({ status: "composing" });
+        const ad = resolveArtDirection(
+          { art_direction: artDirection ?? undefined },
+          reference_dna,
+          brandDna ?? undefined,
+        );
         composed_url = await composePost({
           imageUrl:             image_url,
           logoUrl:              client.logo_url,
@@ -411,8 +457,7 @@ export async function POST(req: NextRequest) {
           secondaryColor:       client.secondary_color,
           format:               briefing.formato_sugerido,
           postId:               postRef.id,
-          compositionZone:      reference_dna?.composition_zone      ?? brandDna?.dominant_composition_zone,
-          backgroundTreatment:  reference_dna?.background_treatment  ?? brandDna?.background_treatment,
+          ...toComposeOverrides(ad),
         });
         await postRef.update({ composed_url, status: "ready" });
       } catch (composeErr) {
