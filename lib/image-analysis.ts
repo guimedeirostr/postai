@@ -25,6 +25,13 @@
 
 import sharp from "sharp";
 import type { BackgroundAnalysis } from "@/types";
+import {
+  detectFocalPoints,
+  focalPointsToSubjectPosition,
+  focalPointsToSafeAreas,
+  isVisionEnabled,
+  getVisionApiKey,
+} from "@/lib/vision";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos internos
@@ -203,7 +210,7 @@ export async function analyzeImage(source: Buffer | string): Promise<BackgroundA
   // Um quadrante é "seguro" se seu desvio padrão for < 60% do máximo global.
   const safeThreshold = maxStd * 0.60;
 
-  const safe_areas = new Set<BackgroundAnalysis["safe_areas"][number]>();
+  let safe_areas = new Set<BackgroundAnalysis["safe_areas"][number]>();
 
   if (qs.tl.luminance_std < safeThreshold) safe_areas.add("top-left");
   if (qs.tr.luminance_std < safeThreshold) safe_areas.add("top-right");
@@ -236,7 +243,40 @@ export async function analyzeImage(source: Buffer | string): Promise<BackgroundA
     toHex(qs.br.r_mean, qs.br.g_mean, qs.br.b_mean),
   ].filter((v, i, a) => a.indexOf(v) === i).slice(0, 5);
 
-  // ── 10. Montar resultado ───────────────────────────────────────────────────
+  // ── 10. Google Cloud Vision API — focal points reais ─────────────────────
+  // Quando disponível, substitui os proxies Sharp para subject_position e safe_areas.
+  // Non-fatal: qualquer falha cai de volta nos valores já calculados pelo Sharp.
+  let focal_points: BackgroundAnalysis["focal_points"] = undefined;
+
+  if (isVisionEnabled()) {
+    try {
+      const apiKey = getVisionApiKey()!;
+      // Passar base64 puro (Sharp analisou 200×267 — mandamos a imagem original para Vision)
+      const base64ForVision = Buffer.isBuffer(source)
+        ? source.toString("base64")
+        : typeof source === "string" && !source.startsWith("http")
+          ? source.replace(/^data:[^;]+;base64,/, "")
+          : null;
+
+      if (base64ForVision) {
+        focal_points = await detectFocalPoints(base64ForVision, apiKey);
+
+        if (focal_points.length > 0) {
+          // Sobrescreve proxies Sharp com dados reais de visão computacional
+          subject_position = focalPointsToSubjectPosition(focal_points);
+          safe_areas       = new Set(focalPointsToSafeAreas(focal_points));
+          console.log(
+            `[image-analysis] Vision API: ${focal_points.length} focal point(s),`,
+            `subject=${subject_position}, safe_areas=[${[...safe_areas].join(", ")}]`,
+          );
+        }
+      }
+    } catch (visionErr) {
+      console.warn("[image-analysis] Vision API falhou (non-fatal, usando Sharp proxy):", visionErr);
+    }
+  }
+
+  // ── 11. Montar resultado ──────────────────────────────────────────────────
   return {
     entropy_level,
     subject_position,
@@ -245,5 +285,6 @@ export async function analyzeImage(source: Buffer | string): Promise<BackgroundA
     color_temperature,
     safe_areas:     [...safe_areas],
     dominant_colors,
+    ...(focal_points ? { focal_points } : {}),
   };
 }

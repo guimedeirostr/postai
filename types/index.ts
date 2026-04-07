@@ -238,6 +238,26 @@ export interface ReferenceDNA {
 // O motor TypeScript deriva LayerStack completo dessas duas entradas — sem depender
 // de texto livre gerado pela IA para decisões mecânicas de composição.
 
+/**
+ * Ponto focal detectado via Google Cloud Vision API.
+ * Todas as coordenadas são normalizadas (0.0–1.0).
+ */
+export interface FocalPoint {
+  type:       "face" | "object";
+  label:      string;           // "face" | nome do objeto (ex: "Person", "Cup")
+  confidence: number;           // 0.0–1.0
+  bounds: {
+    x:      number;             // left normalizado
+    y:      number;             // top normalizado
+    width:  number;
+    height: number;
+  };
+  center: {
+    x: number;                  // centro horizontal normalizado
+    y: number;                  // centro vertical normalizado
+  };
+}
+
 export interface BackgroundAnalysis {
   /** 0.0–1.0: quão visualmente poluído/ocupado é o fundo (0 = liso; 1 = caótico) */
   entropy_level:    number;
@@ -258,6 +278,12 @@ export interface BackgroundAnalysis {
   safe_areas: Array<"top-left" | "top-right" | "bottom-left" | "bottom-right" | "top-full" | "bottom-full">;
   /** Cores dominantes aproximadas da cena (hex) */
   dominant_colors: string[];
+  /**
+   * Faces e objetos detectados via Google Cloud Vision API.
+   * Quando presente, tem prioridade sobre o proxy Sharp para subject_position e safe_areas.
+   * Ausente quando Vision API não está configurada ou a imagem é gerada por IA (sem referência).
+   */
+  focal_points?: FocalPoint[];
 }
 
 export interface ToneProfile {
