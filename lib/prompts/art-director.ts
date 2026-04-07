@@ -15,6 +15,7 @@ export interface ArtDirection {
   negative_prompt:    string;
   final_visual_prompt: string;
   final_layout_prompt: string;
+  logo_placement?:    "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-center" | "none";
 }
 
 /**
@@ -237,6 +238,7 @@ OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações, sem texto fora 
   "emotion":             "emoção que a imagem deve evocar — ex: hope and determination, urgency and desire, calm trust",
   "negative_prompt":     "o que EVITAR na geração — ex: low quality, blurry, distorted text, watermark, generic stock photo, oversaturated",
   "final_visual_prompt": "prompt cinematográfico completo e detalhado em inglês para gerar a imagem no Freepik — mínimo 80 palavras, máximo 200",
-  "final_layout_prompt": "composição do design em inglês: posição do texto overlay, estilo do panel/overlay, peso tipográfico, como sujeito e texto interagem, zona segura para leitura. Termina com: 'All text overlays are in Brazilian Portuguese (pt-BR).'"
+  "final_layout_prompt": "composição do design em inglês: posição do texto overlay, estilo do panel/overlay, peso tipográfico, como sujeito e texto interagem, zona segura para leitura. Termina com: 'All text overlays are in Brazilian Portuguese (pt-BR).'",
+  "logo_placement": "onde o logo da marca deve ser posicionado no post final. Valores válidos: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'bottom-center' | 'none'. Use 'none' apenas quando a referência/DNA indicar explicitamente ausência de logo overlay. Para marcas elegantes/editoriais tipicamente 'bottom-right' ou 'bottom-center'. Para marcas modernas/bold tipicamente 'top-left'."
 }`;
 }

@@ -93,6 +93,7 @@ PROCESSO MENTAL:
 OUTPUT — JSON VÁLIDO APENAS:
 {
   "dominant_composition_zone": "left|right|bottom|top|center",
+  "dominant_logo_placement": "top-left|top-right|bottom-left|bottom-right|bottom-center|none — onde o logo aparece consistentemente. 'none' apenas se a marca nunca usa logo overlay. Examine todos os exemplos.",
   "confidence_score": <número 0-100 refletindo consistência entre os posts — 100 = todos idênticos, 50 = metade consistente>,
   "text_placement_pattern": "Descrição precisa de onde e como o texto vive: 'Headline sempre no terço inferior com gradiente escuro de baixo para cima ocupando 35% da altura' ou 'Painel branco à esquerda ocupando 40% com headline + subheadline empilhados'",
   "background_treatment": "O que existe atrás dos elementos de texto: 'Gradiente preto semitransparente no terço inferior (opacity ~60%)' ou 'Faixa sólida com cor primária da marca em 20% da altura no rodapé' ou 'Nenhum — texto direto sobre a imagem com sombra'",

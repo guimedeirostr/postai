@@ -22,7 +22,8 @@ Analyze every pixel of this image and return ONLY valid JSON (no markdown, no ex
   "description": "1-2 sentences in Brazilian Portuguese: what makes this a strong design reference and when to use this style.",
   "pilar": "ONE of: Produto | Educação | Prova Social | Bastidores | Engajamento | Promoção | Trend",
   "format": "ONE of: feed | stories | reels_cover — infer from aspect ratio (4:5 or square = feed, 9:16 tall = stories or reels_cover)",
-  "visual_headline_style": "Describe the headline style: approximate word count range, tone (bold claim / question / number-led / emotional), and visual position on the image"
+  "visual_headline_style": "Describe the headline style: approximate word count range, tone (bold claim / question / number-led / emotional), and visual position on the image",
+  "logo_placement": "ONE of: top-left | top-right | bottom-left | bottom-right | bottom-center | none — where the brand logo/mark is physically positioned in the image. Use 'none' ONLY if there is no visible logo/brand mark overlay. Examine carefully — logos are often small and in corners."
 }`;
 }
 
