@@ -19,8 +19,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
-import { DESIGN_EXAMPLE_ANALYSIS_PROMPT } from "@/lib/prompts/design-example-analysis";
-import type { DesignExample } from "@/types";
+import { buildReferenceDNAPrompt } from "@/lib/prompts/design-example-analysis";
+import type { DesignExample, LogoPlacement } from "@/types";
 
 // Claude Vision pode levar 20-40s — aumentar para evitar 504
 export const maxDuration = 90;
@@ -102,12 +102,13 @@ export async function POST(
       resolvedImageUrl  = imageUrl;
     };
 
-    // ── Chamar Claude Vision com prompt compacto ──────────────────────────────
-    // Usa DESIGN_EXAMPLE_ANALYSIS_PROMPT (schema simples) em vez do blueprint
-    // completo — reduz tokens gerados de ~3000 para ~400, tempo de ~60s para ~15s.
+    // ── Chamar Claude Vision com prompt rico (ReferenceDNA completo) ──────────
+    // Unifica os dois fluxos: agora este endpoint extrai TODOS os campos do DNA
+    // (text_zones, background_treatment, headline_style, typography_hierarchy,
+    // logo_placement) — antes estavam apenas em /api/posts/analyze-reference.
     const message = await anthropic.messages.create({
       model:      MODEL,
-      max_tokens: 1024,
+      max_tokens: 1600,
       messages: [
         {
           role: "user",
@@ -118,7 +119,7 @@ export async function POST(
             },
             {
               type: "text",
-              text: DESIGN_EXAMPLE_ANALYSIS_PROMPT
+              text: buildReferenceDNAPrompt()
                 + (body.format ? `\n\nFormato inferido: ${body.format}` : ""),
             },
           ],
@@ -150,7 +151,7 @@ export async function POST(
       return NextResponse.json({ error: "Claude retornou JSON inválido. Tente novamente." }, { status: 500 });
     }
 
-    // ── Mapear campos ─────────────────────────────────────────────────────────
+    // ── Mapear campos (básicos + ricos do ReferenceDNA) ───────────────────────
     const visual_prompt         = parsed.visual_prompt ?? "";
     const layout_prompt         = parsed.layout_prompt ?? "";
     const visual_headline_style = parsed.visual_headline_style ?? "";
@@ -160,6 +161,13 @@ export async function POST(
     const format                = (body.format ?? parsed.format ?? "feed") as "feed" | "stories" | "reels_cover";
     const composition_zone      = (parsed.composition_zone ?? "bottom") as DesignExample["composition_zone"];
 
+    // Campos ricos — opcionais, podem faltar se Claude simplificar
+    const text_zones            = parsed.text_zones;
+    const background_treatment  = parsed.background_treatment;
+    const headline_style        = parsed.headline_style;
+    const typography_hierarchy  = parsed.typography_hierarchy;
+    const logo_placement        = parsed.logo_placement as LogoPlacement | undefined;
+
     if (!visual_prompt || !layout_prompt) {
       return NextResponse.json(
         { error: "Análise incompleta: visual_prompt ou layout_prompt ausente. Tente com outra imagem." },
@@ -167,7 +175,7 @@ export async function POST(
       );
     }
 
-    // ── Salvar no Firestore como design_example ───────────────────────────────
+    // ── Salvar no Firestore como design_example (rico) ────────────────────────
     const ref = adminDb
       .collection("clients").doc(client_id)
       .collection("design_examples").doc();
@@ -185,6 +193,12 @@ export async function POST(
       composition_zone,
       ...(body.source_url ? { source_url: body.source_url } : {}),
       image_url:            resolvedImageUrl,
+      ...(text_zones           ? { text_zones }           : {}),
+      ...(background_treatment ? { background_treatment } : {}),
+      ...(headline_style       ? { headline_style }       : {}),
+      ...(typography_hierarchy ? { typography_hierarchy } : {}),
+      ...(logo_placement       ? { logo_placement }       : {}),
+      intent:               "library",
     };
 
     await ref.set({
@@ -193,7 +207,7 @@ export async function POST(
       created_at: FieldValue.serverTimestamp(),
     });
 
-    // ── Resposta ──────────────────────────────────────────────────────────────
+    // ── Resposta (inclui todos os campos ricos para a UI atualizar) ──────────
     return NextResponse.json({
       id:                    ref.id,
       visual_prompt,
@@ -204,6 +218,11 @@ export async function POST(
       description,
       color_mood,
       composition_zone,
+      text_zones,
+      background_treatment,
+      headline_style,
+      typography_hierarchy,
+      logo_placement,
       image_url:             resolvedImageUrl,
     }, { status: 201 });
 

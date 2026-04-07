@@ -6,7 +6,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { extractPromptFromImage } from "@/lib/freepik";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
-import type { BrandProfile, StrategyContext, ReferenceDNA } from "@/types";
+import type { BrandProfile, StrategyContext, ReferenceDNA, DesignExample } from "@/types";
 
 export const maxDuration = 60;
 
@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
       reference_url,
       reference_image_base64,
       reference_image_type,
-      reference_dna,
+      reference_dna: reference_dna_inline,
+      reference_example_id,
       image_provider,
       extra_instructions,
       caption_suggestion,
@@ -66,10 +67,13 @@ export async function POST(req: NextRequest) {
       reference_image_base64?: string;
       reference_image_type?: string;
       reference_dna?: ReferenceDNA;
+      reference_example_id?: string;
       image_provider?: string;
       extra_instructions?: string;
       caption_suggestion?: string;
     };
+
+    let reference_dna: ReferenceDNA | undefined = reference_dna_inline;
 
     if (!client_id || !theme || !objective || !format) {
       return NextResponse.json({ error: "client_id, theme, objective e format são obrigatórios" }, { status: 400 });
@@ -81,6 +85,39 @@ export async function POST(req: NextRequest) {
     }
 
     const client = { id: clientDoc.id, ...clientDoc.data() } as BrandProfile;
+
+    // ── Resolver reference_dna a partir de reference_example_id ──────────────
+    // Permite escolher uma referência já salva na biblioteca sem re-uploadar.
+    if (!reference_dna && reference_example_id) {
+      try {
+        const exDoc = await adminDb
+          .collection("clients").doc(client_id)
+          .collection("design_examples").doc(reference_example_id)
+          .get();
+        if (exDoc.exists) {
+          const ex = exDoc.data() as DesignExample;
+          if (ex.background_treatment || ex.headline_style || ex.text_zones) {
+            reference_dna = {
+              composition_zone:      ex.composition_zone,
+              text_zones:            ex.text_zones ?? "",
+              background_treatment:  ex.background_treatment ?? "",
+              headline_style:        ex.headline_style ?? "",
+              typography_hierarchy:  ex.typography_hierarchy ?? "",
+              visual_prompt:         ex.visual_prompt,
+              layout_prompt:         ex.layout_prompt,
+              color_mood:            ex.color_mood,
+              description:           ex.description,
+              pilar:                 ex.pilar,
+              format:                ex.format,
+              visual_headline_style: ex.visual_headline_style,
+              ...(ex.logo_placement ? { logo_placement: ex.logo_placement } : {}),
+            };
+          }
+        }
+      } catch (e) {
+        console.warn("[generate-copy] Falha ao resolver reference_example_id (non-fatal):", e);
+      }
+    }
 
     const strategy: StrategyContext = {};
     if (pilar)             strategy.pilar             = pilar;
