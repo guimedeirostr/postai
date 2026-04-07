@@ -59,7 +59,8 @@ import {
   compilePromptForProvider,
   type ImageProvider,
 } from "@/lib/prompt-compiler";
-import type { ArtDirection, BrandProfile } from "@/types";
+import { composePost } from "@/lib/composer";
+import type { ArtDirection, BrandDNA, BrandProfile, ReferenceDNA } from "@/types";
 
 // Aguarda até 120s — PuLID e ControlNet podem ser mais lentos
 export const maxDuration = 120;
@@ -273,55 +274,53 @@ export async function POST(req: NextRequest) {
     // Freepik — paths assíncronos (frontend faz polling em check-image)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // ── Seedream Edit: foto da biblioteca como referência img2img ─────────────
+    // ── Foto da biblioteca: composição DIRETA — sem geração de imagem ───────────
+    // A foto escolhida pelo usuário é o fundo final. Nenhuma IA toca nela.
+    // O overlay (headline, logo, marca) é aplicado pelo compositor usando o
+    // DNA extraído no Stage 0 para definir posição e tratamento do overlay.
     if (libraryImageUrl) {
-      const aspect = freepikAspect(post.format as string, "seedream");
+      const refDna = post.reference_dna as ReferenceDNA | undefined;
 
-      const imgRes = await fetch(libraryImageUrl, {
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!imgRes.ok) {
-        return NextResponse.json(
-          { error: `Não foi possível baixar a imagem da biblioteca: HTTP ${imgRes.status}` },
-          { status: 422 }
-        );
+      let brandDna: BrandDNA | undefined;
+      if (!refDna) {
+        try {
+          const dnaSnap = await adminDb
+            .collection("clients").doc(post.client_id)
+            .collection("brand_dna").doc("current")
+            .get();
+          if (dnaSnap.exists) brandDna = dnaSnap.data() as BrandDNA;
+        } catch { /* non-fatal */ }
       }
 
-      const imgBuf   = await imgRes.arrayBuffer();
-      const imgB64   = Buffer.from(imgBuf).toString("base64");
-      const ct       = imgRes.headers.get("content-type") ?? "image/jpeg";
-      const mimeType = ct.split(";")[0].trim();
-      const dataUri  = `data:${mimeType};base64,${imgB64}`;
+      await postDoc.ref.update({ status: "composing", image_url: libraryImageUrl });
 
-      // Extrai prompt fiel à foto real via Freepik Image-to-Prompt
-      const extractedPrompt = await extractPromptFromImage({
-        imageBase64: imgB64,
-        imageMime:   mimeType,
-      });
-
-      // Se há DNA de referência ou DNA da marca, injeta o estilo visual como âncora.
-      // Isso instrui o Seedream a manter o mood, iluminação e background da referência
-      // ao editar a foto — evita que o modelo "claree" fundos escuros ou mude o estilo.
-      const refVisual = (post.art_direction as { final_visual_prompt?: string } | undefined)
-        ?.final_visual_prompt ?? basePrompt;
-
-      const editPrompt = extractedPrompt
-        ? `${extractedPrompt}. Visual style anchor — preserve: ${refVisual.slice(0, 300)}`
-        : refVisual;
-
-      const { task_id } = await createSeedreamEditTask({
-        prompt:           editPrompt,
-        aspect_ratio:     aspect,
-        reference_images: [dataUri],
+      const composed_url = await composePost({
+        imageUrl:            libraryImageUrl,
+        logoUrl:             client.logo_url,
+        visualHeadline:      (post.visual_headline ?? post.headline ?? client.name) as string,
+        instagramHandle:     client.instagram_handle as string | undefined,
+        clientName:          client.name,
+        primaryColor:        client.primary_color,
+        secondaryColor:      client.secondary_color,
+        format:              (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
+        postId:              post_id,
+        compositionZone:     refDna?.composition_zone      ?? brandDna?.dominant_composition_zone,
+        backgroundTreatment: refDna?.background_treatment  ?? brandDna?.background_treatment,
       });
 
       await postDoc.ref.update({
-        freepik_task_id: task_id,
-        image_provider:  "seedream_edit",
-        image_url:       libraryImageUrl, // fallback raw view
+        image_url:      libraryImageUrl,
+        composed_url,
+        image_provider: "library_direct",
+        status:         "ready",
       });
 
-      return NextResponse.json({ task_id, post_id, provider: "seedream_edit" });
+      return NextResponse.json({
+        image_url:    libraryImageUrl,
+        composed_url,
+        post_id,
+        provider:     "library_direct",
+      });
     }
 
     // ── Seedream V5 Lite (txt2img assíncrono) ─────────────────────────────────
