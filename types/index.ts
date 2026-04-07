@@ -64,8 +64,24 @@ export interface DesignExample {
   color_mood:           string;
   composition_zone:     "left" | "right" | "bottom" | "top" | "center";
   source_url?:          string;   // original Instagram URL
-  image_url?:           string;   // og:image URL at import time
+  image_url?:           string;   // og:image URL ou URL direta da imagem
   created_at:           Timestamp;
+
+  // ── Campos ricos (extraídos pelo prompt completo de Reference DNA) ────────
+  // Opcionais para manter compatibilidade com docs antigos (shape DesignExample básico).
+  // Quando presentes, este doc funciona como um ReferenceDNA completo e pode
+  // alimentar Stage 0 diretamente.
+  text_zones?:           string;
+  background_treatment?: string;
+  headline_style?:       string;
+  typography_hierarchy?: string;
+  logo_placement?:       LogoPlacement;
+  /**
+   * Origem deste exemplo:
+   *   "library"         — adicionado manualmente via DNA modal (padrão)
+   *   "stage0"          — capturado no fluxo Stage 0 de geração
+   */
+  intent?:               "library" | "stage0";
 }
 
 export interface StrategyContext {
@@ -74,6 +90,14 @@ export interface StrategyContext {
   dor_desejo?: string;
   hook_type?: string;
 }
+
+export type LogoPlacement =
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "bottom-center"
+  | "none";
 
 export interface ArtDirection {
   visual_style:        string;
@@ -90,6 +114,8 @@ export interface ArtDirection {
   negative_prompt:     string;
   final_visual_prompt: string;
   final_layout_prompt: string;
+  /** Onde o logo da marca deve ficar no post final (quando aplicável) */
+  logo_placement?:     LogoPlacement;
 }
 
 export interface GeneratedPost {
@@ -116,10 +142,11 @@ export interface GeneratedPost {
    *   fal_depth      → Flux com ControlNet Depth (volume/depth lock)
    *   freepik        → Freepik Mystic (async polling)
    *   seedream       → Freepik Seedream V5 Lite (async polling)
-   *   seedream_edit  → Freepik Seedream Edit img2img (async polling)
+   *   seedream_edit  → Freepik Seedream Edit img2img (async polling) [DEPRECATED]
    *   imagen4        → Google Imagen 4 (sync)
+   *   library_direct → Foto da biblioteca usada como background SEM geração de IA
    */
-  image_provider?: "freepik" | "seedream" | "seedream_edit" | "imagen4" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth";
+  image_provider?: "freepik" | "seedream" | "seedream_edit" | "imagen4" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "library_direct";
   freepik_task_id?: string;
   image_url: string | null;
   composed_url?: string | null;            // final branded post (compositor output)
@@ -161,6 +188,9 @@ export interface BrandDNA {
   // Regras extraídas (o que a marca SEMPRE faz)
   design_rules: string[];
 
+  // Placement do logo detectado consistentemente (quando aplicável)
+  dominant_logo_placement?: LogoPlacement;
+
   // Templates prontos para injetar no Art Director
   visual_prompt_template: string;  // Prompt visual base desta marca (inglês)
   layout_prompt_template: string;  // Prompt de layout base desta marca (inglês)
@@ -198,6 +228,8 @@ export interface ReferenceDNA {
   pilar:                string;
   format:               "feed" | "stories" | "reels_cover";
   visual_headline_style: string;
+  /** Onde o logo da marca aparece nesta referência (extraído via Claude Vision) */
+  logo_placement?:       LogoPlacement;
 }
 
 // ── Carousel types ────────────────────────────────────────────────────────────

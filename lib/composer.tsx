@@ -21,6 +21,21 @@ import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import sharp from "sharp";
 import { uploadToR2 } from "./r2";
+import {
+  resolveTypography,
+  splitHeadlineForStyle,
+  type TypographyStyle,
+} from "./composer/typography";
+import {
+  resolveLogoPlacement,
+  computeLogoCoords,
+  computeBadgeStyle,
+  type LogoPlacement,
+} from "./composer/logo-placement";
+import {
+  resolveGradientColor,
+  isDarkMood,
+} from "./composer/color-mood";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,18 +49,28 @@ export interface ComposeOptions {
   secondaryColor:       string;           // Hex da cor secundária
   format:               "feed" | "stories" | "reels_cover";
   postId:               string;
-  // Opcionais — derivados do ReferenceDNA quando presente
+  // Opcionais — derivados do ReferenceDNA / BrandDNA quando presentes
   compositionZone?:     "left" | "right" | "bottom" | "top" | "center";
   backgroundTreatment?: string;           // texto livre do reference_dna.background_treatment
+  /** reference_dna.visual_headline_style — descrição do estilo do headline na referência */
+  headlineStyle?:       string;
+  /** brand_dna.typography_pattern — padrão tipográfico sintetizado da marca */
+  typographyPattern?:   string;
+  /** Placement explícito do logo (art_direction/ref_dna/brand_dna) */
+  logoPlacement?:       LogoPlacement;
+  /** Descrição do mood de cores (reference_dna.color_mood / brand_dna.color_treatment) */
+  colorMood?:           string;
 }
 
 // ── Font cache (persiste entre invocações warm no Lambda) ────────────────────
 
 interface FontCache {
   montserrat900:    ArrayBuffer;
-  montserrat900Ext: ArrayBuffer | null;
   inter700:         ArrayBuffer;
-  inter700Ext:      ArrayBuffer | null;
+  inter500:         ArrayBuffer | null;
+  playfair700:      ArrayBuffer | null;
+  playfair700Italic: ArrayBuffer | null;
+  dancing700:       ArrayBuffer | null;
 }
 
 let _fontCache: FontCache | null = null;
@@ -64,12 +89,16 @@ async function ensureFonts(): Promise<FontCache> {
 
   // satori aceita apenas TTF ou WOFF — NÃO suporta WOFF2
   // Fonte: repositório Google Fonts no GitHub via jsDelivr CDN (TTF estático)
-  const [m900, i700] = await Promise.all([
+  const [m900, i700, i500, pf700, pf700i, ds700] = await Promise.all([
     fetchSafe("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/static/Montserrat-Black.ttf"),
     fetchSafe("https://cdn.jsdelivr.net/gh/rsms/inter@master/docs/font-files/Inter-Bold.ttf"),
+    fetchSafe("https://cdn.jsdelivr.net/gh/rsms/inter@master/docs/font-files/Inter-Medium.ttf"),
+    fetchSafe("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/playfairdisplay/static/PlayfairDisplay-Bold.ttf"),
+    fetchSafe("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/playfairdisplay/static/PlayfairDisplay-BoldItalic.ttf"),
+    fetchSafe("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/dancingscript/static/DancingScript-Bold.ttf"),
   ]);
 
-  // Fallback: fontsource WOFF (não WOFF2) — suportado pelo satori
+  // Fallback fontsource WOFF apenas para fontes essenciais (Montserrat + Inter)
   const [m900Fallback, i700Fallback] = await Promise.all([
     m900 ? Promise.resolve(null) : fetchSafe("https://cdn.jsdelivr.net/npm/@fontsource/montserrat@4/files/montserrat-latin-900-normal.woff"),
     i700 ? Promise.resolve(null) : fetchSafe("https://cdn.jsdelivr.net/npm/@fontsource/inter@4/files/inter-latin-700-normal.woff"),
@@ -81,15 +110,13 @@ async function ensureFonts(): Promise<FontCache> {
   if (!montserrat) throw new Error("[composer] Falha ao carregar fonte Montserrat 900");
   if (!inter)      throw new Error("[composer] Falha ao carregar fonte Inter 700");
 
-  // Renomeia para manter compatibilidade com o restante da função
-  const m900Final = montserrat;
-  const i700Final = inter;
-
   _fontCache = {
-    montserrat900:    m900Final,
-    montserrat900Ext: null,   // TTF já inclui todos os caracteres incluindo latin-ext
-    inter700:         i700Final,
-    inter700Ext:      null,
+    montserrat900:     montserrat,
+    inter700:          inter,
+    inter500:          i500,
+    playfair700:       pf700,
+    playfair700Italic: pf700i,
+    dancing700:        ds700,
   };
   return _fontCache;
 }
@@ -110,14 +137,30 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 /**
- * Divide a headline em 2 linhas balanceadas.
- * Palavras ≤ 3 → 1 linha; mais → divide ao meio.
+ * Renderiza um span do headline aplicando a TypographyStyle resolvida.
+ * Falls back graciosamente quando uma fonte opcional não foi carregada.
  */
-function splitHeadline(text: string): [string, string] {
-  const words = text.toUpperCase().trim().split(/\s+/);
-  if (words.length <= 3) return [words.join(" "), ""];
-  const mid = Math.ceil(words.length / 2);
-  return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
+function headlineSpan(
+  text: string,
+  color: string,
+  fontSize: number,
+  style: TypographyStyle,
+): React.ReactElement {
+  return (
+    <span
+      style={{
+        fontSize,
+        fontWeight:    style.weight,
+        fontFamily:    style.satoriName,
+        fontStyle:     style.italic ? "italic" : "normal",
+        color,
+        lineHeight:    style.lineHeight,
+        letterSpacing: style.letterSpacing,
+      }}
+    >
+      {text}
+    </span>
+  );
 }
 
 function sanitizeHandle(handle: string): string {
@@ -167,10 +210,17 @@ function buildOverlayElement(
   const zone      = opts.compositionZone ?? "bottom";
   const handle    = opts.instagramHandle ? sanitizeHandle(opts.instagramHandle) : "";
 
-  const [line1, line2] = splitHeadline(opts.visualHeadline);
+  // ── Resolve placement do logo (fallback: detecta via signals do DNA) ──────
+  const placement = opts.logoPlacement
+    ?? resolveLogoPlacement(opts.headlineStyle, opts.backgroundTreatment, opts.typographyPattern);
+
+  // ── Resolve estilo tipográfico baseado em DNA da referência/marca ─────────
+  const typo           = resolveTypography(opts.headlineStyle, opts.typographyPattern);
+  const [line1, line2] = splitHeadlineForStyle(opts.visualHeadline, typo);
   const hasTwoLines    = !!line2;
-  const fontSize       = hasTwoLines ? 86 : 108;
-  const lineH          = fontSize * 1.05;
+  const baseSize       = hasTwoLines ? 86 : 108;
+  const fontSize       = Math.round(baseSize * typo.sizeFactor);
+  const lineH          = fontSize * typo.lineHeight;
   const textH          = lineH * (hasTwoLines ? 2.1 : 1.1);
 
   // ── MODO CLEAN: referência sem overlay ────────────────────────────────────
@@ -216,16 +266,10 @@ function buildOverlayElement(
           }}
         />
 
-        {/* ── Headline ──────────────────────────────────────────────────── */}
+        {/* ── Headline (tipografia resolvida via DNA) ───────────────────── */}
         <div style={textStyle}>
-          <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: "white", lineHeight: 1.0, letterSpacing: -2 }}>
-            {line1}
-          </span>
-          {hasTwoLines && (
-            <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: secondary, lineHeight: 1.05, letterSpacing: -2 }}>
-              {line2}
-            </span>
-          )}
+          {headlineSpan(line1, "white", fontSize, typo)}
+          {hasTwoLines && headlineSpan(line2, secondary, fontSize, typo)}
         </div>
 
         {/* ── Etiquetas de marca flutuantes (sem barra sólida) ──────────── */}
@@ -250,32 +294,36 @@ function buildOverlayElement(
           )}
         </div>
 
-        {/* ── Badge sutil para o logo ───────────────────────────────────── */}
-        <div
-          style={{
-            position:        "absolute",
-            top:             36,
-            left:            36,
-            height:          100,
-            minWidth:        48,
+        {/* ── Badge sutil para o logo (posição driven por DNA) ──────────── */}
+        {(() => {
+          const badgeStyle = computeBadgeStyle({
+            placement, canvasW: W, canvasH: H,
+            stripH: 0, // clean mode não tem strip
             backgroundColor: hexToRgba(primary, 0.50),
-            borderRadius:    16,
-            display:         "flex",
-            alignItems:      "center",
-            padding:         "10px 18px",
-          }}
-        />
+          });
+          return badgeStyle ? <div style={badgeStyle} /> : null;
+        })()}
       </div>
     );
   }
 
   // ── MODO PADRÃO: gradiente de marca + faixa inferior ─────────────────────
   // Usado quando a referência tem overlay colorido, OU quando não há referência.
-  const STRIP_H = 110;
-  const maxOp   = resolveGradientOpacity(opts.backgroundTreatment);
-  const c0      = hexToRgba(primary, 0);
-  const c1      = hexToRgba(primary, maxOp * 0.67);
-  const c2      = hexToRgba(primary, maxOp);
+  //
+  // Gradient: tint vem do colorMood do DNA (ex: "dark moody warm amber" → amber),
+  // fallback é a primaryColor da marca. Assim uma referência com mood distinto
+  // não é "lavada" pelo violeta da marca.
+  //
+  // Strip inferior (faixa sólida): SEMPRE usa primaryColor. Ela é a âncora de
+  // brand no post, não deve sofrer drift do DNA da referência.
+  const STRIP_H    = 110;
+  const maxOp      = resolveGradientOpacity(opts.backgroundTreatment);
+  const gradTint   = resolveGradientColor(opts.colorMood, opts.primaryColor);
+  // Em mood escuro, pushamos a opacidade máxima para garantir moodiness
+  const effMaxOp   = isDarkMood(opts.colorMood) ? Math.max(maxOp, 0.90) : maxOp;
+  const c0         = hexToRgba(gradTint, 0);
+  const c1         = hexToRgba(gradTint, effMaxOp * 0.67);
+  const c2         = hexToRgba(gradTint, effMaxOp);
 
   type CSSProps = React.CSSProperties;
   let gradientStyle: CSSProps;
@@ -375,33 +423,21 @@ function buildOverlayElement(
         )}
       </div>
 
-      {/* ── Headline ──────────────────────────────────────────────────── */}
+      {/* ── Headline (tipografia resolvida via DNA) ───────────────────── */}
       <div style={textContainerStyle}>
-        <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: "white", lineHeight: 1.0, letterSpacing: -2 }}>
-          {line1}
-        </span>
-        {hasTwoLines && (
-          <span style={{ fontSize, fontWeight: 900, fontFamily: "Montserrat", color: secondary, lineHeight: 1.05, letterSpacing: -2 }}>
-            {line2}
-          </span>
-        )}
+        {headlineSpan(line1, "white", fontSize, typo)}
+        {hasTwoLines && headlineSpan(line2, secondary, fontSize, typo)}
       </div>
 
-      {/* ── Badge de fundo para o logo ────────────────────────────────── */}
-      <div
-        style={{
-          position:        "absolute",
-          top:             36,
-          left:            36,
-          height:          100,
-          minWidth:        48,
+      {/* ── Badge de fundo para o logo (posição driven por DNA) ───────── */}
+      {(() => {
+        const badgeStyle = computeBadgeStyle({
+          placement, canvasW: W, canvasH: H,
+          stripH: STRIP_H,
           backgroundColor: hexToRgba(primary, 0.72),
-          borderRadius:    16,
-          display:         "flex",
-          alignItems:      "center",
-          padding:         "10px 18px",
-        }}
-      />
+        });
+        return badgeStyle ? <div style={badgeStyle} /> : null;
+      })()}
     </div>
   );
 }
@@ -416,14 +452,20 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
   const fonts = await ensureFonts();
 
   const satorifonts: Parameters<typeof satori>[1]["fonts"] = [
-    { name: "Montserrat", data: fonts.montserrat900,    weight: 900, style: "normal" },
-    { name: "Inter",      data: fonts.inter700,         weight: 700, style: "normal" },
+    { name: "Montserrat", data: fonts.montserrat900, weight: 900, style: "normal" },
+    { name: "Inter",      data: fonts.inter700,      weight: 700, style: "normal" },
   ];
-  if (fonts.montserrat900Ext) {
-    satorifonts.push({ name: "Montserrat", data: fonts.montserrat900Ext, weight: 900, style: "normal" });
+  if (fonts.inter500) {
+    satorifonts.push({ name: "Inter", data: fonts.inter500, weight: 500, style: "normal" });
   }
-  if (fonts.inter700Ext) {
-    satorifonts.push({ name: "Inter", data: fonts.inter700Ext, weight: 700, style: "normal" });
+  if (fonts.playfair700) {
+    satorifonts.push({ name: "PlayfairDisplay", data: fonts.playfair700, weight: 700, style: "normal" });
+  }
+  if (fonts.playfair700Italic) {
+    satorifonts.push({ name: "PlayfairDisplay", data: fonts.playfair700Italic, weight: 700, style: "italic" });
+  }
+  if (fonts.dancing700) {
+    satorifonts.push({ name: "DancingScript", data: fonts.dancing700, weight: 700, style: "normal" });
   }
 
   // ── 2. Renderizar overlay com satori → SVG → PNG ───────────────────────────
@@ -447,18 +489,37 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
     { input: Buffer.from(overlayPng), top: 0, left: 0 },
   ];
 
-  // ── 5. Logo (composite via sharp — sem limitação de tamanho no satori) ─────
-  if (opts.logoUrl) {
+  // ── 5. Logo (composite via sharp — posição driven pelo DNA) ────────────────
+  const resolvedPlacement: LogoPlacement =
+    opts.logoPlacement
+    ?? resolveLogoPlacement(opts.headlineStyle, opts.backgroundTreatment, opts.typographyPattern);
+
+  if (opts.logoUrl && resolvedPlacement !== "none") {
     try {
       const logoResp = await fetch(opts.logoUrl, { signal: AbortSignal.timeout(8_000) });
       if (logoResp.ok) {
-        const logoBuffer  = Buffer.from(await logoResp.arrayBuffer());
-        // Redimensionar logo: máx 240×80px — sem withoutEnlargement para logos pequenos crescerem
-        const logoResized = await sharp(logoBuffer)
+        const logoBuffer = Buffer.from(await logoResp.arrayBuffer());
+        // Redimensionar logo: máx 240×80px — dimensões reais retornadas via info
+        const { data: logoResized, info: logoInfo } = await sharp(logoBuffer)
           .resize(240, 80, { fit: "inside" })
-          .toBuffer();
-        // Posição: top 56px, left 54px (centralizado no badge 100px do satori)
-        layers.push({ input: logoResized, top: 56, left: 54 });
+          .toBuffer({ resolveWithObject: true });
+
+        // stripH é 0 em modo clean (sem faixa inferior)
+        const cleanMode = isNoOverlayStyle(opts.backgroundTreatment);
+        const stripH    = cleanMode ? 0 : 110;
+
+        const coords = computeLogoCoords({
+          placement: resolvedPlacement,
+          canvasW:   W,
+          canvasH:   H,
+          logoW:     logoInfo.width,
+          logoH:     logoInfo.height,
+          stripH,
+        });
+
+        if (coords) {
+          layers.push({ input: logoResized, top: coords.top, left: coords.left });
+        }
       }
     } catch (logoErr) {
       console.warn("[composer] Logo não carregou (non-fatal):", logoErr);
