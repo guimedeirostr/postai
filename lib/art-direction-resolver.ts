@@ -85,40 +85,43 @@ export async function loadDnaSources(
     return { refDna, brandDna: undefined };
   }
 
-  // ── 2. design_examples da biblioteca (mais recente com campos ricos) ──────
+  // ── 2. design_examples da biblioteca (mais recente com campo rico) ────────
+  // Sem where() + orderBy() juntos para evitar necessidade de índice composto.
+  // Filtra intent === "library" em código após o fetch.
   try {
     const exSnap = await adminDb
       .collection("clients").doc(post.client_id)
       .collection("design_examples")
-      .where("intent", "==", "library")
       .orderBy("created_at", "desc")
-      .limit(5)
+      .limit(10)
       .get();
 
     for (const doc of exSnap.docs) {
       const ex = doc.data() as DesignExample;
-      // Usa somente se tiver os campos ricos extraídos pelo ReferenceDNA prompt
-      if (ex.background_treatment && ex.text_zones && ex.typography_hierarchy) {
+      // Aceita qualquer exemplo com pelo menos background_treatment preenchido
+      if (ex.intent === "library" && ex.background_treatment) {
         const converted: ReferenceDNA = {
-          composition_zone:    ex.composition_zone ?? "bottom",
-          text_zones:          ex.text_zones,
+          composition_zone:     ex.composition_zone ?? "bottom",
+          text_zones:           ex.text_zones ?? "",
           background_treatment: ex.background_treatment,
-          headline_style:      ex.headline_style ?? ex.visual_headline_style,
-          typography_hierarchy: ex.typography_hierarchy,
-          visual_prompt:       ex.visual_prompt,
-          layout_prompt:       ex.layout_prompt,
-          color_mood:          ex.color_mood,
-          description:         ex.description,
-          pilar:               ex.pilar,
-          format:              ex.format,
+          headline_style:       ex.headline_style ?? ex.visual_headline_style ?? "",
+          typography_hierarchy: ex.typography_hierarchy ?? "",
+          visual_prompt:        ex.visual_prompt,
+          layout_prompt:        ex.layout_prompt,
+          color_mood:           ex.color_mood,
+          description:          ex.description,
+          pilar:                ex.pilar,
+          format:               ex.format,
           visual_headline_style: ex.visual_headline_style,
           ...(ex.logo_placement ? { logo_placement: ex.logo_placement } : {}),
         };
+        console.log(`[art-direction-resolver] refDna from design_example ${doc.id}:`,
+          `bg=${ex.background_treatment?.slice(0,40)}, logo=${ex.logo_placement}`);
         return { refDna: converted, brandDna: undefined };
       }
     }
-  } catch {
-    /* non-fatal */
+  } catch (e) {
+    console.warn("[art-direction-resolver] design_examples query falhou:", e);
   }
 
   // ── 3. BrandDNA sintetizado (fallback final) ──────────────────────────────
