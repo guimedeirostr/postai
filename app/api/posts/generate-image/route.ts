@@ -299,7 +299,15 @@ export async function POST(req: NextRequest) {
         imageMime:   mimeType,
       });
 
-      const editPrompt = extractedPrompt ?? basePrompt;
+      // Se há DNA de referência ou DNA da marca, injeta o estilo visual como âncora.
+      // Isso instrui o Seedream a manter o mood, iluminação e background da referência
+      // ao editar a foto — evita que o modelo "claree" fundos escuros ou mude o estilo.
+      const refVisual = (post.art_direction as { final_visual_prompt?: string } | undefined)
+        ?.final_visual_prompt ?? basePrompt;
+
+      const editPrompt = extractedPrompt
+        ? `${extractedPrompt}. Visual style anchor — preserve: ${refVisual.slice(0, 300)}`
+        : refVisual;
 
       const { task_id } = await createSeedreamEditTask({
         prompt:           editPrompt,
