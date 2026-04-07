@@ -65,7 +65,9 @@ import {
   resolveArtDirection,
   toComposeOverrides,
 } from "@/lib/art-direction-resolver";
-import type { ArtDirection, BrandProfile, GeneratedPost, ReferenceDNA } from "@/types";
+import { analyzeImage } from "@/lib/image-analysis";
+import { composeLayerStack, layerStackToLayoutPrompt } from "@/lib/art-direction-engine";
+import type { ArtDirection, BrandProfile, GeneratedPost, ReferenceDNA, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 // Aguarda até 120s — PuLID e ControlNet podem ser mais lentos
 export const maxDuration = 120;
@@ -283,11 +285,30 @@ export async function POST(req: NextRequest) {
     // A foto escolhida pelo usuário é o fundo final. Nenhuma IA toca nela.
     // O overlay (headline, logo, marca) é aplicado pelo compositor usando o
     // DNA extraído no Stage 0 para definir posição e tratamento do overlay.
+    // Análise real de pixels via Sharp roda sobre a foto para atualizar o LayerStack.
     if (libraryImageUrl) {
       const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
       const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
 
-      await postDoc.ref.update({ status: "composing", image_url: libraryImageUrl });
+      // ── Análise real da foto da biblioteca ─────────────────────────────────
+      let library_layer_stack: LayerStack | null = post.layer_stack as LayerStack | null ?? null;
+      try {
+        const realBg = await analyzeImage(libraryImageUrl);
+        const toneProf = (post.layer_stack as LayerStack | undefined)?.tone_profile
+          ?? (post as Record<string, unknown>).tone_profile as ToneProfile | undefined;
+        if (toneProf) {
+          library_layer_stack = composeLayerStack(realBg, toneProf, client);
+          console.log("[generate-image] LayerStack atualizado via Sharp para foto da biblioteca");
+        }
+      } catch (analysisErr) {
+        console.warn("[generate-image] analyzeImage (biblioteca) falhou (non-fatal):", analysisErr);
+      }
+
+      await postDoc.ref.update({
+        status:       "composing",
+        image_url:    libraryImageUrl,
+        ...(library_layer_stack ? { layer_stack: library_layer_stack } : {}),
+      });
 
       const composed_url = await composePost({
         imageUrl:            libraryImageUrl,

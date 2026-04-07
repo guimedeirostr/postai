@@ -7,6 +7,7 @@ import { buildCopyPrompt } from "@/lib/prompts/copy";
 import { extractPromptFromImage } from "@/lib/freepik";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import { composeLayerStack, layerStackToLayoutPrompt } from "@/lib/art-direction-engine";
+import { analyzeImage } from "@/lib/image-analysis";
 import type { BrandProfile, StrategyContext, ReferenceDNA, DesignExample, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 export const maxDuration = 60;
@@ -268,13 +269,26 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Art Direction Engine — deriva LayerStack das saídas estruturadas ─────
-    // Claude retorna background_analysis (percepção) + tone_profile (direção).
-    // O motor TypeScript deriva todas as decisões mecânicas de composição.
+    // Prioridade para background_analysis:
+    //   1. Análise real de pixels via Sharp (quando há imagem de referência)
+    //   2. Estimativa do Claude (fallback quando não há imagem)
+    // tone_profile vem sempre do Claude (direção criativa da marca).
     let layer_stack: LayerStack | null = null;
     try {
       const raw_copy = copy as unknown as Record<string, unknown>;
-      const bgAnalysis = raw_copy.background_analysis as BackgroundAnalysis | undefined;
-      const toneProf   = raw_copy.tone_profile        as ToneProfile        | undefined;
+      let bgAnalysis = raw_copy.background_analysis as BackgroundAnalysis | undefined;
+      const toneProf = raw_copy.tone_profile        as ToneProfile        | undefined;
+
+      // Análise real de pixels sobrescreve a estimativa do Claude
+      if (referenceImageBase64) {
+        try {
+          bgAnalysis = await analyzeImage(referenceImageBase64);
+          console.log("[generate-copy] BackgroundAnalysis via Sharp:", bgAnalysis);
+        } catch (analysisErr) {
+          console.warn("[generate-copy] analyzeImage falhou, usando estimativa Claude (non-fatal):", analysisErr);
+        }
+      }
+
       if (bgAnalysis && toneProf) {
         layer_stack        = composeLayerStack(bgAnalysis, toneProf, client);
         copy.layout_prompt = layerStackToLayoutPrompt(layer_stack);
