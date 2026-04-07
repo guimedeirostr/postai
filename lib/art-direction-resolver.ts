@@ -23,6 +23,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import type {
   ArtDirection,
   BrandDNA,
+  DesignExample,
   GeneratedPost,
   LayerStack,
   LogoPlacement,
@@ -69,17 +70,58 @@ export interface DnaSources {
 
 /**
  * Carrega ReferenceDNA do post + BrandDNA do cliente em paralelo.
- * BrandDNA só é buscado se o post não tiver reference_dna (fallback).
+ *
+ * Cascade de fallback:
+ *   1. post.reference_dna          — DNA inline no post (Stage 0 selecionou uma referência)
+ *   2. design_examples mais recente — DNA extraído pelo usuário via biblioteca de referências
+ *   3. brand_dna/current           — DNA sintetizado de N posts da marca
  */
 export async function loadDnaSources(
   post: GeneratedPost & { reference_dna?: ReferenceDNA },
 ): Promise<DnaSources> {
+  // ── 1. DNA inline no post (prioridade máxima) ─────────────────────────────
   const refDna = post.reference_dna;
-
   if (refDna) {
     return { refDna, brandDna: undefined };
   }
 
+  // ── 2. design_examples da biblioteca (mais recente com campos ricos) ──────
+  try {
+    const exSnap = await adminDb
+      .collection("clients").doc(post.client_id)
+      .collection("design_examples")
+      .where("intent", "==", "library")
+      .orderBy("created_at", "desc")
+      .limit(5)
+      .get();
+
+    for (const doc of exSnap.docs) {
+      const ex = doc.data() as DesignExample;
+      // Usa somente se tiver os campos ricos extraídos pelo ReferenceDNA prompt
+      if (ex.background_treatment && ex.text_zones && ex.typography_hierarchy) {
+        const converted: ReferenceDNA = {
+          composition_zone:    ex.composition_zone ?? "bottom",
+          text_zones:          ex.text_zones,
+          background_treatment: ex.background_treatment,
+          headline_style:      ex.headline_style ?? ex.visual_headline_style,
+          typography_hierarchy: ex.typography_hierarchy,
+          visual_prompt:       ex.visual_prompt,
+          layout_prompt:       ex.layout_prompt,
+          color_mood:          ex.color_mood,
+          description:         ex.description,
+          pilar:               ex.pilar,
+          format:              ex.format,
+          visual_headline_style: ex.visual_headline_style,
+          ...(ex.logo_placement ? { logo_placement: ex.logo_placement } : {}),
+        };
+        return { refDna: converted, brandDna: undefined };
+      }
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  // ── 3. BrandDNA sintetizado (fallback final) ──────────────────────────────
   let brandDna: BrandDNA | undefined;
   try {
     const dnaSnap = await adminDb
@@ -88,7 +130,7 @@ export async function loadDnaSources(
       .get();
     if (dnaSnap.exists) brandDna = dnaSnap.data() as BrandDNA;
   } catch {
-    /* non-fatal — segue sem brand DNA */
+    /* non-fatal */
   }
 
   return { refDna: undefined, brandDna };

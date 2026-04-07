@@ -155,16 +155,37 @@ export async function POST(req: NextRequest) {
 
       // Análise real da foto da biblioteca via Sharp
       // Sempre gera um LayerStack — mesmo sem tone_profile no post (usa fallback warm_organic).
-      // Isso garante wash, zonas de texto e posicionamento corretos para qualquer foto.
+      // Após geração, aplica decisões explícitas do Reference DNA (wash, logo, footer).
       let library_layer_stack: LayerStack | null = null;
       try {
         const realBg = await analyzeImage(libraryImageUrl);
         const toneProf: ToneProfile =
           (post.layer_stack as LayerStack | undefined)?.tone_profile
           ?? (post as Record<string, unknown>).tone_profile as ToneProfile | undefined
-          ?? TONE_PROFILES["warm_organic"];   // fallback sensato para qualquer segmento
+          ?? TONE_PROFILES["warm_organic"];   // fallback para qualquer segmento
 
         library_layer_stack = composeLayerStack(realBg, toneProf, client);
+
+        // ── Sobrescrever com decisões explícitas do Reference DNA ─────────────
+        // O DNA diz "sem overlay" → zerar wash e footer bar (estilo editorial limpo)
+        if (dna.refDna?.background_treatment) {
+          const bt = dna.refDna.background_treatment.toLowerCase();
+          const isNone = /\bnone\b|no overlay|no gradient|directly on|no treatment|text on image/.test(bt);
+          if (isNone) {
+            library_layer_stack.wash = { type: "none" };
+            library_layer_stack.brand_elements.footer_bar.enabled = false;
+            console.log("[generate-image] DNA background_treatment=none → wash desabilitado");
+          }
+        }
+        // DNA define logo_placement → sobrescreve a decisão automática do engine
+        if (dna.refDna?.logo_placement) {
+          library_layer_stack.brand_elements.logo_position = dna.refDna.logo_placement;
+          // Quando o logo é o elemento principal (bottom-center), usa tamanho grande
+          if (dna.refDna.logo_placement === "bottom-center") {
+            library_layer_stack.brand_elements.logo_size = "large";
+          }
+        }
+
         console.log("[generate-image] LayerStack gerado via Sharp para foto da biblioteca");
       } catch (analysisErr) {
         console.warn("[generate-image] analyzeImage (biblioteca) falhou (non-fatal):", analysisErr);

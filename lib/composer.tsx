@@ -751,9 +751,12 @@ export async function composePost(opts: ComposeOptions): Promise<string> {
   ];
 
   // ── 5. Logo (composite via sharp — posição driven pelo DNA) ────────────────
+  // Prioridade: opts.logoPlacement (DNA explícito) > layer_stack (engine) > heurística
+  // opts.logoPlacement vem da cascade Reference DNA → Brand DNA → heurística de texto.
+  // Quando o Reference DNA define logo_placement, ele DEVE vencer sobre o engine.
   const resolvedPlacement: LogoPlacement =
-    (opts.layer_stack?.brand_elements.logo_position as LogoPlacement | undefined)
-    ?? opts.logoPlacement
+    opts.logoPlacement
+    ?? (opts.layer_stack?.brand_elements.logo_position as LogoPlacement | undefined)
     ?? resolveLogoPlacement(opts.headlineStyle, opts.backgroundTreatment, opts.typographyPattern);
 
   if (opts.logoUrl && resolvedPlacement !== "none") {
