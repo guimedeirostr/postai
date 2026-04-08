@@ -78,6 +78,12 @@ export interface DesignExample {
   logo_placement?:       LogoPlacement;
   /** HTML/CSS template gerado pelo Claude Vision para replicar o design profissional */
   html_template?:        string;
+  /** Fonte principal identificada pelo Claude (nome Google Font, ex: "Cormorant Garamond") */
+  headline_font?:        string;
+  /** Estilo da fonte: "normal" | "italic" */
+  headline_font_style?:  string;
+  /** Peso da fonte: "300" | "400" | "700" | "900" */
+  headline_font_weight?: string;
   /**
    * Origem deste exemplo:
    *   "library"         — adicionado manualmente via DNA modal (padrão)

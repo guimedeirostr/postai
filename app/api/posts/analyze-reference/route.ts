@@ -155,9 +155,12 @@ export async function POST(req: NextRequest) {
           background_treatment: dna.background_treatment,
           headline_style:       dna.headline_style,
           typography_hierarchy: dna.typography_hierarchy,
-          ...(dna.logo_placement  ? { logo_placement  : dna.logo_placement } : {}),
-          ...(image_url           ? { image_url } : {}),
-          ...(html_template       ? { html_template  } : {}),
+          ...(dna.logo_placement      ? { logo_placement      : dna.logo_placement }      : {}),
+          ...((dna as {headline_font?: string}).headline_font        ? { headline_font        : (dna as {headline_font?: string}).headline_font! }        : {}),
+          ...((dna as {headline_font_style?: string}).headline_font_style  ? { headline_font_style  : (dna as {headline_font_style?: string}).headline_font_style! }  : {}),
+          ...((dna as {headline_font_weight?: string}).headline_font_weight ? { headline_font_weight : (dna as {headline_font_weight?: string}).headline_font_weight! } : {}),
+          ...(image_url               ? { image_url } : {}),
+          ...(html_template           ? { html_template           } : {}),
           intent:               "stage0",
         };
 

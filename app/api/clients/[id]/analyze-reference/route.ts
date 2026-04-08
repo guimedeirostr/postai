@@ -196,6 +196,9 @@ export async function POST(
     const headline_style        = parsed.headline_style;
     const typography_hierarchy  = parsed.typography_hierarchy;
     const logo_placement        = parsed.logo_placement as LogoPlacement | undefined;
+    const headline_font         = parsed.headline_font;
+    const headline_font_style   = parsed.headline_font_style;
+    const headline_font_weight  = parsed.headline_font_weight;
 
     if (!visual_prompt || !layout_prompt) {
       return NextResponse.json(
@@ -226,7 +229,10 @@ export async function POST(
       ...(background_treatment ? { background_treatment } : {}),
       ...(headline_style       ? { headline_style }       : {}),
       ...(typography_hierarchy ? { typography_hierarchy } : {}),
-      ...(logo_placement       ? { logo_placement }       : {}),
+      ...(logo_placement        ? { logo_placement }        : {}),
+      ...(headline_font         ? { headline_font }         : {}),
+      ...(headline_font_style   ? { headline_font_style }   : {}),
+      ...(headline_font_weight  ? { headline_font_weight }  : {}),
       ...(html_template && html_template.length > 100 ? { html_template } : {}),
       intent:               "library",
     };

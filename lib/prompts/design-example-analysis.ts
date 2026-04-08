@@ -23,7 +23,10 @@ Analyze every pixel of this image and return ONLY valid JSON (no markdown, no ex
   "pilar": "ONE of: Produto | Educação | Prova Social | Bastidores | Engajamento | Promoção | Trend",
   "format": "ONE of: feed | stories | reels_cover — infer from aspect ratio (4:5 or square = feed, 9:16 tall = stories or reels_cover)",
   "visual_headline_style": "Describe the headline style: approximate word count range, tone (bold claim / question / number-led / emotional), and visual position on the image",
-  "logo_placement": "ONE of: top-left | top-right | bottom-left | bottom-right | bottom-center | none — where the brand logo/mark is physically positioned in the image. Use 'none' ONLY if there is no visible logo/brand mark overlay. Examine carefully — logos are often small and in corners."
+  "logo_placement": "ONE of: top-left | top-right | bottom-left | bottom-right | bottom-center | none — where the brand logo/mark is physically positioned in the image. Use 'none' ONLY if there is no visible logo/brand mark overlay. Examine carefully — logos are often small and in corners.",
+  "headline_font": "The closest Google Font name to the main headline font. Choose from: Cormorant Garamond | Playfair Display | Libre Baskerville | Lora | Montserrat | Raleway | Poppins | Nunito | Barlow Condensed | Oswald | Anton | Bebas Neue | DM Serif Display | Abril Fatface | Dancing Script | Great Vibes | Pacifico. Pick the single best match.",
+  "headline_font_style": "ONE of: normal | italic — whether the headline is in italic/oblique",
+  "headline_font_weight": "ONE of: 300 | 400 | 500 | 600 | 700 | 800 | 900 — closest to what you see"
 }`;
 }
 
