@@ -81,6 +81,7 @@ import { uploadToR2 } from "@/lib/r2";
 import { checkTextLegibility, isVisionEnabled, getVisionApiKey } from "@/lib/vision";
 import { getDepthMapUrl } from "@/lib/replicate";
 import { applyDepthEffect } from "@/lib/depth-compositor";
+import { runVisualPerception, applyPerceptionToLayerStack } from "@/lib/visual-perception";
 import type { ArtDirection, BrandProfile, DesignExample, GeneratedPost, ReferenceDNA, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 // Aguarda até 120s — PuLID e ControlNet podem ser mais lentos
@@ -296,6 +297,25 @@ export async function POST(req: NextRequest) {
         console.log("[generate-image] LayerStack gerado via Sharp para foto da biblioteca");
       } catch (analysisErr) {
         console.warn("[generate-image] analyzeImage (biblioteca) falhou (non-fatal):", analysisErr);
+      }
+
+      // ── Agente de Percepção Visual — raciocínio estético via Claude Vision ──
+      // Substitui heurística de pixels por percepção contextual de diretor de arte.
+      // Rodado em paralelo com o update de status para não adicionar latência.
+      if (library_layer_stack) {
+        try {
+          const perception = await runVisualPerception(
+            libraryImageUrl,
+            (post.visual_headline ?? post.headline ?? client.name) as string,
+            client,
+          );
+          if (perception) {
+            library_layer_stack = applyPerceptionToLayerStack(library_layer_stack, perception, client);
+            console.log("[generate-image] LayerStack atualizado com percepção visual do agente");
+          }
+        } catch (perceptionErr) {
+          console.warn("[generate-image] Agente de percepção falhou (non-fatal):", perceptionErr);
+        }
       }
 
       await postDoc.ref.update({
