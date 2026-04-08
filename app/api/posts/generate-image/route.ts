@@ -74,6 +74,7 @@ import { analyzeImage } from "@/lib/image-analysis";
 import { composeLayerStack, layerStackToLayoutPrompt, TONE_PROFILES } from "@/lib/art-direction-engine";
 import { renderHtml, isRendererEnabled } from "@/lib/chromium-renderer";
 import { fillHtmlTemplate } from "@/lib/prompts/html-template";
+import { buildGenericTemplate } from "@/lib/prompts/generic-template";
 import { uploadToR2 } from "@/lib/r2";
 import type { ArtDirection, BrandProfile, DesignExample, GeneratedPost, ReferenceDNA, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
@@ -180,55 +181,74 @@ export async function POST(req: NextRequest) {
 
           const exWithTemplate = withTemplate[0] ?? null;
 
+          // ── Dados comuns para ambos os caminhos (template de referência ou genérico)
+          const headline = (post.visual_headline ?? post.headline ?? "") as string;
+          const format   = (post.format ?? "feed") as "feed" | "stories" | "reels_cover";
+          const H        = format === "feed" ? 1350 : 1920;
+          const strategy = post.strategy as { tema?: string; pilar?: string } | undefined;
+          const rawCaption = (post.caption ?? "") as string;
+          const captionLines = rawCaption.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
+          const preHeadline      = strategy?.tema ?? strategy?.pilar ?? "";
+          const captionFirstLine = captionLines[0] ?? "";
+
+          // Chrome é o caminho principal — usa template de referência se disponível,
+          // senão usa o template genérico de alta qualidade (sempre melhor que Sharp).
+          let htmlToRender: string;
+
           if (exWithTemplate?.html_template) {
-            const headline = (post.visual_headline ?? post.headline ?? "") as string;
-            const format   = (post.format ?? "feed") as "feed" | "stories" | "reels_cover";
-            const H        = format === "feed" ? 1350 : 1920;
-
-            // pre_headline: tema estratégico ou primeira cláusula do headline
-            const strategy   = post.strategy as { tema?: string; pilar?: string } | undefined;
-            const rawCaption = (post.caption ?? "") as string;
-            const captionLines = rawCaption.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
-
-            const preHeadline      = strategy?.tema ?? strategy?.pilar ?? "";
-            const captionFirstLine = captionLines[0] ?? "";
-
-            const filledHtml = fillHtmlTemplate(exWithTemplate.html_template, {
-              photoUrl:             libraryImageUrl,
+            console.log(`[generate-image] Usando template de referência: ${exWithTemplate.id}`);
+            htmlToRender = fillHtmlTemplate(exWithTemplate.html_template, {
+              photoUrl:            libraryImageUrl,
               headline,
               preHeadline,
               captionFirstLine,
-              logoUrl:              client.logo_url         ?? "",
-              brandColor:           client.primary_color     ?? "#000000",
-              secondaryColor:       client.secondary_color   ?? "#ffffff",
-              brandName:            client.name,
-              instagramHandle:      client.instagram_handle  ?? "",
-              canvasWidth:          1080,
-              canvasHeight:         H,
-              backgroundTreatment:  exWithTemplate.background_treatment,
+              logoUrl:             client.logo_url        ?? "",
+              brandColor:          client.primary_color    ?? "#000000",
+              secondaryColor:      client.secondary_color  ?? "#ffffff",
+              brandName:           client.name,
+              instagramHandle:     client.instagram_handle ?? "",
+              canvasWidth:         1080,
+              canvasHeight:        H,
+              backgroundTreatment: exWithTemplate.background_treatment,
             });
-
-            console.log("[generate-image] Renderizando com Chromium renderer (template HTML)");
-            const jpegBuffer = await renderHtml(filledHtml, format);
-
-            // Upload para R2
-            const key         = `posts/${post_id}/composed.jpg`;
-            const composed_url = await uploadToR2(key, jpegBuffer, "image/jpeg");
-
-            await postDoc.ref.update({
-              image_url:      libraryImageUrl,
-              composed_url,
-              image_provider: "library_direct",
-              status:         "ready",
-            });
-
-            return NextResponse.json({
-              image_url:    libraryImageUrl,
-              composed_url,
-              post_id,
-              provider:     "chromium",
+          } else {
+            // Sem template de referência → template genérico profissional
+            console.log("[generate-image] Sem template de referência → usando template genérico");
+            const currentLayerStack = (post.layer_stack ?? null) as LayerStack | null;
+            htmlToRender = buildGenericTemplate({
+              photoUrl:         libraryImageUrl,
+              headline,
+              preHeadline,
+              captionFirstLine,
+              logoUrl:          client.logo_url        ?? "",
+              brandColor:       client.primary_color    ?? "#000000",
+              secondaryColor:   client.secondary_color  ?? "#ffffff",
+              brandName:        client.name,
+              instagramHandle:  client.instagram_handle ?? "",
+              format,
+              layer_stack:      currentLayerStack ?? undefined,
             });
           }
+
+          console.log("[generate-image] Renderizando com Chromium renderer");
+          const jpegBuffer  = await renderHtml(htmlToRender, format);
+          const key         = `posts/${post_id}/composed.jpg`;
+          const composed_url = await uploadToR2(key, jpegBuffer, "image/jpeg");
+
+          await postDoc.ref.update({
+            image_url:      libraryImageUrl,
+            composed_url,
+            image_provider: "library_direct",
+            status:         "ready",
+          });
+
+          return NextResponse.json({
+            image_url:    libraryImageUrl,
+            composed_url,
+            post_id,
+            provider:     "chromium",
+          });
+
         } catch (renderErr) {
           // Renderer falhou → fallback para compositor Sharp abaixo
           console.warn("[generate-image] Chromium renderer falhou (fallback Sharp):", renderErr);
