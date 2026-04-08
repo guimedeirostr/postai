@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { X, Upload, Loader2 } from "lucide-react";
+import { X, Upload, Loader2, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import type { BrandProfile } from "@/types";
 type FormData = Omit<BrandProfile, "id" | "agency_id" | "created_at">;
 
 const empty: FormData = {
-  name: "", logo_url: null,
+  name: "", logo_url: null, logo_white_url: null,
   primary_color: "#6d28d9", secondary_color: "#4f46e5",
   fonts: [],
   segment: "", target_audience: "", tone_of_voice: "",
@@ -26,16 +26,17 @@ interface Props {
 
 export function ClientFormModal({ client, onClose, onSaved }: Props) {
   const [form, setForm] = useState<FormData>(client ? {
-    name: client.name, logo_url: client.logo_url,
+    name: client.name, logo_url: client.logo_url, logo_white_url: client.logo_white_url ?? null,
     primary_color: client.primary_color, secondary_color: client.secondary_color,
     fonts: client.fonts ?? [],
     segment: client.segment, target_audience: client.target_audience,
     tone_of_voice: client.tone_of_voice, instagram_handle: client.instagram_handle,
     bio: client.bio, keywords: client.keywords, avoid_words: client.avoid_words,
   } : empty);
-  const [saving, setSaving]       = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving]         = useState(false);
+  const [uploading, setUploading]   = useState<"default" | "white" | false>(false);
+  const fileRef      = useRef<HTMLInputElement>(null);
+  const fileWhiteRef = useRef<HTMLInputElement>(null);
 
   function set<K extends keyof FormData>(key: K, val: FormData[K]) {
     setForm(f => ({ ...f, [key]: val }));
@@ -73,18 +74,23 @@ export function ClientFormModal({ client, onClose, onSaved }: Props) {
     });
   }
 
-  async function handleLogoUpload(rawFile: File) {
+  async function handleLogoUpload(rawFile: File, type: "default" | "white" = "default") {
     if (!client) return;
-    setUploading(true);
+    setUploading(type);
     try {
       const file = await compressImage(rawFile);
-      const fd = new FormData();
-      fd.append("file", file);
+      const fd   = new FormData();
+      fd.append("file",      file);
       fd.append("client_id", client.id);
+      fd.append("logo_type", type);
       const res  = await fetch("/api/clients/upload-logo", { method: "POST", body: fd });
-      const data = await res.json();
-      if (res.ok) set("logo_url", data.url);
-      else alert(`Erro no upload: ${data.error ?? res.status}`);
+      const data = await res.json() as { url?: string; error?: string };
+      if (res.ok && data.url) {
+        if (type === "white") set("logo_white_url", data.url);
+        else                  set("logo_url",       data.url);
+      } else {
+        alert(`Erro no upload: ${data.error ?? res.status}`);
+      }
     } catch (err) {
       console.error("handleLogoUpload:", err);
       alert("Erro ao enviar logo. Tente novamente.");
@@ -128,23 +134,59 @@ export function ClientFormModal({ client, onClose, onSaved }: Props) {
             <Input value={form.name} onChange={e => set("name", e.target.value)} placeholder="Ex: Núcleo VB" />
           </div>
 
-          {/* Logo */}
+          {/* Logos */}
           {client && (
-            <div className="space-y-1.5">
-              <Label>Logo</Label>
-              <div className="flex items-center gap-3">
-                {form.logo_url && (
-                  <img src={form.logo_url} alt="logo" className="w-12 h-12 rounded-lg object-cover border" />
-                )}
-                <Button type="button" variant="outline" size="sm"
-                  onClick={() => fileRef.current?.click()} disabled={uploading}>
-                  {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                  {uploading ? "Enviando..." : "Upload de logo"}
-                </Button>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => e.target.files?.[0] && handleLogoUpload(e.target.files[0])} />
+            <div className="space-y-2">
+              <Label>Logos</Label>
+              <div className="grid grid-cols-2 gap-3">
+
+                {/* Logo Padrão — preview em fundo branco */}
+                <div className="flex flex-col items-center gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50">
+                  <p className="text-xs font-semibold text-slate-600 self-start">Logo Padrão</p>
+                  <div className="w-full h-20 rounded-lg border border-slate-200 bg-white flex items-center justify-center overflow-hidden">
+                    {form.logo_url
+                      ? <img src={form.logo_url} alt="logo" className="max-w-full max-h-full object-contain p-1" />
+                      : <ImageIcon className="w-7 h-7 text-slate-300" />
+                    }
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="w-full text-xs"
+                    onClick={() => fileRef.current?.click()} disabled={!!uploading}>
+                    {uploading === "default"
+                      ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Enviando...</>
+                      : <><Upload className="w-3.5 h-3.5 mr-1.5" />Upload</>
+                    }
+                  </Button>
+                  <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => { if (e.target.files?.[0]) handleLogoUpload(e.target.files[0], "default"); e.target.value = ""; }} />
+                </div>
+
+                {/* Logo Branca — preview em fundo preto */}
+                <div className="flex flex-col items-center gap-2 p-3 rounded-xl border border-slate-700 bg-slate-900">
+                  <p className="text-xs font-semibold text-slate-300 self-start">
+                    Logo Branca <span className="text-slate-500 font-normal">(fundos escuros)</span>
+                  </p>
+                  <div className="w-full h-20 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden">
+                    {form.logo_white_url
+                      ? <img src={form.logo_white_url} alt="logo branca" className="max-w-full max-h-full object-contain p-1" />
+                      : <ImageIcon className="w-7 h-7 text-white/20" />
+                    }
+                  </div>
+                  <Button type="button" size="sm"
+                    className="w-full text-xs bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                    onClick={() => fileWhiteRef.current?.click()} disabled={!!uploading}>
+                    {uploading === "white"
+                      ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Enviando...</>
+                      : <><Upload className="w-3.5 h-3.5 mr-1.5" />Upload</>
+                    }
+                  </Button>
+                  <input ref={fileWhiteRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => { if (e.target.files?.[0]) handleLogoUpload(e.target.files[0], "white"); e.target.value = ""; }} />
+                </div>
+
               </div>
-              <p className="text-xs text-slate-400">Salve o cliente primeiro para fazer upload da logo.</p>
+              <p className="text-xs text-slate-400">
+                PNG transparente recomendado. Salve o cliente primeiro para habilitar o upload.
+              </p>
             </div>
           )}
 

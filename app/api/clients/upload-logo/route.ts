@@ -22,19 +22,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer   = Buffer.from(await file.arrayBuffer());
+    const logoType = (formData.get("logo_type") as string | null) ?? "default";
+    const isWhite  = logoType === "white";
 
     // Preservar PNG com transparência — não forçar JPEG
     const isPng    = file.type === "image/png" || file.name.endsWith(".png");
     const mimeType = isPng ? "image/png" : "image/jpeg";
-    const fileName = isPng ? "logo.png" : "logo.jpg";
-    const key      = `logos/${user.uid}/${clientId}/${fileName}`;
+    const baseName = isWhite
+      ? (isPng ? "logo-white.png" : "logo-white.jpg")
+      : (isPng ? "logo.png"       : "logo.jpg");
+    const key      = `logos/${user.uid}/${clientId}/${baseName}`;
 
     const publicUrl = await uploadToR2(key, buffer, mimeType);
 
-    await adminDb.collection("clients").doc(clientId).update({ logo_url: publicUrl });
+    const field = isWhite ? "logo_white_url" : "logo_url";
+    await adminDb.collection("clients").doc(clientId).update({ [field]: publicUrl });
 
-    return NextResponse.json({ url: publicUrl });
+    return NextResponse.json({ url: publicUrl, field });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro interno";
     console.error("[POST /api/clients/upload-logo]", message);
