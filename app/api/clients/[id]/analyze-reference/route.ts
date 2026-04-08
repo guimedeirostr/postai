@@ -21,6 +21,7 @@ import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildReferenceDNAPrompt } from "@/lib/prompts/design-example-analysis";
 import { buildHtmlTemplatePrompt } from "@/lib/prompts/html-template";
+import { uploadToR2 } from "@/lib/r2";
 import type { DesignExample, LogoPlacement } from "@/types";
 
 // 2x Claude Vision em paralelo: DNA + HTML template — até 40s cada
@@ -120,6 +121,20 @@ export async function POST(
       firstB64          = Buffer.from(await imgResponse.arrayBuffer()).toString("base64");
       resolvedImageUrl  = imageUrl;
       imageBlocks       = [{ type: "image", source: { type: "base64", media_type: firstMime, data: firstB64 } }];
+    }
+
+    // ── Salvar imagem em R2 se não tiver URL pública ──────────────────────────
+    // Uploads via base64 não têm URL — persistimos a thumb para a biblioteca.
+    if (!resolvedImageUrl && firstB64) {
+      try {
+        const ext        = firstMime === "image/png" ? "png" : "jpg";
+        const r2Key      = `design-examples/${user.uid}/${client_id}/${Date.now()}.${ext}`;
+        const imgBuffer  = Buffer.from(firstB64, "base64");
+        resolvedImageUrl = await uploadToR2(r2Key, imgBuffer, firstMime);
+      } catch (uploadErr) {
+        // Não fatal — a análise continua mesmo sem thumbnail
+        console.warn("[analyze-reference] Falha ao salvar imagem em R2:", uploadErr);
+      }
     }
 
     // Prefixo de contexto para carrossel
