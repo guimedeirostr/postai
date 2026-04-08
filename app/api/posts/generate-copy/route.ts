@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
       image_provider,
       extra_instructions,
       caption_suggestion,
+      no_persist,
     } = await req.json() as {
       client_id: string;
       theme: string;
@@ -73,6 +74,8 @@ export async function POST(req: NextRequest) {
       image_provider?: string;
       extra_instructions?: string;
       caption_suggestion?: string;
+      /** Se true, não salva no Firestore — usado para regerar campos individuais de um post existente */
+      no_persist?: boolean;
     };
 
     let reference_dna: ReferenceDNA | undefined = reference_dna_inline;
@@ -258,14 +261,34 @@ export async function POST(req: NextRequest) {
       messages: [{ role: "user", content: userContent }],
     });
 
-    const raw     = response.content[0].type === "text" ? response.content[0].text : "";
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const raw = response.content[0].type === "text" ? response.content[0].text : "";
 
-    let copy: CopyResult;
-    try {
-      copy = JSON.parse(cleaned) as CopyResult;
-    } catch {
-      return NextResponse.json({ error: "Falha ao parsear resposta da IA", raw }, { status: 500 });
+    // Parser robusto: tenta 3 estratégias antes de desistir
+    function extractCopyJson(text: string): CopyResult | null {
+      // 1. Remove fences de markdown (flags im = case-insensitive + multiline)
+      const stripped = text
+        .replace(/^```(?:json)?\s*/im, "")
+        .replace(/\s*```\s*$/m, "")
+        .trim();
+      try { return JSON.parse(stripped) as CopyResult; } catch { /* continua */ }
+
+      // 2. Tenta extrair a partir do primeiro { até o último }
+      const first = text.indexOf("{");
+      const last  = text.lastIndexOf("}");
+      if (first !== -1 && last > first) {
+        try { return JSON.parse(text.slice(first, last + 1)) as CopyResult; } catch { /* continua */ }
+      }
+
+      // 3. Tenta parsear o stripped diretamente (pode já ser JSON sem fences)
+      try { return JSON.parse(text.trim()) as CopyResult; } catch { /* desiste */ }
+
+      return null;
+    }
+
+    let copy: CopyResult | null = extractCopyJson(raw);
+    if (!copy) {
+      console.error("[generate-copy] JSON inválido recebido do modelo:", raw.slice(0, 500));
+      return NextResponse.json({ error: "Falha ao parsear resposta da IA. Tente novamente." }, { status: 500 });
     }
 
     // ── Art Direction Engine — deriva LayerStack das saídas estruturadas ─────
@@ -296,6 +319,14 @@ export async function POST(req: NextRequest) {
     } catch (engineErr) {
       // Non-fatal: se o motor falhar, o layout_prompt livre do Claude é mantido
       console.warn("[generate-copy] Art Direction Engine falhou (non-fatal):", engineErr);
+    }
+
+    // no_persist=true → chamado para regerar campos de um post existente; não cria novo doc
+    if (no_persist) {
+      return NextResponse.json({
+        ...copy,
+        ...(referenceWarning ? { reference_warning: referenceWarning } : {}),
+      });
     }
 
     const ref = adminDb.collection("posts").doc();

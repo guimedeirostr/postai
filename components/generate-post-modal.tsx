@@ -535,6 +535,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       else if (referenceB64)      { body.reference_image_base64 = referenceB64; body.reference_image_type = referenceType; }
       else if (referenceUrl.trim()) body.reference_url        = referenceUrl.trim();
       body.image_provider = freepikModel;
+      body.no_persist     = true; // não cria novo post — só regenera o campo
       if (extraInstructions.trim()) body.extra_instructions = extraInstructions.trim();
       if (captionSuggestion.trim()) body.caption_suggestion  = captionSuggestion.trim();
 
