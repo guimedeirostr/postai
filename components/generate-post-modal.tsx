@@ -84,7 +84,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copied,         setCopied]         = useState<string | null>(null);
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
-  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "ideogram" | "imagen4" | "flux_dev">("freepik");
+  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "ideogram" | "imagen4" | "flux_dev" | "gemini">("freepik");
   const [curateReason,       setCurateReason]       = useState<string | null>(null);
   const [composedUrl,        setComposedUrl]        = useState<string | null>(null);
   const [viewComposed,       setViewComposed]       = useState(true);
@@ -519,6 +519,32 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
         payload.replicate_model = "black-forest-labs/flux-dev";
       }
       // freepik (mystic) = default, sem provider no payload
+
+      // ── Gemini: rota própria, síncrona ───────────────────────────────────
+      if (imageMode === "gemini") {
+        const geminiPayload: Record<string, unknown> = {
+          post_id:    result.post_id,
+          resolution: "2K",
+        };
+        if (selectedLibPhoto) geminiPayload.library_url = selectedLibPhoto;
+
+        const gemRes  = await fetch("/api/posts/generate-image-gemini", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify(geminiPayload),
+        });
+        const gemData = await gemRes.json() as { image_url?: string; error?: string };
+        if (!gemRes.ok) {
+          setImgError(gemData.error ?? "Erro na geração Gemini");
+          setImgLoading(false);
+          return;
+        }
+        if (gemData.image_url) {
+          setResult(prev => prev ? { ...prev, image_url: gemData.image_url } : prev);
+        }
+        setImgLoading(false);
+        return;
+      }
 
       // 1. Submete geração → recebe task_id (async) ou image_url (sync)
       const res = await fetch("/api/posts/generate-image", {
@@ -1474,7 +1500,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   </div>
 
                   {/* ── Freepik / FAL padrão — toggle de modelo ── */}
-                  {(imageMode === "freepik" || imageMode === "fal" || imageMode === "ideogram" || imageMode === "imagen4" || imageMode === "flux_dev") && (
+                  {(imageMode === "freepik" || imageMode === "fal" || imageMode === "ideogram" || imageMode === "imagen4" || imageMode === "flux_dev" || imageMode === "gemini") && (
                     <div className="space-y-1.5">
                       {/* Linha 1: Freepik models */}
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Freepik</p>
@@ -1534,6 +1560,18 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                           ⚡ Flux Dev
                         </button>
                       </div>
+                      {/* Linha 3: Google Gemini — Experimental */}
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 pt-1">Google <span className="text-sky-500 normal-case font-semibold">experimental</span></p>
+                      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                        <button type="button" onClick={() => setImageMode("gemini")}
+                          className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "gemini"
+                              ? "bg-white text-sky-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          ✨ Gemini Flash
+                        </button>
+                      </div>
                       {/* Descrição do modelo selecionado */}
                       {imageMode === "ideogram" && (
                         <p className="text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
@@ -1548,6 +1586,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       {imageMode === "flux_dev" && (
                         <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
                           <strong>Flux Dev:</strong> 12B parâmetros, experimental, gratuito. Boa diversidade criativa para cenários e ambientes.
+                        </p>
+                      )}
+                      {imageMode === "gemini" && (
+                        <p className="text-xs text-sky-700 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2">
+                          <strong>Gemini 3.1 Flash Image:</strong> Pipeline enxuto — gera Foto + Texto nativo em uma chamada, sem polling. Aceita foto da biblioteca como referência img2img. Sharp adiciona só Logo + Assinatura.
                         </p>
                       )}
                     </div>
@@ -1780,6 +1823,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       : imageMode === "ideogram"   ? "✍ Gerar com Ideogram v3"
                       : imageMode === "imagen4"    ? "🎨 Gerar com Imagen 4"
                       : imageMode === "flux_dev"   ? "⚡ Gerar com Flux Dev"
+                      : imageMode === "gemini"     ? "✨ Gerar com Gemini Flash"
                       : imageMode === "real"       ? "Curar foto com IA"
                       : imageMode === "library"    ? "Usar esta foto"
                       : freepikModel === "seedream" ? "Gerar com Seedream V5"
