@@ -21,13 +21,14 @@ import { getSessionUser } from "@/lib/session";
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const clientRef = adminDb.collection("clients").doc(params.id);
+    const clientRef = adminDb.collection("clients").doc(id);
     const clientDoc = await clientRef.get();
 
     if (!clientDoc.exists || clientDoc.data()?.agency_id !== user.uid) {
