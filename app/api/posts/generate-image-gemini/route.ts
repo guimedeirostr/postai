@@ -80,25 +80,86 @@ async function addLogoAndFooter(
     .toBuffer();
 
   // Logo (usa logo_white_url em fundo escuro, logo_url como fallback)
-  const logoUrl = client.logo_white_url ?? client.logo_url;
+  const logoUrl   = client.logo_white_url ?? client.logo_url;
+  const isWhite   = !!client.logo_white_url;
+  const dims      = LOGO_DIMS[logoSize] ?? LOGO_DIMS.M;
+  let   logoPlaced = false;
+
   if (logoUrl) {
     try {
-      const logoRes = await fetch(logoUrl, { signal: AbortSignal.timeout(8_000) });
-      if (logoRes.ok) {
-        const dims = LOGO_DIMS[logoSize] ?? LOGO_DIMS.M;
-        let logoSharp = sharp(Buffer.from(await logoRes.arrayBuffer()))
+      console.log(`[gemini/logo] Buscando logo: ${logoUrl.slice(0, 120)}`);
+      const logoRes = await fetch(logoUrl, {
+        signal:  AbortSignal.timeout(10_000),
+        headers: { "User-Agent": "PostAI/1.0" },
+      });
+
+      if (!logoRes.ok) {
+        console.warn(`[gemini/logo] HTTP ${logoRes.status} ao buscar logo — usando fallback SVG`);
+      } else {
+        const contentType = logoRes.headers.get("content-type") ?? "";
+        console.log(`[gemini/logo] content-type: ${contentType}, size: ${logoRes.headers.get("content-length")} bytes`);
+
+        const logoBuffer = Buffer.from(await logoRes.arrayBuffer());
+
+        // Detectar se tem canal alpha (PNG/WebP) ou não (JPEG)
+        const logoMeta = await sharp(logoBuffer).metadata();
+        const hasAlpha = (logoMeta.channels ?? 3) === 4;
+
+        let logoSharp = sharp(logoBuffer)
           .resize(dims.w, dims.h, { fit: "inside", withoutEnlargement: false });
-        if (!client.logo_white_url && client.logo_url) {
-          logoSharp = logoSharp.negate({ alpha: false });
+
+        // Negate só para logo padrão (não branca) com transparência — inverte preto→branco
+        // Para JPEG (sem alpha), adiciona canal alpha e usa mix-blend ao invés de negate
+        if (!isWhite) {
+          if (hasAlpha) {
+            logoSharp = logoSharp.negate({ alpha: false });
+          } else {
+            // JPEG: converte para PNG com fundo transparente forçando inversão via flatten
+            logoSharp = logoSharp
+              .flatten({ background: { r: 255, g: 255, b: 255 } }) // garante fundo branco
+              .negate()                                               // inverte tudo (branco→preto, preto→branco)
+              .toColourspace("srgb");
+          }
         }
+
         const logoBuf = await logoSharp.png().toBuffer();
-        // Top padding: centraliza verticalmente no espaço antes do conteúdo
-        const topPad  = Math.round((140 - dims.h) / 2);
+        const topPad  = Math.round((140 - (dims.h)) / 2);
         base = await sharp(base)
-          .composite([{ input: logoBuf, top: Math.max(topPad, 20), left: 44 }])
+          .composite([{ input: logoBuf, top: Math.max(topPad, 16), left: 44 }])
           .toBuffer();
+
+        logoPlaced = true;
+        console.log(`[gemini/logo] Logo composta com sucesso — ${dims.w}×${dims.h}px, top:${Math.max(topPad, 16)}, left:44`);
       }
-    } catch { /* logo opcional — não fatal */ }
+    } catch (logoErr) {
+      console.error("[gemini/logo] Erro ao processar logo:", logoErr instanceof Error ? logoErr.message : logoErr);
+    }
+  } else {
+    console.warn("[gemini/logo] client.logo_url e client.logo_white_url estão vazios");
+  }
+
+  // Fallback: nome da marca em branco no footer quando logo não carregou
+  if (!logoPlaced) {
+    try {
+      const brandName = client.name ?? "Marca";
+      const fontSize  = logoSize === "L" ? 36 : logoSize === "S" ? 22 : 28;
+      const svgText   = `<svg xmlns="http://www.w3.org/2000/svg" width="${dims.w}" height="${dims.h}">
+        <text x="0" y="${Math.round(dims.h * 0.72)}"
+          font-family="Arial, Helvetica, sans-serif"
+          font-weight="700"
+          font-size="${fontSize}"
+          fill="white"
+          letter-spacing="-0.5">${brandName.toUpperCase()}</text>
+      </svg>`;
+      const svgBuf = Buffer.from(svgText);
+      const topPad = Math.round((140 - dims.h) / 2);
+      base = await sharp(base)
+        .composite([{ input: svgBuf, top: Math.max(topPad, 16), left: 44 }])
+        .toBuffer();
+      console.log(`[gemini/logo] Fallback SVG com nome "${brandName}" aplicado`);
+    } catch (svgErr) {
+      console.warn("[gemini/logo] Fallback SVG também falhou:", svgErr instanceof Error ? svgErr.message : svgErr);
+    }
   }
 
   return sharp(base).jpeg({ quality: 95 }).toBuffer();
