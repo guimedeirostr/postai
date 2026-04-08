@@ -28,7 +28,9 @@ export type ImageProvider =
   | "seedream_edit"
   | "imagen4"
   | "replicate"
-  | "library_direct";
+  | "library_direct"
+  | "ideogram"
+  | "ideogram_text";
 
 export interface CompiledPrompt {
   /** Prompt positivo completo — sempre em inglês */

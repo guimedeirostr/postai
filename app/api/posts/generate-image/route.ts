@@ -61,9 +61,11 @@ import {
 } from "@/lib/prompt-compiler";
 import {
   generateImageReplicate,
+  generateWithIdeogramText,
   isReplicateEnabled,
   type ReplicateImageModel,
 } from "@/lib/replicate";
+import { buildIdeogramTextPrompt } from "@/lib/prompts/ideogram-text";
 import { composePost } from "@/lib/composer";
 import {
   loadDnaSources,
@@ -76,6 +78,9 @@ import { renderHtml, isRendererEnabled } from "@/lib/chromium-renderer";
 import { fillHtmlTemplate } from "@/lib/prompts/html-template";
 import { buildGenericTemplate } from "@/lib/prompts/generic-template";
 import { uploadToR2 } from "@/lib/r2";
+import { checkTextLegibility, isVisionEnabled, getVisionApiKey } from "@/lib/vision";
+import { getDepthMapUrl } from "@/lib/replicate";
+import { applyDepthEffect } from "@/lib/depth-compositor";
 import type { ArtDirection, BrandProfile, DesignExample, GeneratedPost, ReferenceDNA, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 // Aguarda até 120s — PuLID e ControlNet podem ser mais lentos
@@ -301,10 +306,11 @@ export async function POST(req: NextRequest) {
 
       // Merge: layer_stack recém-calculado tem prioridade sobre qualquer coisa no ad
       const adOverrides = toComposeOverrides(ad);
-      const composed_url = await composePost({
+      const visualHeadlineSharp = (post.visual_headline ?? post.headline ?? client.name) as string;
+      const composeArgs = {
         imageUrl:        libraryImageUrl,
         logoUrl:         client.logo_url,
-        visualHeadline:  (post.visual_headline ?? post.headline ?? client.name) as string,
+        visualHeadline:  visualHeadlineSharp,
         instagramHandle: client.instagram_handle as string | undefined,
         clientName:      client.name,
         primaryColor:    client.primary_color,
@@ -313,7 +319,64 @@ export async function POST(req: NextRequest) {
         postId:          post_id,
         ...adOverrides,
         ...(library_layer_stack ? { layer_stack: library_layer_stack } : {}),
-      });
+      };
+
+      let composed_url = await composePost(composeArgs);
+
+      // ── OCR legibility check — re-compõe com wash mais forte se texto ilegível ──
+      if (isVisionEnabled()) {
+        try {
+          const visionKey = getVisionApiKey()!;
+          const imgRes    = await fetch(composed_url);
+          const imgBuf    = Buffer.from(await imgRes.arrayBuffer());
+          const ocr       = await checkTextLegibility(imgBuf, visualHeadlineSharp, visionKey);
+
+          console.log(`[generate-image/ocr] legible=${ocr.legible} confidence=${ocr.confidence.toFixed(2)} detected="${ocr.detectedText.slice(0, 60)}"`);
+
+          if (!ocr.legible && library_layer_stack) {
+            // Texto ilegível → reforça o wash e recompõe uma vez
+            const wash = library_layer_stack.wash;
+            if (wash.type === "none") {
+              library_layer_stack.wash = { type: "gradient", direction: "bottom-up", from_opacity: 0, to_opacity: 0.65 };
+            } else if (wash.type === "gradient") {
+              wash.to_opacity = Math.min(0.9, (wash.to_opacity ?? 0.5) + 0.3);
+            } else if (wash.type === "solid_band") {
+              wash.opacity = Math.min(0.95, (wash.opacity ?? 0.8) + 0.15);
+            } else if (wash.type === "vignette") {
+              // Troca por gradient que garante contraste na zona de texto
+              library_layer_stack.wash = { type: "gradient", direction: "bottom-up", from_opacity: 0, to_opacity: 0.7 };
+            }
+
+            console.log("[generate-image/ocr] Recompondo com wash reforçado:", library_layer_stack.wash);
+            composed_url = await composePost({ ...composeArgs, layer_stack: library_layer_stack });
+          }
+        } catch (ocrErr) {
+          console.warn("[generate-image/ocr] OCR check falhou (non-fatal):", ocrErr);
+        }
+      }
+
+      // ── MiDaS Depth: efeito "texto atrás do sujeito" ─────────────────────────
+      // Só roda se Replicate estiver configurado.
+      // Corre em paralelo com o upload para minimizar latência adicional.
+      // Se falhar (timeout, sem Replicate, etc.) → continua com a arte original.
+      if (isReplicateEnabled()) {
+        try {
+          const depthMapUrl = await getDepthMapUrl(libraryImageUrl, 12_000);
+          if (depthMapUrl) {
+            console.log("[generate-image/depth] Depth map obtido — aplicando efeito 3D");
+            const composedRes = await fetch(composed_url);
+            const composedBuf = Buffer.from(await composedRes.arrayBuffer());
+            const depthBuf    = await applyDepthEffect(composedBuf, libraryImageUrl, depthMapUrl);
+            const depthKey    = `posts/${post_id}/composed_depth.jpg`;
+            composed_url      = await uploadToR2(depthKey, depthBuf, "image/jpeg");
+            console.log("[generate-image/depth] Efeito 3D aplicado e enviado ao R2");
+          } else {
+            console.log("[generate-image/depth] Depth map não disponível — efeito 3D ignorado");
+          }
+        } catch (depthErr) {
+          console.warn("[generate-image/depth] Efeito de profundidade falhou (non-fatal):", depthErr);
+        }
+      }
 
       await postDoc.ref.update({
         image_url:      libraryImageUrl,
@@ -333,6 +396,38 @@ export async function POST(req: NextRequest) {
     // ═══════════════════════════════════════════════════════════════════════════
     // FAL.ai — paths avançados
     // ═══════════════════════════════════════════════════════════════════════════
+
+    // ── FAL PuLID: Character / Face Identity Lock ──────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Ideogram v3 — tipografia NATIVA (texto embutido na arte pela IA)
+    // Não usa compositor — o texto já sai renderizado na imagem gerada.
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (resolvedProvider === "ideogram_text" || resolvedProvider === "ideogram") {
+      const headline   = (post.visual_headline ?? post.headline ?? "") as string;
+      const { prompt: ideogramPrompt, negative_prompt, style_type } =
+        buildIdeogramTextPrompt({ client, headline, basePrompt });
+
+      const result = await generateWithIdeogramText({
+        prompt: ideogramPrompt,
+        negative_prompt,
+        style_type,
+        format:  post.format as "feed" | "stories" | "reels_cover",
+        post_id,
+      });
+
+      if (result.done && result.image_url) {
+        await postDoc.ref.update({
+          image_url:      result.image_url,
+          image_provider: "ideogram_text",
+          status:         "ready",
+        });
+        return NextResponse.json({ image_url: result.image_url, post_id, provider: "ideogram_text" });
+      }
+
+      // Assíncrono — frontend fará polling
+      await postDoc.ref.update({ freepik_task_id: result.task_id, image_provider: "ideogram_text" });
+      return NextResponse.json({ task_id: result.task_id, post_id, provider: "ideogram_text" });
+    }
 
     // ── FAL PuLID: Character / Face Identity Lock ──────────────────────────────
     if (

@@ -284,6 +284,100 @@ export function focalPointsToSafeAreas(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// OCR LEGIBILITY CHECK — auto-correção de contraste
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface VisionTextResponse {
+  responses: Array<{
+    textAnnotations?: Array<{ description: string; confidence?: number }>;
+    fullTextAnnotation?: { text: string };
+    error?: { message: string };
+  }>;
+}
+
+/**
+ * Verifica se o `expectedText` é legível na imagem composta via OCR.
+ *
+ * Usado APÓS o compositor (Sharp ou Chromium) para validar que o
+ * visual_headline aparece corretamente na arte final. Se o OCR não
+ * conseguir ler o texto, o contraste está insuficiente.
+ *
+ * @param imageBuffer    Buffer JPEG/PNG da imagem composta
+ * @param expectedText   Texto esperado (visual_headline)
+ * @param apiKey         Google Vision API key
+ * @returns { legible, confidence, detectedText }
+ */
+export async function checkTextLegibility(
+  imageBuffer:  Buffer,
+  expectedText: string,
+  apiKey:       string,
+): Promise<{
+  legible:      boolean;
+  confidence:   number;   // 0.0–1.0
+  detectedText: string;
+}> {
+  const endpoint = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+  const base64   = imageBuffer.toString("base64");
+
+  const body = {
+    requests: [{
+      image:    { content: base64 },
+      features: [{ type: "TEXT_DETECTION", maxResults: 10 }],
+    }],
+  };
+
+  const res = await fetch(endpoint, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(body),
+    signal:  AbortSignal.timeout(8_000),
+  });
+
+  if (!res.ok) {
+    console.warn("[vision/ocr] HTTP error:", res.status);
+    return { legible: true, confidence: 0, detectedText: "" }; // assume OK se Vision falhar
+  }
+
+  const data = await res.json() as VisionTextResponse;
+  const resp = data.responses[0];
+
+  if (resp.error) {
+    console.warn("[vision/ocr] Vision error:", resp.error.message);
+    return { legible: true, confidence: 0, detectedText: "" };
+  }
+
+  const detectedText = resp.fullTextAnnotation?.text
+    ?? resp.textAnnotations?.[0]?.description
+    ?? "";
+
+  if (!detectedText) {
+    return { legible: false, confidence: 0, detectedText: "" };
+  }
+
+  // Normaliza ambos para comparação
+  const normalize = (s: string) =>
+    s.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .replace(/[^a-z0-9\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const normExpected = normalize(expectedText);
+  const normDetected = normalize(detectedText);
+
+  // Verifica quantas palavras do expected foram encontradas no detected
+  const words     = normExpected.split(" ").filter(Boolean);
+  const found     = words.filter(w => normDetected.includes(w));
+  const confidence = words.length ? found.length / words.length : 0;
+
+  return {
+    legible:     confidence >= 0.6, // 60% das palavras detectadas = legível
+    confidence,
+    detectedText,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Feature flag
 // ─────────────────────────────────────────────────────────────────────────────
 

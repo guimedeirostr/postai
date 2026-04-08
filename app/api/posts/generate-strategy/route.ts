@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { buildStrategyPrompt } from "@/lib/prompts/strategy";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
+import { fetchTrendContext } from "@/lib/tavily";
 import type { BrandProfile, StrategyBriefing } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -36,10 +37,19 @@ export async function POST(req: NextRequest) {
 
     const client = { id: clientDoc.id, ...clientDoc.data() } as BrandProfile;
 
+    // Busca tendências em tempo real (não-bloqueante — falha silenciosamente)
+    const trendContext = await fetchTrendContext(
+      client.segment ?? "",
+      campaign_focus,
+    );
+    if (trendContext) {
+      console.log(`[generate-strategy] Tavily tendências injetadas: "${trendContext.query}"`);
+    }
+
     const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 1024,
-      system:     buildStrategyPrompt(client, campaign_focus),
+      system:     buildStrategyPrompt(client, campaign_focus, trendContext),
       messages: [{
         role:    "user",
         content: "Gere o briefing estratégico para o próximo post deste cliente.",

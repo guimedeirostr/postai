@@ -397,6 +397,96 @@ async function analyzeDepthMap(
   return "deep";
 }
 
+/**
+ * Retorna a URL pública do depth map MiDaS (imagem grayscale).
+ * bright = close to camera, dark = far.
+ *
+ * Usa MiDaS_small para menor latência (~6-10s).
+ * Retorna null se Replicate não estiver configurado ou se falhar.
+ */
+export async function getDepthMapUrl(
+  imageUrl:  string,
+  timeoutMs: number = 15_000,
+): Promise<string | null> {
+  if (!isReplicateEnabled()) return null;
+  try {
+    const pred = await createPrediction("cjwbw/midas", {
+      image:      imageUrl,
+      model_type: "MiDaS_small",
+    });
+
+    let finalPred = pred;
+    if (pred.status === "starting" || pred.status === "processing") {
+      finalPred = await Promise.race([
+        pollUntilDone(pred.id, timeoutMs),
+        new Promise<ReplicatePrediction>((_, reject) =>
+          setTimeout(() => reject(new Error("depth timeout")), timeoutMs)
+        ),
+      ]);
+    }
+
+    if (finalPred.status !== "succeeded") return null;
+    return extractOutputUrl(finalPred.output) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IDEOGRAM COM TIPOGRAFIA NATIVA (texto embutido na arte pela IA)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Gera imagem com texto tipográfico nativo via Ideogram v3.
+ *
+ * Diferente do fluxo padrão (imagem + compositor), aqui o Ideogram
+ * renderiza o texto como parte integral da arte — qualidade tipográfica
+ * equivalente a um designer usando Photoshop com fontes reais.
+ *
+ * @param prompt          Prompt visual completo com texto embutido
+ * @param negative_prompt O que evitar
+ * @param style_type      REALISTIC | DESIGN | RENDER_3D | ANIME
+ * @param format          Formato do post
+ * @param post_id         ID do post para upload no R2
+ */
+export async function generateWithIdeogramText({
+  prompt,
+  negative_prompt,
+  style_type = "REALISTIC",
+  format,
+  post_id,
+}: {
+  prompt:           string;
+  negative_prompt?: string;
+  style_type?:      "REALISTIC" | "DESIGN" | "RENDER_3D" | "ANIME";
+  format:           "feed" | "stories" | "reels_cover";
+  post_id:          string;
+}): Promise<{ task_id: string; image_url?: string; done: boolean }> {
+  const ar    = resolveAspectRatio("ideogram-ai/ideogram-v3-turbo", format);
+  const input: Record<string, unknown> = {
+    prompt,
+    aspect_ratio: ar,
+    style_type,
+    output_format: "jpg",
+    ...(negative_prompt ? { negative_prompt } : {}),
+  };
+
+  const pred = await createPrediction("ideogram-ai/ideogram-v3-turbo", input);
+
+  if (pred.status === "succeeded") {
+    const remoteUrl = extractOutputUrl(pred.output);
+    if (!remoteUrl) throw new ReplicateError("Ideogram retornou succeeded sem output URL");
+    const image_url = await downloadAndUpload(remoteUrl, post_id, "ideogram-v3-turbo");
+    return { task_id: pred.id, image_url, done: true };
+  }
+
+  if (pred.status === "failed" || pred.status === "canceled") {
+    throw new ReplicateError(pred.error ?? "Ideogram falhou");
+  }
+
+  return { task_id: pred.id, done: false };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Feature flag
 // ─────────────────────────────────────────────────────────────────────────────

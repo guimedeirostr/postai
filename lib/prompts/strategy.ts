@@ -1,6 +1,11 @@
 import type { BrandProfile } from "@/types";
+import type { TrendContext } from "@/lib/tavily";
 
-export function buildStrategyPrompt(client: BrandProfile, campaign_focus?: string): string {
+export function buildStrategyPrompt(
+  client:          BrandProfile,
+  campaign_focus?: string,
+  trendContext?:   TrendContext | null,
+): string {
   const dayOfWeek = new Date().toLocaleDateString("pt-BR", { weekday: "long" });
 
   return `Você é um estrategista sênior de conteúdo para Instagram, especializado no mercado brasileiro, com 10+ anos de experiência construindo autoridade e conversão para marcas nas redes sociais.
@@ -20,6 +25,14 @@ CONTEXTO TEMPORAL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Hoje é ${dayOfWeek}. Use isso para calibrar o pilar e o tom — segundas pedem motivação, sextas pedem leveza, fins de semana pedem engajamento pessoal, etc.
 ${campaign_focus ? `\nFoco de campanha indicado pelo usuário: "${campaign_focus}"` : ""}
+${trendContext ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TENDÊNCIAS EM TEMPO REAL (Tavily)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Query: ${trendContext.query}
+Resumo: ${trendContext.summary}
+${trendContext.snippets.length ? trendContext.snippets.join("\n") : ""}
+Use estas tendências para escolher um tema ATUAL e relevante. Se houver conflito com o foco de campanha, priorize o foco.` : ""}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PILARES DE CONTEÚDO DISPONÍVEIS

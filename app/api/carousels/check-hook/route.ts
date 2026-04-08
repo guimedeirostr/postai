@@ -15,7 +15,11 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import sharp from "sharp";
-import { pollTask, pollSeedreamTask } from "@/lib/freepik";
+import {
+  pollTask, pollSeedreamTask,
+  createSeedreamEditTask, pollSeedreamEditTask,
+  freepikAspect,
+} from "@/lib/freepik";
 import type { BrandProfile, CarouselSlide } from "@/types";
 import {
   composeHookSlide, composeContentSlide,
@@ -50,13 +54,50 @@ async function downloadPhotoBuffer(url: string): Promise<Buffer | null> {
   } catch { return null; }
 }
 
-async function composeAllSlides(
-  carouselId:  string,
-  slides:      CarouselSlide[],
+/**
+ * Gera uma imagem de fundo para um slide via Seedream Edit (img2img).
+ * Usa o hook como referência visual → coesão de estilo entre todos os slides.
+ * Polling interno com até 35s; retorna null se falhar (fallback: cor sólida).
+ */
+async function generateSeedreamEditBackground(
   hookImageUrl: string,
-  client:      BrandProfile,
-  isPanoramic: boolean,
-  brandPhotos: string[],   // URLs das fotos da marca (já filtradas)
+  slidePrompt:  string,
+  format:       "feed" | "stories" | "reels_cover" = "feed",
+): Promise<Buffer | null> {
+  try {
+    const aspect = freepikAspect(format, "seedream");
+    const { task_id } = await createSeedreamEditTask({
+      prompt:           slidePrompt,
+      aspect_ratio:     aspect,
+      reference_images: [hookImageUrl],
+    });
+
+    const deadline = Date.now() + 35_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3_000));
+      const poll = await pollSeedreamEditTask(task_id);
+      if (poll.status === "COMPLETED" && poll.image_url) {
+        const res = await fetch(poll.image_url, { signal: AbortSignal.timeout(12_000) });
+        if (!res.ok) return null;
+        return Buffer.from(await res.arrayBuffer());
+      }
+      if (poll.status === "FAILED") return null;
+    }
+    return null; // timeout
+  } catch (e) {
+    console.warn("[check-hook/seedream-edit] Falhou (non-fatal):", e);
+    return null;
+  }
+}
+
+async function composeAllSlides(
+  carouselId:    string,
+  slides:        CarouselSlide[],
+  hookImageUrl:  string,
+  client:        BrandProfile,
+  isPanoramic:   boolean,
+  brandPhotos:   string[],   // URLs das fotos da marca (já filtradas)
+  imageProvider: string = "mystic",
 ): Promise<CarouselSlide[]> {
 
   const total    = slides.length;
@@ -115,8 +156,18 @@ async function composeAllSlides(
 
     } else {
       // Slides de conteúdo — usa foto da marca se disponível
-      const photoBuf = photoBuffers[photoIdx] ?? null;
+      // Quando não há foto E Seedream está ativo → gera fundo coeso via Seedream Edit
+      let photoBuf = photoBuffers[photoIdx] ?? null;
       photoIdx++;
+
+      if (!photoBuf && imageProvider === "seedream" && slide.visual_prompt) {
+        console.log(`[check-hook/seedream-edit] Gerando fundo para slide ${i} via Seedream Edit`);
+        photoBuf = await generateSeedreamEditBackground(hookImageUrl, slide.visual_prompt);
+        if (photoBuf) {
+          console.log(`[check-hook/seedream-edit] Slide ${i} — fundo gerado com sucesso`);
+        }
+      }
+
       url = await composeContentSlide({
         bgImageBuffer: photoBuf ?? undefined,
         slide, client, slideNum, total, carouselId,
@@ -192,7 +243,7 @@ export async function GET(req: NextRequest) {
     const slides  = carouselData.slides as CarouselSlide[];
     const composed = await composeAllSlides(
       carousel_id, slides, result.image_url,
-      client, isPanoramic, brandPhotos,
+      client, isPanoramic, brandPhotos, imageProvider,
     );
 
     await carouselRef.update({
