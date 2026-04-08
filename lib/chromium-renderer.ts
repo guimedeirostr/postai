@@ -17,13 +17,26 @@ export function isRendererEnabled(): boolean {
  * Renderiza um HTML template com Chrome real e retorna o buffer JPEG.
  * Lança erro se o serviço não estiver disponível ou retornar falha.
  */
+/** Normaliza a URL: garante protocolo https:// e remove trailing slash e /render duplicado */
+function normalizeRendererUrl(raw: string): string {
+  let u = raw.trim();
+  // Remove sufixo /render se o usuário colou a URL completa por engano
+  if (u.endsWith("/render")) u = u.slice(0, -7);
+  // Remove trailing slash
+  u = u.replace(/\/+$/, "");
+  // Garante protocolo
+  if (!u.startsWith("http://") && !u.startsWith("https://")) u = "https://" + u;
+  return u;
+}
+
 export async function renderHtml(
   html:   string,
   format: "feed" | "stories" | "reels_cover" = "feed",
 ): Promise<Buffer> {
-  const url = process.env.RENDERER_URL;
-  if (!url) throw new Error("[chromium-renderer] RENDERER_URL não configurada");
+  const raw = process.env.RENDERER_URL;
+  if (!raw) throw new Error("[chromium-renderer] RENDERER_URL não configurada");
 
+  const url = normalizeRendererUrl(raw);
   const W = 1080;
   const H = format === "feed" ? 1350 : 1920;
 
@@ -52,9 +65,10 @@ export async function renderHtml(
  * Health check do serviço de renderização.
  */
 export async function checkRendererHealth(): Promise<boolean> {
-  const url = process.env.RENDERER_URL;
-  if (!url) return false;
+  const raw = process.env.RENDERER_URL;
+  if (!raw) return false;
   try {
+    const url = normalizeRendererUrl(raw);
     const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5_000) });
     return res.ok;
   } catch {
