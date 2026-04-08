@@ -84,7 +84,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copied,         setCopied]         = useState<string | null>(null);
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
-  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth">("freepik");
+  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "ideogram" | "imagen4">("freepik");
   const [curateReason,       setCurateReason]       = useState<string | null>(null);
   const [composedUrl,        setComposedUrl]        = useState<string | null>(null);
   const [viewComposed,       setViewComposed]       = useState(true);
@@ -509,6 +509,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
         payload.control_strength  = controlStrength;
       } else if (freepikModel === "seedream") {
         payload.provider = "seedream";
+      } else if (imageMode === "ideogram") {
+        payload.provider = "ideogram_text";
+      } else if (imageMode === "imagen4") {
+        payload.provider        = "replicate";
+        payload.replicate_model = "google/imagen-4";
       }
       // freepik (mystic) = default, sem provider no payload
 
@@ -1466,34 +1471,67 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   </div>
 
                   {/* ── Freepik / FAL padrão — toggle de modelo ── */}
-                  {(imageMode === "freepik" || imageMode === "fal") && (
-                    <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
-                      <button type="button" onClick={() => setImageMode("freepik")}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
-                          imageMode === "freepik" && freepikModel === "mystic"
-                            ? "bg-white text-violet-700 shadow-sm"
-                            : "text-slate-500 hover:text-slate-700"
-                        }`}
-                        onClickCapture={() => { setImageMode("freepik"); setFreepikModel("mystic"); }}>
-                        ✦ Mystic
-                      </button>
-                      <button type="button"
-                        onClick={() => { setImageMode("freepik"); setFreepikModel("seedream"); }}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
-                          imageMode === "freepik" && freepikModel === "seedream"
-                            ? "bg-white text-violet-700 shadow-sm"
-                            : "text-slate-500 hover:text-slate-700"
-                        }`}>
-                        ✦ Seedream V5
-                      </button>
-                      <button type="button" onClick={() => setImageMode("fal")}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
-                          imageMode === "fal"
-                            ? "bg-white text-amber-600 shadow-sm"
-                            : "text-slate-500 hover:text-slate-700"
-                        }`}>
-                        ⚡ Flux Pro
-                      </button>
+                  {(imageMode === "freepik" || imageMode === "fal" || imageMode === "ideogram" || imageMode === "imagen4") && (
+                    <div className="space-y-1.5">
+                      {/* Linha 1: Freepik models */}
+                      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                        <button type="button"
+                          onClick={() => { setImageMode("freepik"); setFreepikModel("mystic"); }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "freepik" && freepikModel === "mystic"
+                              ? "bg-white text-violet-700 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          ✦ Mystic
+                        </button>
+                        <button type="button"
+                          onClick={() => { setImageMode("freepik"); setFreepikModel("seedream"); }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "freepik" && freepikModel === "seedream"
+                              ? "bg-white text-violet-700 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          ✦ Seedream V5
+                        </button>
+                        <button type="button" onClick={() => setImageMode("fal")}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "fal"
+                              ? "bg-white text-amber-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          ⚡ Flux Pro
+                        </button>
+                      </div>
+                      {/* Linha 2: Replicate models */}
+                      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                        <button type="button" onClick={() => setImageMode("ideogram")}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "ideogram"
+                              ? "bg-white text-rose-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          ✍ Ideogram v3
+                        </button>
+                        <button type="button" onClick={() => setImageMode("imagen4")}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "imagen4"
+                              ? "bg-white text-blue-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          🎨 Imagen 4
+                        </button>
+                      </div>
+                      {/* Descrição do modelo selecionado */}
+                      {imageMode === "ideogram" && (
+                        <p className="text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+                          <strong>Ideogram v3 Turbo:</strong> Tipografia nativa embutida na arte — texto renderizado como parte do design, não sobreposto. Ideal para posts com texto de impacto.
+                        </p>
+                      )}
+                      {imageMode === "imagen4" && (
+                        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                          <strong>Google Imagen 4:</strong> Qualidade fotorrealista premium via Replicate. Melhor para cenas complexas, pessoas e produtos com alto detalhe.
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -1707,14 +1745,20 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       ? "bg-emerald-600 hover:bg-emerald-700"
                       : isFalAdvanced || imageMode === "fal"
                       ? "bg-amber-500 hover:bg-amber-600"
+                      : imageMode === "ideogram"
+                      ? "bg-rose-600 hover:bg-rose-700"
+                      : imageMode === "imagen4"
+                      ? "bg-blue-600 hover:bg-blue-700"
                       : "bg-violet-600 hover:bg-violet-700";
 
                     const label = imgLoading
                       ? imageMode === "real" ? "Curando com IA..." : imageMode === "library" ? "Compondo post..." : "Gerando imagem..."
-                      : imageMode === "fal"      ? "Gerar com Flux Pro"
-                      : imageMode === "fal_pulid" ? "Gerar com Character Lock"
-                      : imageMode === "fal_canny" ? "Gerar com Canny Lock"
-                      : imageMode === "fal_depth" ? "Gerar com Depth Lock"
+                      : imageMode === "fal"       ? "Gerar com Flux Pro"
+                      : imageMode === "fal_pulid"  ? "Gerar com Character Lock"
+                      : imageMode === "fal_canny"  ? "Gerar com Canny Lock"
+                      : imageMode === "fal_depth"  ? "Gerar com Depth Lock"
+                      : imageMode === "ideogram"   ? "✍ Gerar com Ideogram v3"
+                      : imageMode === "imagen4"    ? "🎨 Gerar com Imagen 4"
                       : imageMode === "real"       ? "Curar foto com IA"
                       : imageMode === "library"    ? "Usar esta foto"
                       : freepikModel === "seedream" ? "Gerar com Seedream V5"
