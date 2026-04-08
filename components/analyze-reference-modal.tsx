@@ -39,9 +39,10 @@ interface AnalysisResult {
 }
 
 const FORMAT_OPTIONS = [
-  { value: "feed",        label: "Feed" },
-  { value: "stories",     label: "Stories" },
-  { value: "reels_cover", label: "Reels" },
+  { value: "feed",        label: "Feed",      icon: "🖼️" },
+  { value: "carousel",    label: "Carrossel", icon: "🎠" },
+  { value: "stories",     label: "Stories",   icon: "📱" },
+  { value: "reels_cover", label: "Reels",     icon: "🎬" },
 ];
 
 const PILAR_COLORS: Record<string, string> = {
@@ -448,15 +449,16 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
               {/* Formato */}
               <div className="space-y-2">
                 <Label>Formato</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {FORMAT_OPTIONS.map(opt => (
                     <button key={opt.value} type="button"
                       onClick={() => setFormat(opt.value)}
-                      className={`p-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                      className={`p-2.5 rounded-xl border-2 text-xs font-semibold transition-all flex flex-col items-center gap-1 ${
                         format === opt.value
                           ? "border-violet-500 bg-violet-50 text-violet-700"
                           : "border-slate-200 text-slate-600 hover:border-slate-300"
                       }`}>
+                      <span className="text-base leading-none">{opt.icon}</span>
                       {opt.label}
                     </button>
                   ))}
@@ -505,7 +507,10 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full ${PILAR_COLORS[result.pilar] ?? "bg-slate-100 text-slate-600"}`}>
                   {result.pilar}
                 </span>
-                <Badge variant="outline" className="text-xs">{FORMAT_OPTIONS.find(f => f.value === result.format)?.label ?? result.format}</Badge>
+                <Badge variant="outline" className="text-xs">
+                  {FORMAT_OPTIONS.find(f => f.value === result.format)?.icon}{" "}
+                  {FORMAT_OPTIONS.find(f => f.value === result.format)?.label ?? result.format}
+                </Badge>
                 <Badge variant="outline" className="text-xs capitalize">{result.composition_zone}</Badge>
                 {postUrl && (
                   <a href={postUrl} target="_blank" rel="noopener"
