@@ -44,10 +44,18 @@ async function fetchAsB64(url: string): Promise<{ b64: string; mime: string } | 
   } catch { return null; }
 }
 
+/** Dimensões da logo por tamanho */
+const LOGO_DIMS: Record<string, { w: number; h: number }> = {
+  S: { w: 180,  h: 54  },
+  M: { w: 280,  h: 84  },
+  L: { w: 400,  h: 120 },
+};
+
 /** Compõe logo e footer sobre o buffer gerado pelo Gemini */
 async function addLogoAndFooter(
   imageBuffer: Buffer,
   client:      BrandProfile,
+  logoSize:    "S" | "M" | "L" = "M",
 ): Promise<Buffer> {
   // Redimensiona para 1080×1350 (4:5 Instagram)
   let base = await sharp(imageBuffer)
@@ -77,14 +85,17 @@ async function addLogoAndFooter(
     try {
       const logoRes = await fetch(logoUrl, { signal: AbortSignal.timeout(8_000) });
       if (logoRes.ok) {
+        const dims = LOGO_DIMS[logoSize] ?? LOGO_DIMS.M;
         let logoSharp = sharp(Buffer.from(await logoRes.arrayBuffer()))
-          .resize(200, 60, { fit: "inside", withoutEnlargement: false });
+          .resize(dims.w, dims.h, { fit: "inside", withoutEnlargement: false });
         if (!client.logo_white_url && client.logo_url) {
           logoSharp = logoSharp.negate({ alpha: false });
         }
         const logoBuf = await logoSharp.png().toBuffer();
+        // Top padding: centraliza verticalmente no espaço antes do conteúdo
+        const topPad  = Math.round((140 - dims.h) / 2);
         base = await sharp(base)
-          .composite([{ input: logoBuf, top: 40, left: 44 }])
+          .composite([{ input: logoBuf, top: Math.max(topPad, 20), left: 44 }])
           .toBuffer();
       }
     } catch { /* logo opcional — não fatal */ }
@@ -149,6 +160,7 @@ export async function POST(req: NextRequest) {
       post_id:      string;
       library_url?: string;
       resolution?:  "1K" | "2K" | "4K";
+      logo_size?:   "S" | "M" | "L";
     };
 
     if (!body.post_id) {
@@ -214,7 +226,7 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Compor: Logo + Footer ─────────────────────────────────────────────────
-    const composed = await addLogoAndFooter(geminiResult.buffer, client);
+    const composed = await addLogoAndFooter(geminiResult.buffer, client, body.logo_size ?? "M");
 
     // ── Upload para R2 ────────────────────────────────────────────────────────
     const r2Key    = `posts/${user.uid}/${post_id}/gemini-${Date.now()}.jpg`;

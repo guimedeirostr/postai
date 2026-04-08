@@ -103,6 +103,9 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [libUploadLoading,   setLibUploadLoading]   = useState(false);
   const [libUploadError,     setLibUploadError]     = useState<string | null>(null);
 
+  // ── Logo size para Gemini ─────────────────────────────────────────────────
+  const [logoSize, setLogoSize] = useState<"S" | "M" | "L">("M");
+
   // ── Edit / Reload de campos de copy ──────────────────────────────────────
   type CopyField = "visual_headline" | "headline" | "caption";
   const [editField,        setEditField]        = useState<CopyField | null>(null);
@@ -604,6 +607,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
         const geminiPayload: Record<string, unknown> = {
           post_id:    result.post_id,
           resolution: "2K",
+          logo_size:  logoSize,
         };
         if (selectedLibPhoto) geminiPayload.library_url = selectedLibPhoto;
 
@@ -1636,6 +1640,21 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       <p className="text-xs text-emerald-700"><strong>Curador IA:</strong> {curateReason}</p>
                     </div>
                   )}
+
+                  {/* ── Gerar nova versão da imagem ── */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        setResult(prev => prev ? { ...prev, image_url: null, composed_url: null } : prev);
+                        setComposedUrl(null);
+                        setImgError(null);
+                        setCurateReason(null);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-medium hover:bg-slate-50 hover:border-slate-300 transition-colors w-full justify-center">
+                      <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                      Gerar nova versão da imagem
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1796,9 +1815,33 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                         </p>
                       )}
                       {imageMode === "gemini" && (
-                        <p className="text-xs text-sky-700 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2">
-                          <strong>Gemini 3.1 Flash Image:</strong> Pipeline enxuto — gera Foto + Texto nativo em uma chamada, sem polling. Aceita foto da biblioteca como referência img2img. Sharp adiciona só Logo + Assinatura.
-                        </p>
+                        <div className="bg-sky-50 border border-sky-100 rounded-lg px-3 py-2.5 space-y-2.5">
+                          <p className="text-xs text-sky-700">
+                            <strong>Gemini 3.1 Flash Image:</strong> Pipeline enxuto — gera Foto + Texto nativo em uma chamada, sem polling. Aceita foto da biblioteca como referência img2img. Sharp adiciona só Logo + Assinatura.
+                          </p>
+                          {/* Tamanho da logo */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wide whitespace-nowrap">Tamanho da logo</span>
+                            <div className="flex items-center gap-1 p-0.5 bg-white border border-sky-200 rounded-lg">
+                              {(["S", "M", "L"] as const).map(sz => (
+                                <button
+                                  key={sz}
+                                  type="button"
+                                  onClick={() => setLogoSize(sz)}
+                                  className={`px-2.5 py-0.5 rounded-md text-xs font-bold transition-all ${
+                                    logoSize === sz
+                                      ? "bg-sky-600 text-white shadow-sm"
+                                      : "text-sky-400 hover:text-sky-600"
+                                  }`}>
+                                  {sz}
+                                </button>
+                              ))}
+                            </div>
+                            <span className="text-[10px] text-sky-500">
+                              {logoSize === "S" ? "180px — discreta" : logoSize === "M" ? "280px — equilibrada" : "400px — destaque"}
+                            </span>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
@@ -2100,6 +2143,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 setSelectedExampleId(null);
                 setPreviewUrl(null);
                 setPreviewError(null);
+                setLogoSize("M");
               }}>
                 Gerar outro post
               </Button>
