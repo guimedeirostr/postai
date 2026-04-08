@@ -98,14 +98,13 @@ export async function loadDnaSources(
 
     for (const doc of exSnap.docs) {
       const ex = doc.data() as DesignExample;
-      // Aceita qualquer exemplo com background_treatment — independente do intent
-      // "library" = adicionado via biblioteca do cliente
-      // "stage0"  = adicionado via Stage 0 (modal de geração)
-      if (ex.background_treatment) {
+      // Aceita qualquer exemplo — independente do intent e campos opcionais.
+      // O mais recente representa a intenção do usuário para esta geração.
+      if (true) {
         const converted: ReferenceDNA = {
           composition_zone:     ex.composition_zone ?? "bottom",
           text_zones:           ex.text_zones ?? "",
-          background_treatment: ex.background_treatment,
+          background_treatment: ex.background_treatment ?? "",
           headline_style:       ex.headline_style ?? ex.visual_headline_style ?? "",
           typography_hierarchy: ex.typography_hierarchy ?? "",
           visual_prompt:        ex.visual_prompt,
