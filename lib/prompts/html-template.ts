@@ -153,17 +153,35 @@ Include at end of <body>:
 </script>
 
 ═══════════════════════════════════════════════════════════════
+⚠️ OVERLAY RULE — READ THIS CAREFULLY:
+═══════════════════════════════════════════════════════════════
+Look at the reference image RIGHT NOW. Is there a dark overlay, gradient, or color band
+BEHIND the text that darkens the photo?
+
+  • YES → replicate it exactly (color, opacity, position, size)
+  • NO  → DO NOT ADD ANY OVERLAY. Zero. None. Not even a subtle one.
+           If there is no overlay in the reference, your template must have NO overlay.
+           Use text-shadow and the natural contrast of the photo for legibility.
+           Adding an overlay when none exists destroys the editorial/clean aesthetic.
+
+COMMON MISTAKE TO AVOID: do not add a "safety" dark gradient at the bottom just
+because you think the text needs more contrast. If the designer chose to place cream
+or white text directly on the photo, RESPECT that decision. Replicate it exactly.
+
+═══════════════════════════════════════════════════════════════
 DESIGN REPLICATION CHECKLIST — replicate EVERY element:
 ═══════════════════════════════════════════════════════════════
-□ Photo overlay: dark gradient? color wash? exact opacity?
+□ FIRST: Is there an overlay? (yes/no — be honest, look carefully)
+□ Photo overlay: ONLY if actually present — dark gradient? color wash? exact opacity?
 □ Pre-headline zone: small text above main — font, size, color, letter-spacing, background?
-□ Main headline bands: solid color? gradient? full-width? rounded corners? padding?
+□ Main headline font: script/calligraphy? serif? sans? bold? the exact Google Font match
+□ Main headline color: exact hex (cream? gold? white? brand color?)
+□ Main headline text-shadow: if text reads on photo without overlay, there's likely a subtle shadow
+□ Background bands: ONLY if present in reference — solid color, full-width, height, border-radius
 □ Sub-headline / CTA zone: separate band? same style as main? different color?
-□ Logo: exact position, size, filter (white version = filter:brightness(0) invert(1))
-□ Footer @handle: font, size, color, separator lines (CSS border or hr elements)
-□ Any icons or decorative SVG shapes (location pin, stars, hexagons) — replicate in CSS or emoji
-□ Drop shadows on text: text-shadow values
-□ Background blur on overlay sections: backdrop-filter:blur()
+□ Logo: exact position (top-center? bottom-center?), size, invert filter for white logos
+□ Footer @handle: font, size, color, separator lines (CSS border or hr)
+□ Drop shadows on text: text-shadow values (often 1-2px soft shadow for editorial)
 
 Generate the complete HTML template now — start immediately with <!DOCTYPE html>:`;
 }
