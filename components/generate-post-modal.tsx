@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch, Upload, Plus, Zap, UserCircle2, Crosshair, Box, SlidersHorizontal, Dna, Eye } from "lucide-react";
+import { X, Sparkles, Loader2, Copy, Check, Hash, ImageIcon, Brain, ChevronRight, Camera, Wand2, Layers, Download, ScanSearch, Upload, Plus, Zap, UserCircle2, Crosshair, Box, SlidersHorizontal, Dna, Eye, Pencil, RefreshCw } from "lucide-react";
 import type { BrandPhoto } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +102,13 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [captionSuggestion,  setCaptionSuggestion]  = useState("");
   const [libUploadLoading,   setLibUploadLoading]   = useState(false);
   const [libUploadError,     setLibUploadError]     = useState<string | null>(null);
+
+  // ── Edit / Reload de campos de copy ──────────────────────────────────────
+  type CopyField = "visual_headline" | "headline" | "caption";
+  const [editField,        setEditField]        = useState<CopyField | null>(null);
+  const [editDraft,        setEditDraft]        = useState("");
+  const [saveEditLoading,  setSaveEditLoading]  = useState(false);
+  const [reloadingField,   setReloadingField]   = useState<CopyField | null>(null);
 
   // ── Reference DNA state ───────────────────────────────────────────────────
   const [referenceDna,          setReferenceDna]          = useState<ReferenceDNA | null>(null);
@@ -480,6 +487,77 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  function startEdit(field: CopyField) {
+    if (!result) return;
+    const value =
+      field === "visual_headline" ? result.visual_headline :
+      field === "headline"        ? result.headline :
+                                    result.caption;
+    setEditDraft(value ?? "");
+    setEditField(field);
+  }
+
+  async function handleSaveEdit() {
+    if (!editField || !result?.post_id) return;
+    setSaveEditLoading(true);
+    try {
+      await fetch(`/api/posts/${result.post_id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ [editField]: editDraft }),
+      });
+      setResult(prev => prev ? { ...prev, [editField!]: editDraft } : prev);
+    } catch { /* ignora erro — valor local já atualizado */ }
+    setSaveEditLoading(false);
+    setEditField(null);
+  }
+
+  async function handleReloadField(field: CopyField) {
+    if (!result?.post_id || reloadingField) return;
+    setReloadingField(field);
+    try {
+      const body: Record<string, unknown> = {
+        client_id: client.id,
+        theme,
+        objective,
+        format,
+      };
+      if (strategy) {
+        if (strategy.pilar)              body.pilar              = strategy.pilar;
+        if (strategy.publico_especifico) body.publico_especifico = strategy.publico_especifico;
+        if (strategy.dor_desejo)         body.dor_desejo         = strategy.dor_desejo;
+        if (strategy.hook_type)          body.hook_type          = strategy.hook_type;
+      }
+      if (selectedExampleId)      body.reference_example_id = selectedExampleId;
+      else if (referenceDna)      body.reference_dna        = referenceDna;
+      else if (referenceB64)      { body.reference_image_base64 = referenceB64; body.reference_image_type = referenceType; }
+      else if (referenceUrl.trim()) body.reference_url        = referenceUrl.trim();
+      body.image_provider = freepikModel;
+      if (extraInstructions.trim()) body.extra_instructions = extraInstructions.trim();
+      if (captionSuggestion.trim()) body.caption_suggestion  = captionSuggestion.trim();
+
+      const res  = await fetch("/api/posts/generate-copy", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json() as Partial<CopyResult> & { error?: string };
+      if (res.ok) {
+        const newValue = data[field];
+        if (newValue) {
+          setResult(prev => prev ? { ...prev, [field]: newValue } : prev);
+          // Persist to Firestore
+          await fetch(`/api/posts/${result.post_id}`, {
+            method:  "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ [field]: newValue }),
+          });
+        }
+      }
+    } catch { /* ignora erro */ }
+    setReloadingField(null);
   }
 
   async function handleGenerateImage() {
@@ -1342,12 +1420,56 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl space-y-1">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs text-violet-500 uppercase tracking-wide">Visual Headline (overlay)</Label>
-                    <button onClick={() => copyText(result.visual_headline, "visual_headline")}
-                      className="text-slate-400 hover:text-slate-700">
-                      {copied === "visual_headline" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        title="Reescrever"
+                        onClick={() => handleReloadField("visual_headline")}
+                        disabled={!!reloadingField}
+                        className="text-slate-400 hover:text-violet-600 disabled:opacity-40 p-0.5 rounded">
+                        {reloadingField === "visual_headline"
+                          ? <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+                          : <RefreshCw className="w-4 h-4" />}
+                      </button>
+                      <button
+                        title="Editar"
+                        onClick={() => startEdit("visual_headline")}
+                        className="text-slate-400 hover:text-violet-600 p-0.5 rounded">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => copyText(result.visual_headline, "visual_headline")}
+                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded">
+                        {copied === "visual_headline" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
-                  <p className="font-black text-violet-900 text-2xl leading-tight">{result.visual_headline}</p>
+                  {editField === "visual_headline" ? (
+                    <div className="space-y-2 pt-1">
+                      <input
+                        type="text"
+                        value={editDraft}
+                        onChange={e => setEditDraft(e.target.value)}
+                        maxLength={80}
+                        className="w-full rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xl font-black text-violet-900 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleSaveEdit}
+                          disabled={saveEditLoading}
+                          className="flex items-center gap-1 px-3 py-1 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 disabled:opacity-60">
+                          {saveEditLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => setEditField(null)}
+                          className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium hover:bg-slate-200">
+                          Cancelar
+                        </button>
+                        <span className="text-xs text-slate-400 ml-auto">{editDraft.length}/80</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="font-black text-violet-900 text-2xl leading-tight">{result.visual_headline}</p>
+                  )}
                 </div>
               )}
 
@@ -1355,24 +1477,108 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
               <div className="p-4 bg-slate-50 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs text-slate-500 uppercase tracking-wide">Headline</Label>
-                  <button onClick={() => copyText(result.headline, "headline")}
-                    className="text-slate-400 hover:text-slate-700">
-                    {copied === "headline" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      title="Reescrever"
+                      onClick={() => handleReloadField("headline")}
+                      disabled={!!reloadingField}
+                      className="text-slate-400 hover:text-violet-600 disabled:opacity-40 p-0.5 rounded">
+                      {reloadingField === "headline"
+                        ? <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+                        : <RefreshCw className="w-4 h-4" />}
+                    </button>
+                    <button
+                      title="Editar"
+                      onClick={() => startEdit("headline")}
+                      className="text-slate-400 hover:text-violet-600 p-0.5 rounded">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => copyText(result.headline, "headline")}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded">
+                      {copied === "headline" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
-                <p className="font-bold text-slate-900 text-lg leading-snug">{result.headline}</p>
+                {editField === "headline" ? (
+                  <div className="space-y-2">
+                    <textarea
+                      rows={2}
+                      value={editDraft}
+                      onChange={e => setEditDraft(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-base font-bold text-slate-900 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={saveEditLoading}
+                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 disabled:opacity-60">
+                        {saveEditLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                        Salvar
+                      </button>
+                      <button
+                        onClick={() => setEditField(null)}
+                        className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium hover:bg-slate-200">
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="font-bold text-slate-900 text-lg leading-snug">{result.headline}</p>
+                )}
               </div>
 
               {/* Caption */}
               <div className="p-4 bg-slate-50 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs text-slate-500 uppercase tracking-wide">Legenda</Label>
-                  <button onClick={() => copyText(result.caption, "caption")}
-                    className="text-slate-400 hover:text-slate-700">
-                    {copied === "caption" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      title="Reescrever"
+                      onClick={() => handleReloadField("caption")}
+                      disabled={!!reloadingField}
+                      className="text-slate-400 hover:text-violet-600 disabled:opacity-40 p-0.5 rounded">
+                      {reloadingField === "caption"
+                        ? <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+                        : <RefreshCw className="w-4 h-4" />}
+                    </button>
+                    <button
+                      title="Editar"
+                      onClick={() => startEdit("caption")}
+                      className="text-slate-400 hover:text-violet-600 p-0.5 rounded">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => copyText(result.caption, "caption")}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded">
+                      {copied === "caption" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{result.caption}</p>
+                {editField === "caption" ? (
+                  <div className="space-y-2">
+                    <textarea
+                      rows={6}
+                      value={editDraft}
+                      onChange={e => setEditDraft(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={saveEditLoading}
+                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 disabled:opacity-60">
+                        {saveEditLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                        Salvar
+                      </button>
+                      <button
+                        onClick={() => setEditField(null)}
+                        className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium hover:bg-slate-200">
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{result.caption}</p>
+                )}
               </div>
 
               {/* Hashtags */}
