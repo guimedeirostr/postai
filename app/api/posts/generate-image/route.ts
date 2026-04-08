@@ -185,16 +185,26 @@ export async function POST(req: NextRequest) {
             const format   = (post.format ?? "feed") as "feed" | "stories" | "reels_cover";
             const H        = format === "feed" ? 1350 : 1920;
 
+            // pre_headline: tema estratégico ou primeira cláusula do headline
+            const strategy   = post.strategy as { tema?: string; pilar?: string } | undefined;
+            const rawCaption = (post.caption ?? "") as string;
+            const captionLines = rawCaption.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
+
+            const preHeadline      = strategy?.tema ?? strategy?.pilar ?? "";
+            const captionFirstLine = captionLines[0] ?? "";
+
             const filledHtml = fillHtmlTemplate(exWithTemplate.html_template, {
-              photoUrl:        libraryImageUrl,
+              photoUrl:         libraryImageUrl,
               headline,
-              logoUrl:         client.logo_url         ?? "",
-              brandColor:      client.primary_color     ?? "#000000",
-              secondaryColor:  client.secondary_color   ?? "#ffffff",
-              brandName:       client.name,
-              instagramHandle: client.instagram_handle  ?? "",
-              canvasWidth:     1080,
-              canvasHeight:    H,
+              preHeadline,
+              captionFirstLine,
+              logoUrl:          client.logo_url         ?? "",
+              brandColor:       client.primary_color     ?? "#000000",
+              secondaryColor:   client.secondary_color   ?? "#ffffff",
+              brandName:        client.name,
+              instagramHandle:  client.instagram_handle  ?? "",
+              canvasWidth:      1080,
+              canvasHeight:     H,
             });
 
             console.log("[generate-image] Renderizando com Chromium renderer (template HTML)");

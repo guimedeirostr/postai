@@ -4,22 +4,23 @@
  * Prompt para Claude Vision analisar uma imagem de referência e gerar
  * um template HTML/CSS completo que replica o design profissional.
  *
- * Placeholders disponíveis:
- *   {{photo_url}}         — URL da foto de fundo
- *   {{headline_line_1}}   — primeira parte do headline
- *   {{headline_line_2}}   — segunda parte (vazia se não houver)
- *   {{headline_line_3}}   — terceira parte (vazia se não houver)
- *   {{logo_url}}          — URL do logo da marca (PNG/SVG transparente)
- *   {{brand_color}}       — cor primária hex (#CC0000)
- *   {{secondary_color}}   — cor secundária hex (#FFD700)
- *   {{brand_name}}        — nome da marca
- *   {{instagram_handle}}  — handle sem @ (ex: mocellingourmet)
- *   {{canvas_width}}      — largura em px (1080)
- *   {{canvas_height}}     — altura em px (1350 feed / 1920 stories)
+ * ── Placeholders disponíveis ──────────────────────────────────────────────────
+ *   {{photo_url}}           — URL da foto de fundo
+ *   {{pre_headline}}        — texto acima do headline principal (teaser / pilar / gancho)
+ *   {{headline_line_1}}     — primeira parte do headline principal
+ *   {{headline_line_2}}     — segunda parte (vazia se não houver)
+ *   {{headline_line_3}}     — terceira parte (vazia se não houver)
+ *   {{caption_first_line}}  — primeira linha do caption (pode ser CTA ou sub-texto)
+ *   {{logo_url}}            — URL do logo da marca (PNG/SVG transparente)
+ *   {{brand_color}}         — cor primária hex (#CC0000)
+ *   {{secondary_color}}     — cor secundária hex (#FFD700)
+ *   {{brand_name}}          — nome da marca (fallback quando sem logo)
+ *   {{instagram_handle}}    — handle sem @ (ex: emporiomix)
+ *   {{canvas_width}}        — largura em px (1080)
+ *   {{canvas_height}}       — altura em px (1350 feed / 1920 stories)
  */
 
 // ── Fontes mais usadas por agências brasileiras top ────────────────────────────
-// Lista curada para Claude escolher a mais próxima ao que vê na imagem.
 const AGENCY_FONTS = `
 SERIF / EDITORIAL (sofisticado, gastronômico, luxo):
   • Cormorant Garamond — serif elegante, excelente em italic, muito usado em restaurantes premium
@@ -33,7 +34,7 @@ SANS-SERIF GEOMÉTRICO (moderno, clean, tech, startup):
   • Poppins — rounded geométrico, amigável, muito usado em varejo e apps
   • Nunito — rounded, friendly, jovem
 
-SANS-SERIF CONDENSADO (impactante, esportivo, promoções):
+SANS-SERIF CONDENSADO (impactante, esportivo, promoções, varejo):
   • Barlow Condensed — condensado versátil, impactante em bold/black
   • Oswald — condensado clássico, muito usado em promoções e fitness
   • Anton — ultra bold condensado, impacto máximo
@@ -50,137 +51,148 @@ SCRIPT / HANDWRITTEN (artesanal, café, padaria, orgânico):
 `;
 
 export function buildHtmlTemplatePrompt(): string {
-  return `You are a world-class senior digital art director and front-end engineer at a top Brazilian agency. You have rendered thousands of professional Instagram posts.
+  return `You are a world-class senior digital art director and front-end engineer at a top Brazilian agency. You have rendered thousands of professional Instagram posts for major brands.
 
 Your task: analyze this Instagram post image with pixel-perfect precision and generate a complete, self-contained HTML/CSS template that EXACTLY REPLICATES this design style.
 
-The output will be rendered by Puppeteer (Chrome) at {{canvas_width}}×{{canvas_height}}px. It must look identical to the reference image — any professional designer comparing the two should be unable to distinguish the style.
+The output will be rendered by Puppeteer (Chrome) at {{canvas_width}}×{{canvas_height}}px. A professional designer comparing reference vs output must be unable to distinguish the style.
 
 ═══════════════════════════════════════════════════════════════
 STEP 1 — TYPOGRAPHY IDENTIFICATION (most critical)
 ═══════════════════════════════════════════════════════════════
-Identify the EXACT font(s) used. Match against this curated list of agency fonts:
+Identify the EXACT font(s). Match against this curated list:
 ${AGENCY_FONTS}
 
-For each text element, determine:
-  • Font family (closest match from list above, or identify if you see something else)
-  • Font weight: 100/200/300/400/500/600/700/800/900
+For EACH text element identify:
+  • Font family (closest from list, or name it if you're confident)
+  • Font weight: 300/400/500/600/700/800/900
   • Font style: normal | italic
   • Text transform: none | uppercase | lowercase
-  • Letter spacing: exact value in px or em (e.g. "0.15em" for wide-tracked caps)
-  • Line height: exact value
+  • Letter spacing (e.g. "0.15em" for wide-tracked caps, "-0.02em" for condensed)
+  • Line height value
 
 ═══════════════════════════════════════════════════════════════
-STEP 2 — COLOR EXTRACTION
+STEP 2 — COLOR EXTRACTION (use mental eyedropper)
 ═══════════════════════════════════════════════════════════════
-Use your mental eyedropper. Extract:
-  • All text colors (exact hex)
-  • All background/band colors (exact hex + opacity if translucent)
-  • Any gradient values (direction + stops)
-  • Drop shadows (color, blur, offset)
+  • All text colors: exact hex
+  • Background bands: exact hex + opacity (e.g. rgba(0,0,0,0.85))
+  • Gradients: direction + color stops (e.g. linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 50%))
+  • Drop shadows: offset-x, offset-y, blur, color
 
 ═══════════════════════════════════════════════════════════════
-STEP 3 — LAYOUT MAPPING
+STEP 3 — LAYOUT MAPPING (pixel positions for 1080×1350)
 ═══════════════════════════════════════════════════════════════
-Map the exact pixel positions (relative to 1080×1350):
-  • Where does the logo sit? (top/center px, left/right px, width px)
-  • Where does the text zone start? (y px from top)
-  • Background band: y position, height, full-width or contained?
-  • Footer: y position from bottom, height, content
+  • Logo: top px, left/right px, width px
+  • Pre-headline zone: top px, height px
+  • Main headline zone: top px, height px
+  • Background bands: y start, height, full-width or contained?
+  • Footer zone: y from bottom, height, content alignment
 
 ═══════════════════════════════════════════════════════════════
 CRITICAL OUTPUT RULES:
 ═══════════════════════════════════════════════════════════════
 1. Output ONLY raw HTML — start with <!DOCTYPE html>, end with </html>
-   NO markdown fences, NO explanations, NO code comments outside the template
-2. The outer container must be: width:{{canvas_width}}px; height:{{canvas_height}}px; overflow:hidden; position:relative
-3. ALL measurements in px (no vw, vh, em, %, except in Google Fonts URL)
-4. Use Google Fonts @import with ALL needed weights (e.g. wght@300;400;400i;700;700i;900)
-5. Background photo: background:url('{{photo_url}}') center/cover no-repeat on the main container
-6. NEVER hardcode brand text/colors — use ONLY placeholders (see below)
-7. Logo: use <img src="{{logo_url}}" class="logo" alt=""> — do NOT also show {{brand_name}} as text if a logo image is provided. Show {{brand_name}} as text ONLY as a fallback inside CSS using display tricks, or use it as aria-label only.
+   NO markdown fences, NO explanations, ZERO text outside the HTML
+2. Outer container: width:{{canvas_width}}px; height:{{canvas_height}}px; overflow:hidden; position:relative
+3. ALL measurements in px only (no vw, vh, %, em — except in @import URL)
+4. Google Fonts @import: include ALL needed weights/styles (wght@300;400;400i;700;700i;900)
+5. Background: background:url('{{photo_url}}') center/cover no-repeat on main .canvas div
+6. NEVER hardcode brand text/colors — use ONLY the placeholders listed below
+7. Logo rule: use <img src="{{logo_url}}" alt=""> ONLY. Do NOT render {{brand_name}} as visible text alongside the logo. If no logo area exists in the design, skip the logo entirely.
 
 ═══════════════════════════════════════════════════════════════
-PLACEHOLDER SYSTEM — use EXACTLY these strings:
+COMPLETE PLACEHOLDER SYSTEM:
 ═══════════════════════════════════════════════════════════════
-  {{photo_url}}         → background photo URL
-  {{headline_line_1}}   → first headline fragment
-  {{headline_line_2}}   → second headline fragment (may be empty string — hide when empty)
-  {{headline_line_3}}   → third headline fragment (may be empty string — hide when empty)
-  {{logo_url}}          → brand logo PNG/SVG URL
-  {{brand_color}}       → brand primary hex (e.g. #8B1A1A)
-  {{secondary_color}}   → brand secondary hex (e.g. #C4956A)
-  {{brand_name}}        → brand name text (fallback only)
-  {{instagram_handle}}  → handle without @ (e.g. mocellingourmet)
-  {{canvas_width}}      → 1080
-  {{canvas_height}}     → 1350
+  {{photo_url}}          → background product/lifestyle photo
+  {{pre_headline}}       → small teaser text ABOVE the main headline
+                           (e.g. "CHURRASCO ANIMADO..." or "DESCULPA FAZER")
+                           Hide this element if the reference has no pre-headline text zone.
+  {{headline_line_1}}    → first part of main headline (always present)
+  {{headline_line_2}}    → second part (hide when empty)
+  {{headline_line_3}}    → third part (hide when empty)
+  {{caption_first_line}} → sub-text / CTA below the headline
+                           (e.g. "VAI DAR PRA TODO MUNDO?" or a tagline)
+                           Hide this element if the reference has no sub-text zone.
+  {{logo_url}}           → brand logo PNG/SVG URL (transparent bg)
+  {{brand_color}}        → brand primary hex
+  {{secondary_color}}    → brand secondary hex
+  {{brand_name}}         → brand name (aria-label only, not visible)
+  {{instagram_handle}}   → handle without @
+  {{canvas_width}}       → 1080
+  {{canvas_height}}      → 1350
 
-For band/overlay colors: if the reference uses a solid color band, use the EXACT extracted hex.
-If the band color matches or is close to the brand's color, use {{brand_color}} with opacity.
-If it's a neutral (black, white, cream), hardcode the hex value.
+COLOR STRATEGY for bands:
+  • If band color ≈ brand_color → use: background: {{brand_color}}
+  • If band color is neutral (black/dark/white) → hardcode the hex
+  • If semi-transparent overlay → use rgba() with hardcoded base color + opacity
 
 ═══════════════════════════════════════════════════════════════
-TEXT OVERFLOW PREVENTION (mandatory):
+TEXT OVERFLOW PREVENTION (mandatory for all text elements):
 ═══════════════════════════════════════════════════════════════
-Every text container must have:
-  overflow: hidden;
-  word-break: break-word;
+All text containers must have: overflow:hidden; word-break:break-word;
+Add class "hl" to ALL headline-line divs.
+Add class "auto-fit" to large text elements.
 
-Add class "auto-fit" to ALL headline elements. Include this script at end of body:
+Include at end of <body>:
 <script>
 (function(){
-  // Hide empty headline lines
-  document.querySelectorAll('.hl').forEach(function(el){
+  // Hide empty text zones
+  document.querySelectorAll('.hl,.pre-hl,.cap-line').forEach(function(el){
     if(!el.textContent.trim()) el.style.display='none';
   });
-  // Auto-fit text to container width
+  // Auto-scale oversized text
   document.querySelectorAll('.auto-fit').forEach(function(el){
     var par = el.parentElement;
-    var maxW = par.clientWidth;
+    var maxW = par.clientWidth - 40;
     var fs = parseFloat(getComputedStyle(el).fontSize);
-    el.style.whiteSpace = 'nowrap';
-    while(el.scrollWidth > maxW && fs > 18){ fs -= 1; el.style.fontSize = fs+'px'; }
-    el.style.whiteSpace = '';
+    el.style.whiteSpace='nowrap';
+    while(el.scrollWidth > maxW && fs > 20){ fs--; el.style.fontSize=fs+'px'; }
+    el.style.whiteSpace='';
   });
 })();
 </script>
-Add class "hl" to ALL .headline-line elements so empty ones are hidden.
 
 ═══════════════════════════════════════════════════════════════
-REFERENCE DESIGN REPLICATION CHECKLIST:
+DESIGN REPLICATION CHECKLIST — replicate EVERY element:
 ═══════════════════════════════════════════════════════════════
-□ Logo: position, size, any white/dark version treatment (filter: brightness(0) invert(1) for white logo)
-□ Pre-headline small text: font, weight, color, letter-spacing, case
-□ Main headline: font, weight, italic or not, color, size, letter-spacing
-□ Background treatment behind text: band color, opacity, border-radius, full-width or contained
-□ Footer: @handle style, separator lines/dashes, font, color
-□ Any decorative elements: lines, dots, geometric shapes — replicate in CSS
-□ Overlay on photo: gradient direction, colors, opacity — replicate exactly
+□ Photo overlay: dark gradient? color wash? exact opacity?
+□ Pre-headline zone: small text above main — font, size, color, letter-spacing, background?
+□ Main headline bands: solid color? gradient? full-width? rounded corners? padding?
+□ Sub-headline / CTA zone: separate band? same style as main? different color?
+□ Logo: exact position, size, filter (white version = filter:brightness(0) invert(1))
+□ Footer @handle: font, size, color, separator lines (CSS border or hr elements)
+□ Any icons or decorative SVG shapes (location pin, stars, hexagons) — replicate in CSS or emoji
 □ Drop shadows on text: text-shadow values
+□ Background blur on overlay sections: backdrop-filter:blur()
 
-Generate the complete HTML template now — start with <!DOCTYPE html>:`;
+Generate the complete HTML template now — start immediately with <!DOCTYPE html>:`;
 }
 
 /**
- * Substitui os placeholders do template com os dados reais da marca e post.
+ * Substitui os placeholders do template com dados reais da marca e post.
  *
- * Divisão de headline:
- *   < 5 palavras → 1 linha
+ * Estratégia de divisão do headline principal (visual_headline):
+ *   < 5 palavras → 1 linha (line1 = headline completo)
  *   5–7 palavras → 2 linhas (divide ao meio)
  *   8+ palavras  → 3 linhas (split 40/30/30)
+ *
+ * pre_headline: primeira frase do caption, ou pilar estratégico
+ * caption_first_line: segunda linha distinta do caption (CTA)
  */
 export function fillHtmlTemplate(
   template: string,
   data: {
-    photoUrl:        string;
-    headline:        string;
-    logoUrl:         string;
-    brandColor:      string;
-    secondaryColor:  string;
-    brandName:       string;
-    instagramHandle: string;
-    canvasWidth?:    number;
-    canvasHeight?:   number;
+    photoUrl:          string;
+    headline:          string;          // visual_headline (máx 6 palavras)
+    preHeadline:       string;          // teaser acima — ex: tema da estratégia
+    captionFirstLine:  string;          // sub-texto abaixo — ex: 1ª linha da caption
+    logoUrl:           string;
+    brandColor:        string;
+    secondaryColor:    string;
+    brandName:         string;
+    instagramHandle:   string;
+    canvasWidth?:      number;
+    canvasHeight?:     number;
   }
 ): string {
   const words = data.headline.trim().split(/\s+/);
@@ -207,15 +219,17 @@ export function fillHtmlTemplate(
   const H      = data.canvasHeight ?? 1350;
 
   return template
-    .replaceAll("{{photo_url}}",        data.photoUrl)
-    .replaceAll("{{headline_line_1}}",  line1)
-    .replaceAll("{{headline_line_2}}",  line2)
-    .replaceAll("{{headline_line_3}}",  line3)
-    .replaceAll("{{logo_url}}",         data.logoUrl ?? "")
-    .replaceAll("{{brand_color}}",      data.brandColor ?? "#000000")
-    .replaceAll("{{secondary_color}}",  data.secondaryColor ?? "#ffffff")
-    .replaceAll("{{brand_name}}",       data.brandName)
-    .replaceAll("{{instagram_handle}}", handle)
-    .replaceAll("{{canvas_width}}",     String(W))
-    .replaceAll("{{canvas_height}}",    String(H));
+    .replaceAll("{{photo_url}}",          data.photoUrl)
+    .replaceAll("{{pre_headline}}",       data.preHeadline)
+    .replaceAll("{{headline_line_1}}",    line1)
+    .replaceAll("{{headline_line_2}}",    line2)
+    .replaceAll("{{headline_line_3}}",    line3)
+    .replaceAll("{{caption_first_line}}", data.captionFirstLine)
+    .replaceAll("{{logo_url}}",           data.logoUrl ?? "")
+    .replaceAll("{{brand_color}}",        data.brandColor ?? "#000000")
+    .replaceAll("{{secondary_color}}",    data.secondaryColor ?? "#ffffff")
+    .replaceAll("{{brand_name}}",         data.brandName)
+    .replaceAll("{{instagram_handle}}",   handle)
+    .replaceAll("{{canvas_width}}",       String(W))
+    .replaceAll("{{canvas_height}}",      String(H));
 }
