@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import {
   ImageIcon, Loader2, Hash, Copy, Check, X,
-  Calendar, Tag, Download, Wand2, Layers, RefreshCw, ScanSearch,
+  Calendar, Tag, Download, Wand2, Layers, RefreshCw, ScanSearch, ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,8 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
   const [composedUrl,  setComposedUrl]  = useState(post.composed_url ?? null);
   // show composed (branded) by default if available, raw otherwise
   const [viewComposed, setViewComposed] = useState(!!post.composed_url);
-  const [showDnaModal, setShowDnaModal] = useState(false);
+  const [showDnaModal,       setShowDnaModal]       = useState(false);
+  const [showAllHashtags,    setShowAllHashtags]    = useState(false);
 
   function copyText(text: string, key: string) {
     navigator.clipboard.writeText(text);
@@ -332,29 +333,35 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
             <p className="text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">{post.caption}</p>
           </div>
 
-          {/* Hashtags */}
-          <div className="p-4 bg-slate-50 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                <Hash className="w-3.5 h-3.5" /> Hashtags ({post.hashtags.length})
-              </span>
-              <button onClick={() => copyText(post.hashtags.map(h => `#${h}`).join(" "), "hashtags")}
-                className="text-slate-400 hover:text-slate-700">
-                {copied === "hashtags" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-              </button>
+          {/* Hashtags — mostra 5 por padrão (limite Instagram atual) */}
+          {post.hashtags.length > 0 && (
+            <div className="p-4 bg-slate-50 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                  <Hash className="w-3.5 h-3.5" />
+                  Hashtags
+                  <span className="text-slate-300 font-normal">({post.hashtags.length})</span>
+                </span>
+                <button onClick={() => copyText(post.hashtags.map(h => `#${h}`).join(" "), "hashtags")}
+                  className="text-slate-400 hover:text-slate-700">
+                  {copied === "hashtags" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {(showAllHashtags ? post.hashtags : post.hashtags.slice(0, 5)).map(h => (
+                  <Badge key={h} variant="secondary" className="text-xs">#{h}</Badge>
+                ))}
+              </div>
+              {post.hashtags.length > 5 && (
+                <button
+                  onClick={() => setShowAllHashtags(v => !v)}
+                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 mt-0.5">
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllHashtags ? "rotate-180" : ""}`} />
+                  {showAllHashtags ? "Mostrar menos" : `Ver todas (${post.hashtags.length})`}
+                </button>
+              )}
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {post.hashtags.map(h => (
-                <Badge key={h} variant="secondary" className="text-xs">#{h}</Badge>
-              ))}
-            </div>
-          </div>
-
-          {/* Visual prompt */}
-          <div className="p-4 bg-violet-50 rounded-xl space-y-1">
-            <span className="text-xs font-medium text-violet-500 uppercase tracking-wide">Prompt visual</span>
-            <p className="text-slate-600 text-sm italic">{post.visual_prompt}</p>
-          </div>
+          )}
         </div>
       </div>
 
