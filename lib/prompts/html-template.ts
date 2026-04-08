@@ -176,23 +176,26 @@ Generate the complete HTML template now — start immediately with <!DOCTYPE htm
  *   5–7 palavras → 2 linhas (divide ao meio)
  *   8+ palavras  → 3 linhas (split 40/30/30)
  *
- * pre_headline: primeira frase do caption, ou pilar estratégico
- * caption_first_line: segunda linha distinta do caption (CTA)
+ * pre_headline: tema estratégico do post
+ * caption_first_line: primeira linha do caption (CTA)
+ * backgroundTreatment: do design_example — quando "none", suprime overlays escuros
  */
 export function fillHtmlTemplate(
   template: string,
   data: {
-    photoUrl:          string;
-    headline:          string;          // visual_headline (máx 6 palavras)
-    preHeadline:       string;          // teaser acima — ex: tema da estratégia
-    captionFirstLine:  string;          // sub-texto abaixo — ex: 1ª linha da caption
-    logoUrl:           string;
-    brandColor:        string;
-    secondaryColor:    string;
-    brandName:         string;
-    instagramHandle:   string;
-    canvasWidth?:      number;
-    canvasHeight?:     number;
+    photoUrl:             string;
+    headline:             string;
+    preHeadline:          string;
+    captionFirstLine:     string;
+    logoUrl:              string;
+    brandColor:           string;
+    secondaryColor:       string;
+    brandName:            string;
+    instagramHandle:      string;
+    canvasWidth?:         number;
+    canvasHeight?:        number;
+    /** Quando "none"/"no overlay"/similar, injeta CSS que remove overlays escuros */
+    backgroundTreatment?: string;
   }
 ): string {
   const words = data.headline.trim().split(/\s+/);
@@ -218,7 +221,60 @@ export function fillHtmlTemplate(
   const W      = data.canvasWidth  ?? 1080;
   const H      = data.canvasHeight ?? 1350;
 
-  return template
+  // Detecta se o design é editorial limpo (sem overlay)
+  const isNoOverlay = /\bnone\b|no overlay|no gradient|directly on|no treatment|text on image/i
+    .test(data.backgroundTreatment ?? "");
+
+  // Script de limpeza injetado antes de </body>:
+  // 1. Remove dark overlays quando background_treatment=none
+  // 2. Oculta qualquer elemento que contenha APENAS o brand_name como texto
+  //    (evita duplicação logo-imagem + nome-texto)
+  const safeHandle = handle.replace(/'/g, "\\'");
+  const safeBrand  = data.brandName.replace(/'/g, "\\'");
+  const cleanupBlock = `
+<!-- PostAI cleanup: logo dedup + overlay kill -->
+<style id="postai-cleanup">
+${isNoOverlay ? `
+  /* background_treatment=none: remove overlays escuros */
+  .overlay,.gradient-overlay,.dark-overlay,.text-overlay,
+  .bg-overlay,.photo-overlay,.gradient,.bottom-gradient,
+  [class*="overlay"],[class*="gradient"],[class*="shade"] {
+    display: none !important;
+  }
+` : ""}
+</style>
+<script>
+(function(){
+  var bn = '${safeBrand}';
+  var handle = '${safeHandle}';
+  // Oculta texto igual ao brand_name quando há logo <img> no mesmo container
+  document.querySelectorAll('*').forEach(function(el){
+    if(el.childElementCount > 0) return;
+    var t = (el.textContent || '').trim();
+    if(t === bn || t === bn.toUpperCase()){
+      var par = el.parentElement;
+      if(par && par.querySelector('img[src*="logo_url"], img[alt=""], img.logo')){
+        el.style.display = 'none';
+      }
+    }
+  });
+  // Oculta linhas de headline vazias
+  document.querySelectorAll('.hl,.pre-hl,.cap-line,.headline-line').forEach(function(el){
+    if(!el.textContent.trim()) el.style.display='none';
+  });
+  // Auto-fit: reduz font-size para caber no container
+  document.querySelectorAll('.auto-fit').forEach(function(el){
+    var par = el.parentElement;
+    var maxW = (par ? par.clientWidth : ${W}) - 40;
+    var fs = parseFloat(getComputedStyle(el).fontSize);
+    el.style.whiteSpace='nowrap';
+    while(el.scrollWidth > maxW && fs > 20){ fs--; el.style.fontSize=fs+'px'; }
+    el.style.whiteSpace='';
+  });
+})();
+</script>`;
+
+  let result = template
     .replaceAll("{{photo_url}}",          data.photoUrl)
     .replaceAll("{{pre_headline}}",       data.preHeadline)
     .replaceAll("{{headline_line_1}}",    line1)
@@ -232,4 +288,9 @@ export function fillHtmlTemplate(
     .replaceAll("{{instagram_handle}}",   handle)
     .replaceAll("{{canvas_width}}",       String(W))
     .replaceAll("{{canvas_height}}",      String(H));
+
+  // Injeta bloco de cleanup antes de </body>
+  result = result.replace("</body>", cleanupBlock + "\n</body>");
+
+  return result;
 }

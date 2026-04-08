@@ -194,17 +194,18 @@ export async function POST(req: NextRequest) {
             const captionFirstLine = captionLines[0] ?? "";
 
             const filledHtml = fillHtmlTemplate(exWithTemplate.html_template, {
-              photoUrl:         libraryImageUrl,
+              photoUrl:             libraryImageUrl,
               headline,
               preHeadline,
               captionFirstLine,
-              logoUrl:          client.logo_url         ?? "",
-              brandColor:       client.primary_color     ?? "#000000",
-              secondaryColor:   client.secondary_color   ?? "#ffffff",
-              brandName:        client.name,
-              instagramHandle:  client.instagram_handle  ?? "",
-              canvasWidth:      1080,
-              canvasHeight:     H,
+              logoUrl:              client.logo_url         ?? "",
+              brandColor:           client.primary_color     ?? "#000000",
+              secondaryColor:       client.secondary_color   ?? "#ffffff",
+              brandName:            client.name,
+              instagramHandle:      client.instagram_handle  ?? "",
+              canvasWidth:          1080,
+              canvasHeight:         H,
+              backgroundTreatment:  exWithTemplate.background_treatment,
             });
 
             console.log("[generate-image] Renderizando com Chromium renderer (template HTML)");
