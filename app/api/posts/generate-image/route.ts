@@ -531,12 +531,64 @@ export async function POST(req: NextRequest) {
       });
 
       if (result.done && result.image_url) {
+        // ── Pós-Ideogram: compositor adiciona logo + handle sem tocar no texto ──
+        // O Ideogram já renderizou o visual_headline como tipografia nativa.
+        // O compositor só adiciona elementos de marca (logo, @handle, footer bar)
+        // sem sobrepor nenhum texto — usa layer_stack com wash=none.
+        let composed_url: string | undefined;
+        try {
+          const existingStack = post.layer_stack as LayerStack | undefined;
+          const ideogramLayerStack: LayerStack = {
+            background_analysis: existingStack?.background_analysis ?? {
+              entropy_level:    0.3,
+              subject_position: "center",
+              depth_of_field:   "shallow",
+              brightness_zones: { top: "neutral", bottom: "dark", left: "neutral", right: "neutral" },
+              color_temperature: "neutral",
+              safe_areas:       ["bottom-full"],
+              dominant_colors:  [client.primary_color ?? "#000000"],
+            },
+            tone_profile: existingStack?.tone_profile
+              ?? { name: "editorial_clean", typography: { weight: "bold", spacing: "wide", case_style: "titlecase" }, color_behavior: { contrast: "medium", saturation: "muted" }, composition: { density: "minimal", alignment: "left" }, wash_preference: "none" },
+            wash:       { type: "none" },          // sem overlay — Ideogram já tem contraste
+            text_zone:  { anchor: "bottom-full", width_percent: 0, height_percent: 0, padding: 0, safe_margin: false },
+            headline:   { font_weight: "900", color: "transparent", case_style: "uppercase", max_chars_per_line: 0, estimated_lines: 1, contrast_ratio: "AA" },
+            brand_elements: {
+              logo_position:       (client.logo_url ? "bottom-right" : "none") as import("@/types").LogoPlacement,
+              logo_size:           "small",
+              logo_contrast_boost: false,
+              footer_bar: { enabled: true, height_px: 72, style: "solid" as const, color: client.primary_color ?? "#000000" },
+            },
+          };
+
+          composed_url = await composePost({
+            imageUrl:        result.image_url,
+            logoUrl:         client.logo_url,
+            visualHeadline:  "",   // vazio — Ideogram já renderizou o texto
+            instagramHandle: client.instagram_handle as string | undefined,
+            clientName:      client.name,
+            primaryColor:    client.primary_color,
+            secondaryColor:  client.secondary_color,
+            format:          (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
+            postId:          post_id,
+            layer_stack:     ideogramLayerStack,
+          });
+        } catch (composeErr) {
+          console.warn("[generate-image/ideogram] Compositor pós-Ideogram falhou (non-fatal):", composeErr);
+        }
+
         await postDoc.ref.update({
           image_url:      result.image_url,
+          composed_url:   composed_url ?? result.image_url,
           image_provider: "ideogram_text",
           status:         "ready",
         });
-        return NextResponse.json({ image_url: result.image_url, post_id, provider: "ideogram_text" });
+        return NextResponse.json({
+          image_url:    result.image_url,
+          composed_url: composed_url ?? result.image_url,
+          post_id,
+          provider: "ideogram_text",
+        });
       }
 
       // Assíncrono — frontend fará polling

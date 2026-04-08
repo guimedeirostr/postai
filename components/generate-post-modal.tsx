@@ -84,7 +84,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copied,         setCopied]         = useState<string | null>(null);
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
-  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "ideogram" | "imagen4">("freepik");
+  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "ideogram" | "imagen4" | "flux_dev">("freepik");
   const [curateReason,       setCurateReason]       = useState<string | null>(null);
   const [composedUrl,        setComposedUrl]        = useState<string | null>(null);
   const [viewComposed,       setViewComposed]       = useState(true);
@@ -514,6 +514,9 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       } else if (imageMode === "imagen4") {
         payload.provider        = "replicate";
         payload.replicate_model = "google/imagen-4";
+      } else if (imageMode === "flux_dev") {
+        payload.provider        = "replicate";
+        payload.replicate_model = "black-forest-labs/flux-dev";
       }
       // freepik (mystic) = default, sem provider no payload
 
@@ -1471,9 +1474,10 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   </div>
 
                   {/* ── Freepik / FAL padrão — toggle de modelo ── */}
-                  {(imageMode === "freepik" || imageMode === "fal" || imageMode === "ideogram" || imageMode === "imagen4") && (
+                  {(imageMode === "freepik" || imageMode === "fal" || imageMode === "ideogram" || imageMode === "imagen4" || imageMode === "flux_dev") && (
                     <div className="space-y-1.5">
                       {/* Linha 1: Freepik models */}
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Freepik</p>
                       <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
                         <button type="button"
                           onClick={() => { setImageMode("freepik"); setFreepikModel("mystic"); }}
@@ -1502,34 +1506,48 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                           ⚡ Flux Pro
                         </button>
                       </div>
-                      {/* Linha 2: Replicate models */}
+                      {/* Linha 2: Replicate — gratuitos */}
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 pt-1">Replicate <span className="text-emerald-600 normal-case font-semibold">grátis</span></p>
                       <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
                         <button type="button" onClick={() => setImageMode("ideogram")}
-                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                          className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-semibold transition-all ${
                             imageMode === "ideogram"
                               ? "bg-white text-rose-600 shadow-sm"
                               : "text-slate-500 hover:text-slate-700"
                           }`}>
-                          ✍ Ideogram v3
+                          ✍ Ideogram
                         </button>
                         <button type="button" onClick={() => setImageMode("imagen4")}
-                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                          className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-semibold transition-all ${
                             imageMode === "imagen4"
                               ? "bg-white text-blue-600 shadow-sm"
                               : "text-slate-500 hover:text-slate-700"
                           }`}>
                           🎨 Imagen 4
                         </button>
+                        <button type="button" onClick={() => setImageMode("flux_dev")}
+                          className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "flux_dev"
+                              ? "bg-white text-emerald-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          ⚡ Flux Dev
+                        </button>
                       </div>
                       {/* Descrição do modelo selecionado */}
                       {imageMode === "ideogram" && (
                         <p className="text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
-                          <strong>Ideogram v3 Turbo:</strong> Tipografia nativa embutida na arte — texto renderizado como parte do design, não sobreposto. Ideal para posts com texto de impacto.
+                          <strong>Ideogram v3:</strong> Tipografia nativa na arte — uma zona de texto com qualidade de agência. Logo e handle adicionados pelo compositor depois.
                         </p>
                       )}
                       {imageMode === "imagen4" && (
                         <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                          <strong>Google Imagen 4:</strong> Qualidade fotorrealista premium via Replicate. Melhor para cenas complexas, pessoas e produtos com alto detalhe.
+                          <strong>Imagen 4:</strong> Fotorrealismo premium do Google. Ideal para cenas complexas, pessoas e produtos com alto detalhe.
+                        </p>
+                      )}
+                      {imageMode === "flux_dev" && (
+                        <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                          <strong>Flux Dev:</strong> 12B parâmetros, experimental, gratuito. Boa diversidade criativa para cenários e ambientes.
                         </p>
                       )}
                     </div>
@@ -1749,6 +1767,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       ? "bg-rose-600 hover:bg-rose-700"
                       : imageMode === "imagen4"
                       ? "bg-blue-600 hover:bg-blue-700"
+                      : imageMode === "flux_dev"
+                      ? "bg-emerald-600 hover:bg-emerald-700"
                       : "bg-violet-600 hover:bg-violet-700";
 
                     const label = imgLoading
@@ -1759,6 +1779,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       : imageMode === "fal_depth"  ? "Gerar com Depth Lock"
                       : imageMode === "ideogram"   ? "✍ Gerar com Ideogram v3"
                       : imageMode === "imagen4"    ? "🎨 Gerar com Imagen 4"
+                      : imageMode === "flux_dev"   ? "⚡ Gerar com Flux Dev"
                       : imageMode === "real"       ? "Curar foto com IA"
                       : imageMode === "library"    ? "Usar esta foto"
                       : freepikModel === "seedream" ? "Gerar com Seedream V5"

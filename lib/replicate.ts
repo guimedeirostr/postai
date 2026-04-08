@@ -47,6 +47,7 @@ export type ReplicateImageModel =
   | "google/imagen-4"
   | "black-forest-labs/flux-kontext-pro"
   | "black-forest-labs/flux-1.1-pro"
+  | "black-forest-labs/flux-dev"       // gratuito no Replicate
   | "ideogram-ai/ideogram-v3-turbo";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,6 +66,11 @@ const ASPECT_RATIO: Record<string, Record<string, string>> = {
     reels_cover: "9:16",
   },
   "black-forest-labs/flux-1.1-pro": {
+    feed:        "4:5",
+    stories:     "9:16",
+    reels_cover: "9:16",
+  },
+  "black-forest-labs/flux-dev": {
     feed:        "4:5",
     stories:     "9:16",
     reels_cover: "9:16",
@@ -123,6 +129,9 @@ function buildModelInput(
 
     case "black-forest-labs/flux-1.1-pro":
       return { prompt, aspect_ratio: ar, output_format: "jpg", output_quality: 90 };
+
+    case "black-forest-labs/flux-dev":
+      return { prompt, aspect_ratio: ar, output_format: "jpg", output_quality: 90, go_fast: true };
 
     case "ideogram-ai/ideogram-v3-turbo":
       return {

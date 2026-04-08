@@ -144,13 +144,32 @@ export function buildIdeogramTextPrompt(input: IdeogramTextInput): {
   const { client, headline, basePrompt, toneProfileName } = input;
   const config = resolveIdeogramConfig(toneProfileName, client.segment);
 
+  // ── Limpar basePrompt de referências de texto ────────────────────────────
+  // O visual_prompt às vezes contém "text overlay: X" ou "caption: X" que
+  // conflitam com o texto que o Ideogram vai renderizar.
+  // Removemos essas referências para evitar colisão de zonas de texto.
+  const cleanBasePrompt = basePrompt
+    .replace(/text overlay[^.]*\./gi, "")
+    .replace(/caption[^.]*\./gi, "")
+    .replace(/headline[^.]*\./gi, "")
+    .replace(/logo[^.]*\./gi, "")
+    .replace(/instagram handle[^.]*\./gi, "")
+    .replace(/brand name[^.]*\./gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // ── Prompt limpo e focado — UMA zona de texto apenas ─────────────────────
+  // CRÍTICO: não pedir logo, handle ou múltiplos textos.
+  // O compositor vai sobrepor logo + handle APÓS o Ideogram gerar.
+  // O Ideogram deve renderizar APENAS o visual_headline.
   const prompt = [
-    basePrompt,
-    `Professional Instagram post design for Brazilian market.`,
-    `Text overlay ${config.text_placement}: "${headline}" — ${config.typography_desc}.`,
-    `Brand name "${client.name}" displayed as small branded text element.`,
-    `High-end Brazilian marketing agency quality, pixel-perfect typography.`,
-    `Text is sharp, legible, perfectly rendered. Text reads EXACTLY: "${headline}". No spelling errors.`,
+    cleanBasePrompt,
+    `Professional Instagram post for Brazilian market.`,
+    `ONE text element only, ${config.text_placement}:`,
+    `"${headline}" — ${config.typography_desc}.`,
+    `No other text, no logos, no handles, no brand names, no watermarks.`,
+    `Background is clean and photographic. Text is the only graphic element.`,
+    `High-end agency quality. Text reads EXACTLY: "${headline}". Zero spelling errors.`,
   ].join(" ");
 
   const negative_prompt = [
@@ -161,11 +180,18 @@ export function buildIdeogramTextPrompt(input: IdeogramTextInput): {
     "garbled text",
     "wrong spelling",
     "overlapping text",
+    "multiple text blocks",
+    "two headlines",
+    "secondary text",
     "lorem ipsum",
     "watermark",
+    "logo",
+    "instagram handle",
     "ugly design",
     "low quality",
     "amateurish",
+    "cluttered",
+    "busy layout",
   ].join(", ");
 
   return {
