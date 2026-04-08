@@ -454,6 +454,8 @@ export async function generateWithIdeogramText({
   negative_prompt,
   style_type = "REALISTIC",
   magic_prompt_option = "OFF",
+  image_url,
+  image_weight = 0.75,
   format,
   post_id,
 }: {
@@ -462,6 +464,10 @@ export async function generateWithIdeogramText({
   style_type?:           "REALISTIC" | "DESIGN" | "RENDER_3D" | "ANIME";
   /** OFF é crítico: impede o Ideogram de reescrever o prompt e alterar o texto */
   magic_prompt_option?:  "AUTO" | "ON" | "OFF";
+  /** URL da imagem de referência para img2img conditioning (foto da biblioteca) */
+  image_url?:            string;
+  /** 0.0–1.0 — quanto preservar da imagem de referência (default: 0.75) */
+  image_weight?:         number;
   format:                "feed" | "stories" | "reels_cover";
   post_id:               string;
 }): Promise<{ task_id: string; image_url?: string; done: boolean }> {
@@ -473,6 +479,9 @@ export async function generateWithIdeogramText({
     magic_prompt_option,
     output_format:       "jpg",
     ...(negative_prompt ? { negative_prompt } : {}),
+    // img2img conditioning: envia foto da biblioteca como referência visual
+    // O Ideogram gera uma imagem similar mas com texto nativo embutido
+    ...(image_url ? { image_url, image_weight } : {}),
   };
 
   const pred = await createPrediction("ideogram-ai/ideogram-v3-turbo", input);

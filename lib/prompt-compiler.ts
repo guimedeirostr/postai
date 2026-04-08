@@ -30,7 +30,8 @@ export type ImageProvider =
   | "replicate"
   | "library_direct"
   | "ideogram"
-  | "ideogram_text";
+  | "ideogram_text"
+  | "ideogram_img2img";
 
 export interface CompiledPrompt {
   /** Prompt positivo completo — sempre em inglês */

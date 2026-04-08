@@ -144,24 +144,26 @@ export async function POST(req: NextRequest) {
     const toneProfileName = (post.layer_stack as LayerStack | undefined)?.tone_profile?.name
       ?? (post as Record<string, unknown>).tone_profile_name as string | undefined;
 
-    const IDEOGRAM_AUTO_PROFILES = ["bold_aggressive", "vibrant_pop"];
+    // Ideogram ativo sempre que REPLICATE_API_KEY estiver configurada e não houver override.
+    // Para posts sem foto de biblioteca: txt2img (gera cena + texto juntos).
+    // Para posts com foto de biblioteca: img2img (mantém a foto, embute o texto).
     const shouldAutoIdeogram =
       !providerOverride &&
       !process.env.IMAGE_PROVIDER &&
-      !libraryImageUrl &&
-      isReplicateEnabled() &&
-      IDEOGRAM_AUTO_PROFILES.includes(toneProfileName ?? "");
+      isReplicateEnabled();
 
+    // Para posts SEM foto de biblioteca: Ideogram txt2img quando REPLICATE disponível.
+    // Para posts COM foto de biblioteca: Ideogram img2img já é tratado inline no bloco library_direct.
     const resolvedProvider = (
       providerOverride
       ?? process.env.IMAGE_PROVIDER
-      ?? (shouldAutoIdeogram ? "ideogram_text" : undefined)
+      ?? (shouldAutoIdeogram && !libraryImageUrl ? "ideogram_text" : undefined)
       ?? (post.image_provider as string | undefined)
       ?? "freepik"
     ) as ImageProvider;
 
-    if (shouldAutoIdeogram) {
-      console.log(`[generate-image] Auto-ativando Ideogram por tone_profile="${toneProfileName}"`);
+    if (shouldAutoIdeogram && !libraryImageUrl) {
+      console.log(`[generate-image] Auto-ativando Ideogram txt2img (tone=${toneProfileName ?? "none"})`);
     }
 
     // ── Compilar prompt otimizado para o provider ──────────────────────────────
@@ -183,6 +185,70 @@ export async function POST(req: NextRequest) {
     if (libraryImageUrl) {
       const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
       const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
+
+      // ── PATH 0: Ideogram img2img — tipografia nativa sobre foto real ───────
+      // O Ideogram recebe a foto da biblioteca como referência (image_url) e
+      // gera uma arte com o texto embutido nativamente — qualidade tipográfica
+      // de agência, sem precisar do compositor.
+      // image_weight=0.75 preserva 75% do visual original da foto.
+      // Fallback: Chrome renderer (PATH A) se o Ideogram falhar.
+      if (isReplicateEnabled()) {
+        try {
+          const headline = (post.visual_headline ?? post.headline ?? "") as string;
+          const { prompt: ideogramPrompt, negative_prompt, style_type, magic_prompt_option } =
+            buildIdeogramTextPrompt({
+              client,
+              headline,
+              basePrompt,
+              toneProfileName,
+            });
+
+          console.log(`[generate-image/ideogram-img2img] Iniciando com foto da biblioteca — style=${style_type} tone=${toneProfileName ?? "none"}`);
+
+          const result = await generateWithIdeogramText({
+            prompt:              ideogramPrompt,
+            negative_prompt,
+            style_type,
+            magic_prompt_option,
+            image_url:           libraryImageUrl,   // ← foto real como referência
+            image_weight:        0.75,
+            format:              (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
+            post_id,
+          });
+
+          if (result.done && result.image_url) {
+            await postDoc.ref.update({
+              image_url:      result.image_url,
+              composed_url:   result.image_url,
+              image_provider: "ideogram_img2img",
+              status:         "ready",
+            });
+            console.log(`[generate-image/ideogram-img2img] Sucesso: ${result.image_url}`);
+            return NextResponse.json({
+              image_url:    result.image_url,
+              composed_url: result.image_url,
+              post_id,
+              provider:     "ideogram_img2img",
+            });
+          }
+
+          // Assíncrono — frontend faz polling em check-image
+          if (result.task_id) {
+            await postDoc.ref.update({
+              image_url:       libraryImageUrl,
+              freepik_task_id: result.task_id,
+              image_provider:  "ideogram_img2img",
+            });
+            return NextResponse.json({
+              task_id:  result.task_id,
+              post_id,
+              provider: "ideogram_img2img",
+            });
+          }
+        } catch (ideogramErr) {
+          console.warn("[generate-image/ideogram-img2img] Falhou, continuando para Chrome renderer:", ideogramErr);
+        }
+      }
 
       // ── PATH A: Chromium renderer (qualidade agência) ─────────────────────
       // Usa o HTML template gerado pelo Claude Vision a partir da referência.
