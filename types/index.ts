@@ -59,7 +59,7 @@ export interface DesignExample {
   layout_prompt:        string;
   visual_headline_style: string;
   pilar:                string;
-  format:               "feed" | "stories" | "reels_cover";
+  format:               "feed" | "stories" | "reels_cover" | "carousel";
   description:          string;
   color_mood:           string;
   composition_zone:     "left" | "right" | "bottom" | "top" | "center";
@@ -234,7 +234,7 @@ export interface ReferenceDNA {
   /** Descrição em pt-BR do que torna esta arte uma boa referência */
   description:          string;
   pilar:                string;
-  format:               "feed" | "stories" | "reels_cover";
+  format:               "feed" | "stories" | "reels_cover" | "carousel";
   visual_headline_style: string;
   /** Onde o logo da marca aparece nesta referência (extraído via Claude Vision) */
   logo_placement?:       LogoPlacement;

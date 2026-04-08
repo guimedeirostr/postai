@@ -50,101 +50,107 @@ export async function POST(
 
     // ── Ler body ──────────────────────────────────────────────────────────────
     const body = await req.json() as {
-      image_url?:    string;
-      source_url?:   string;
-      image_base64?: string;  // upload direto do browser — preferido
-      image_type?:   string;
-      format?:       "feed" | "stories" | "reels_cover";
+      image_url?:       string;
+      source_url?:      string;
+      image_base64?:    string;
+      image_type?:      string;
+      format?:          "feed" | "stories" | "reels_cover" | "carousel";
+      // Carrossel: array de slides (até 20)
+      carousel_slides?: { b64: string; mime: string }[];
     };
 
-    if (!body.image_base64 && !body.image_url && !body.source_url) {
+    const isCarousel    = body.format === "carousel";
+    const carouselSlides = body.carousel_slides ?? [];
+
+    if (isCarousel) {
+      if (carouselSlides.length === 0) {
+        return NextResponse.json({ error: "Envie pelo menos 1 slide para analisar o carrossel." }, { status: 400 });
+      }
+    } else if (!body.image_base64 && !body.image_url && !body.source_url) {
       return NextResponse.json({ error: "image_base64, image_url ou source_url é obrigatório" }, { status: 400 });
     }
 
-    // ── Resolver base64 da imagem ─────────────────────────────────────────────
-    let base64Data: string;
-    let mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+    // ── Resolver imagem(ns) ────────────────────────────────────────────────────
+    type MediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+    // Constrói content blocks de imagem para o Claude
+    let imageBlocks: Anthropic.ImageBlockParam[];
     let resolvedImageUrl = "";
+    // Para o html_template usamos só a primeira imagem (ou a única)
+    let firstB64: string;
+    let firstMime: MediaType;
 
-    if (body.image_base64) {
-      // Upload direto — sem fetch externo, sempre funciona
-      base64Data    = body.image_base64;
-      mediaType     = (body.image_type ?? "image/jpeg") as typeof mediaType;
-      resolvedImageUrl = ""; // sem URL pública para retornar
+    if (isCarousel) {
+      // Limita a 20 slides para controlar custo/latência
+      const limited = carouselSlides.slice(0, 20);
+      imageBlocks = limited.map(s => ({
+        type: "image" as const,
+        source: {
+          type:       "base64" as const,
+          media_type: (s.mime || "image/jpeg") as MediaType,
+          data:       s.b64,
+        },
+      }));
+      firstB64  = limited[0].b64;
+      firstMime = (limited[0].mime || "image/jpeg") as MediaType;
+    } else if (body.image_base64) {
+      firstB64  = body.image_base64;
+      firstMime = (body.image_type ?? "image/jpeg") as MediaType;
+      imageBlocks = [{ type: "image", source: { type: "base64", media_type: firstMime, data: firstB64 } }];
     } else {
-      // Fallback: buscar por URL
       let imageUrl = body.image_url ?? "";
-
       if (!imageUrl && body.source_url) {
         if (/instagram\.com/.test(body.source_url)) {
           return NextResponse.json(
-            { error: "URLs do Instagram bloqueiam acesso server-side. Use o upload de imagem: salve o post como imagem e faça upload." },
+            { error: "URLs do Instagram bloqueiam acesso server-side. Use o upload de imagem." },
             { status: 422 }
           );
         }
         imageUrl = body.source_url;
       }
-
       const imgResponse = await fetch(imageUrl, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; PostAI/1.0)" },
         signal:  AbortSignal.timeout(15_000),
       });
       if (!imgResponse.ok) {
-        return NextResponse.json(
-          { error: `Não foi possível baixar a imagem: HTTP ${imgResponse.status}` },
-          { status: 422 }
-        );
+        return NextResponse.json({ error: `Não foi possível baixar a imagem: HTTP ${imgResponse.status}` }, { status: 422 });
       }
-
       const contentType = imgResponse.headers.get("content-type") ?? "image/jpeg";
-      mediaType         = (contentType.split(";")[0].trim()) as typeof mediaType;
-      const imgBuffer   = await imgResponse.arrayBuffer();
-      base64Data        = Buffer.from(imgBuffer).toString("base64");
+      firstMime         = (contentType.split(";")[0].trim()) as MediaType;
+      firstB64          = Buffer.from(await imgResponse.arrayBuffer()).toString("base64");
       resolvedImageUrl  = imageUrl;
-    };
+      imageBlocks       = [{ type: "image", source: { type: "base64", media_type: firstMime, data: firstB64 } }];
+    }
+
+    // Prefixo de contexto para carrossel
+    const formatHint = body.format
+      ? `\n\nFormato: ${body.format}${isCarousel && carouselSlides.length > 1 ? ` (${Math.min(carouselSlides.length, 20)} slides do mesmo carrossel — analise a sequência completa e extraia o padrão visual consistente entre os slides)` : ""}`
+      : "";
 
     // ── Chamar Claude Vision em paralelo: DNA + HTML template ─────────────────
-    // Ambas as chamadas recebem a mesma imagem e retornam em paralelo para
-    // minimizar latência total. O html_template alimenta o Chromium renderer.
     const [message, htmlMessage] = await Promise.all([
       anthropic.messages.create({
         model:      MODEL,
         max_tokens: 1600,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: mediaType, data: base64Data },
-              },
-              {
-                type: "text",
-                text: buildReferenceDNAPrompt()
-                  + (body.format ? `\n\nFormato inferido: ${body.format}` : ""),
-              },
-            ],
-          },
-        ],
+        messages: [{
+          role: "user",
+          content: [
+            ...imageBlocks,
+            { type: "text", text: buildReferenceDNAPrompt() + formatHint },
+          ],
+        }],
       }),
       anthropic.messages.create({
         model:      MODEL,
         max_tokens: 4096,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: mediaType, data: base64Data },
-              },
-              {
-                type: "text",
-                text: buildHtmlTemplatePrompt(),
-              },
-            ],
-          },
-        ],
+        messages: [{
+          role: "user",
+          content: [
+            // HTML template: só a primeira imagem (ou slide de capa)
+            { type: "image", source: { type: "base64", media_type: firstMime, data: firstB64 } },
+            { type: "text", text: buildHtmlTemplatePrompt() },
+          ],
+        }],
       }),
     ]);
 
@@ -187,7 +193,7 @@ export async function POST(
     const description           = parsed.description ?? "";
     const color_mood            = parsed.color_mood ?? "";
     const pilar                 = parsed.pilar ?? "Produto";
-    const format                = (body.format ?? parsed.format ?? "feed") as "feed" | "stories" | "reels_cover";
+    const format                = (body.format ?? parsed.format ?? "feed") as "feed" | "stories" | "reels_cover" | "carousel";
     const composition_zone      = (parsed.composition_zone ?? "bottom") as DesignExample["composition_zone"];
 
     // Campos ricos — opcionais, podem faltar se Claude simplificar

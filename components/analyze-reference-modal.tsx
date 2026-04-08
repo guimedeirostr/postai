@@ -3,16 +3,13 @@
 /**
  * AnalyzeReferenceModal
  *
- * Permite que o usuário cole a URL de uma imagem do Instagram (ou qualquer
- * imagem pública) e o Claude faz a engenharia reversa visual — extraindo
- * paleta de cores, tipografia, composição, estilo — e salva como
- * design_example do cliente no Firestore.
- *
- * Integra o Analisador Visual Blueprint diretamente no PostAI.
+ * - Formato Feed/Stories/Reels: upload de 1 imagem, análise individual
+ * - Formato Carrossel: upload de até 20 slides, Claude analisa todos juntos
+ *   e extrai o padrão visual consolidado da sequência
  */
 
-import { useState, useEffect } from "react";
-import { X, ScanSearch, Loader2, Check, ExternalLink, Palette, Type, Layout, Camera, Dna, Sparkles, ShieldCheck } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, ScanSearch, Loader2, Check, ExternalLink, Palette, Type, Layout, Camera, Dna, Sparkles, ShieldCheck, Upload, GalleryHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +35,8 @@ interface AnalysisResult {
   blueprint:             Record<string, unknown>;
 }
 
+interface SlideImage { b64: string; mime: string; preview: string; }
+
 const FORMAT_OPTIONS = [
   { value: "feed",        label: "Feed",      icon: "🖼️" },
   { value: "carousel",    label: "Carrossel", icon: "🎠" },
@@ -55,20 +54,59 @@ const PILAR_COLORS: Record<string, string> = {
   "Trend":        "bg-purple-100 text-purple-700",
 };
 
+const MAX_CAROUSEL_SLIDES = 20;
+
+// Comprime uma imagem para base64 (max 1200px, JPEG 85%)
+function compressToB64(file: File): Promise<SlideImage> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX = 1200;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else                { width  = Math.round(width  * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      resolve({ b64: dataUrl.split(",")[1], mime: "image/jpeg", preview: dataUrl });
+    };
+    img.onerror = () => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const [header, b64] = dataUrl.split(",");
+        const mime = header.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
+        resolve({ b64, mime, preview: dataUrl });
+      };
+      reader.readAsDataURL(file);
+    };
+    img.src = objectUrl;
+  });
+}
+
 export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
-  // Tab: "add" = adicionar referência individual, "synthesize" = sintetizar DNA
   const [tab, setTab] = useState<"add" | "synthesize">("add");
 
-  // ── Estado — Adicionar Referência ─────────────────────────────────────────
-  const [postUrl,        setPostUrl]        = useState("");
-  const [imageUrl,       setImageUrl]       = useState("");
-  const [uploadB64,      setUploadB64]      = useState<string | null>(null);
-  const [uploadMime,     setUploadMime]     = useState("image/jpeg");
-  const [uploadPreview,  setUploadPreview]  = useState<string | null>(null);
-  const [format,         setFormat]         = useState("feed");
-  const [loading,        setLoading]        = useState(false);
-  const [error,          setError]          = useState<string | null>(null);
-  const [result,         setResult]         = useState<AnalysisResult | null>(null);
+  // ── Estado — Adicionar Referência (single) ────────────────────────────────
+  const [postUrl,       setPostUrl]       = useState("");
+  const [imageUrl,      setImageUrl]      = useState("");
+  const [uploadB64,     setUploadB64]     = useState<string | null>(null);
+  const [uploadMime,    setUploadMime]    = useState("image/jpeg");
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [format,        setFormat]        = useState("feed");
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState<string | null>(null);
+  const [result,        setResult]        = useState<AnalysisResult | null>(null);
+
+  // ── Estado — Carrossel (multi-imagem) ────────────────────────────────────
+  const [carouselSlides, setCarouselSlides] = useState<SlideImage[]>([]);
+  const fileRef        = useRef<HTMLInputElement>(null);
+  const carouselRef    = useRef<HTMLInputElement>(null);
 
   // ── Estado — Síntese de DNA ───────────────────────────────────────────────
   const [currentDna,       setCurrentDna]       = useState<BrandDNA | null>(null);
@@ -78,7 +116,11 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
   const [synthesisError,   setSynthesisError]   = useState<string | null>(null);
   const [synthesisMessage, setSynthesisMessage] = useState<string | null>(null);
 
-  // Carrega DNA atual quando abre aba de síntese
+  // Reset slides when switching away from carousel
+  useEffect(() => {
+    if (format !== "carousel") setCarouselSlides([]);
+  }, [format]);
+
   useEffect(() => {
     if (tab !== "synthesize") return;
     setDnaLoading(true);
@@ -99,10 +141,7 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
     try {
       const res  = await fetch(`/api/clients/${client.id}/synthesize-dna`, { method: "POST" });
       const data = await res.json() as { dna?: BrandDNA; message?: string; error?: string };
-      if (!res.ok) {
-        setSynthesisError(data.error ?? "Erro na síntese");
-        return;
-      }
+      if (!res.ok) { setSynthesisError(data.error ?? "Erro na síntese"); return; }
       setCurrentDna(data.dna ?? null);
       setSynthesisMessage(data.message ?? "DNA sintetizado com sucesso!");
       onSaved();
@@ -113,40 +152,27 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
     }
   }
 
+  // ── Upload helpers ────────────────────────────────────────────────────────
   function handleUploadFile(file: File) {
     setError(null);
     setPostUrl("");
-    // Compress via canvas before base64 — prevents 413 on large photos
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const MAX = 1200;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-        else                { width  = Math.round(width  * MAX / height); height = MAX; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      setUploadB64(dataUrl.split(",")[1]);
-      setUploadMime("image/jpeg");
-      setUploadPreview(dataUrl);
-    };
-    img.onerror = () => {
-      // fallback: use FileReader without compression
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setUploadB64(dataUrl.split(",")[1]);
-        setUploadMime(file.type || "image/jpeg");
-        setUploadPreview(dataUrl);
-      };
-      reader.readAsDataURL(file);
-    };
-    img.src = objectUrl;
+    compressToB64(file).then(({ b64, mime, preview }) => {
+      setUploadB64(b64);
+      setUploadMime(mime);
+      setUploadPreview(preview);
+    });
+  }
+
+  async function handleCarouselFiles(files: File[]) {
+    setError(null);
+    const remaining = MAX_CAROUSEL_SLIDES - carouselSlides.length;
+    const toProcess = files.slice(0, remaining);
+    const compressed = await Promise.all(toProcess.map(compressToB64));
+    setCarouselSlides(prev => [...prev, ...compressed].slice(0, MAX_CAROUSEL_SLIDES));
+  }
+
+  function removeCarouselSlide(idx: number) {
+    setCarouselSlides(prev => prev.filter((_, i) => i !== idx));
   }
 
   function clearUpload() {
@@ -155,41 +181,40 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
     setUploadPreview(null);
   }
 
+  // ── Analyze ───────────────────────────────────────────────────────────────
   async function handleAnalyze() {
-    if (!uploadB64 && !postUrl.trim()) return;
+    const isCarousel = format === "carousel";
+    if (isCarousel && carouselSlides.length === 0) return;
+    if (!isCarousel && !uploadB64 && !postUrl.trim()) return;
+
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      const body: Record<string, string> = { format };
+      let body: Record<string, unknown> = { format };
 
-      if (uploadB64) {
-        // Upload direto — sem fetch externo, funciona sempre
+      if (isCarousel) {
+        body.carousel_slides = carouselSlides.map(s => ({ b64: s.b64, mime: s.mime }));
+      } else if (uploadB64) {
         body.image_base64 = uploadB64;
         body.image_type   = uploadMime;
       } else {
         const trimmed = postUrl.trim();
-        if (/instagram\.com\/(p|reel|tv)\//.test(trimmed)) {
-          body.source_url = trimmed;
-        } else {
-          body.image_url = trimmed;
-        }
+        if (/instagram\.com\/(p|reel|tv)\//.test(trimmed)) body.source_url = trimmed;
+        else body.image_url = trimmed;
       }
 
-      const res = await fetch(`/api/clients/${client.id}/analyze-reference`, {
+      const res  = await fetch(`/api/clients/${client.id}/analyze-reference`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(body),
       });
 
       const data = await res.json() as AnalysisResult & { error?: string; image_url?: string };
-      if (!res.ok) {
-        setError(data.error ?? "Erro na análise");
-        return;
-      }
+      if (!res.ok) { setError(data.error ?? "Erro na análise"); return; }
 
-      setImageUrl(data.image_url ?? uploadPreview ?? postUrl);
+      setImageUrl(data.image_url ?? "");
       setResult(data);
       onSaved();
     } catch {
@@ -204,12 +229,17 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
     setPostUrl("");
     setImageUrl("");
     clearUpload();
+    setCarouselSlides([]);
     setError(null);
     setFormat("feed");
   }
 
-  const metadata = result?.blueprint?.metadata as Record<string, string | string[]> | undefined;
+  const metadata       = result?.blueprint?.metadata as Record<string, string | string[]> | undefined;
   const dominantColors = (metadata?.dominant_colors as string[] | undefined) ?? [];
+  const isCarousel     = format === "carousel";
+  const canAnalyze     = isCarousel
+    ? carouselSlides.length > 0
+    : (!!uploadB64 || !!postUrl.trim());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -234,20 +264,16 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
 
         {/* Tab switcher */}
         <div className="flex gap-1 p-1.5 bg-slate-100 mx-6 mt-4 rounded-xl">
-          <button
-            onClick={() => setTab("add")}
+          <button onClick={() => setTab("add")}
             className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               tab === "add" ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
+            }`}>
             <ScanSearch className="w-3.5 h-3.5" /> Adicionar Referência
           </button>
-          <button
-            onClick={() => setTab("synthesize")}
+          <button onClick={() => setTab("synthesize")}
             className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               tab === "synthesize" ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
+            }`}>
             <Dna className="w-3.5 h-3.5" /> Sintetizar DNA
             {currentDna && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />}
           </button>
@@ -265,7 +291,6 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </div>
               ) : (
                 <>
-                  {/* Status atual */}
                   <div className={`p-4 rounded-xl border ${currentDna ? "bg-emerald-50 border-emerald-100" : "bg-slate-50 border-slate-200"}`}>
                     <div className="flex items-start gap-3">
                       <Dna className={`w-5 h-5 mt-0.5 flex-shrink-0 ${currentDna ? "text-emerald-600" : "text-slate-400"}`} />
@@ -289,25 +314,20 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                     </div>
                   </div>
 
-                  {/* Como funciona */}
                   <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl space-y-2">
                     <p className="text-xs font-semibold text-violet-700 flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" /> Como funciona o Machine Learning
                     </p>
                     <p className="text-xs text-violet-600 leading-relaxed">
-                      O agente de síntese analisa <strong>visualmente</strong> todos os posts de referência desta marca — vê as imagens reais + os metadados — e extrai os <strong>padrões consistentes</strong>: onde o texto sempre vive, qual é o background típico, o estilo fotográfico, a hierarquia tipográfica.
+                      O agente de síntese analisa <strong>visualmente</strong> todos os posts de referência desta marca e extrai os <strong>padrões consistentes</strong>: onde o texto sempre vive, qual é o background típico, o estilo fotográfico, a hierarquia tipográfica.
                     </p>
                     <p className="text-xs text-violet-600 leading-relaxed">
                       O resultado alimenta o <strong>Art Director</strong> como lei primária em toda geração futura. Quanto mais referências, mais preciso o DNA.
                     </p>
                   </div>
 
-                  {/* Botão de síntese */}
-                  <Button
-                    onClick={handleSynthesize}
-                    disabled={synthesizing || examplesCount < 3}
-                    className="w-full bg-violet-600 hover:bg-violet-700 text-white"
-                  >
+                  <Button onClick={handleSynthesize} disabled={synthesizing || examplesCount < 3}
+                    className="w-full bg-violet-600 hover:bg-violet-700 text-white">
                     {synthesizing
                       ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analisando {examplesCount} posts com IA...</>
                       : currentDna
@@ -315,9 +335,7 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                       : <><Dna className="w-4 h-4 mr-2" />Sintetizar DNA da Marca</>}
                   </Button>
 
-                  {synthesisError && (
-                    <p className="text-xs text-red-500 text-center">{synthesisError}</p>
-                  )}
+                  {synthesisError   && <p className="text-xs text-red-500 text-center">{synthesisError}</p>}
                   {synthesisMessage && (
                     <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
                       <Check className="w-4 h-4 text-emerald-600" />
@@ -325,18 +343,15 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                     </div>
                   )}
 
-                  {/* Resultado do DNA */}
                   {currentDna && (
                     <div className="space-y-3">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> DNA Sintetizado
                       </p>
-
                       <div className="p-3 bg-slate-50 rounded-xl">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Identidade Visual</p>
                         <p className="text-xs text-slate-700 leading-relaxed italic">{currentDna.brand_visual_identity}</p>
                       </div>
-
                       <div className="grid grid-cols-2 gap-2">
                         <div className="p-3 bg-slate-50 rounded-xl">
                           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Zona Dominante</p>
@@ -347,7 +362,6 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                           <p className="text-sm font-bold text-slate-800">{currentDna.confidence_score}/100</p>
                         </div>
                       </div>
-
                       <div className="p-3 bg-slate-50 rounded-xl">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Regras da Marca</p>
                         <ul className="space-y-1">
@@ -359,15 +373,14 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                           ))}
                         </ul>
                       </div>
-
                       <div className="grid grid-cols-1 gap-2">
-                        {[
+                        {([
                           ["Posicionamento de Texto", currentDna.text_placement_pattern],
                           ["Fundo nos Textos",        currentDna.background_treatment],
                           ["Tipografia",              currentDna.typography_pattern],
                           ["Fotografia",              currentDna.photography_style],
                           ["Cores",                   currentDna.color_treatment],
-                        ].map(([label, value]) => (
+                        ] as [string, string][]).map(([label, value]) => (
                           <div key={label} className="p-3 bg-slate-50 rounded-xl">
                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">{label}</p>
                             <p className="text-xs text-slate-700 leading-relaxed">{value}</p>
@@ -381,78 +394,16 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
             </div>
           )}
 
-          {tab === "add" && !result ? (
+          {/* ── TAB: Adicionar Referência ── */}
+          {tab === "add" && !result && (
             <>
-              {/* Upload zone — método principal */}
-              <div className="space-y-1.5">
-                <Label>Imagem de referência *</Label>
-                <label
-                  className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
-                    uploadB64
-                      ? "border-violet-400 bg-violet-50"
-                      : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
-                  }`}
-                  onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
-                  onDrop={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const file = e.dataTransfer.files?.[0];
-                    if (file && file.type.startsWith("image/")) handleUploadFile(file);
-                  }}
-                >
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={e => { if (e.target.files?.[0]) handleUploadFile(e.target.files[0]); }}
-                  />
-                  {uploadPreview ? (
-                    <>
-                      <img src={uploadPreview} alt="Referência" className="w-14 h-14 object-cover rounded-lg flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-violet-700">Imagem carregada ✓</p>
-                        <p className="text-xs text-slate-400">Clique para trocar</p>
-                      </div>
-                      <button type="button" onClick={e => { e.preventDefault(); clearUpload(); }}
-                        className="text-slate-400 hover:text-red-500 flex-shrink-0">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                        <Camera className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-600">Arraste ou clique para enviar</p>
-                        <p className="text-xs text-slate-400">Salve o post do Instagram como imagem e faça upload</p>
-                      </div>
-                    </>
-                  )}
-                </label>
-              </div>
-
-              {/* URL — fallback para imagens diretas */}
-              {!uploadB64 && (
-                <div className="space-y-1.5">
-                  <Label className="text-slate-500">Ou URL direta da imagem</Label>
-                  <Input
-                    value={postUrl}
-                    onChange={e => setPostUrl(e.target.value)}
-                    placeholder="https://... (não funciona com links do Instagram)"
-                    type="url"
-                  />
-                  <p className="text-xs text-amber-600">⚠️ URLs do Instagram bloqueiam acesso server-side — prefira o upload acima.</p>
-                </div>
-              )}
-
-              {/* Formato */}
+              {/* Formato — sempre visível primeiro */}
               <div className="space-y-2">
                 <Label>Formato</Label>
                 <div className="grid grid-cols-4 gap-2">
                   {FORMAT_OPTIONS.map(opt => (
                     <button key={opt.value} type="button"
-                      onClick={() => setFormat(opt.value)}
+                      onClick={() => { setFormat(opt.value); clearUpload(); setPostUrl(""); setError(null); }}
                       className={`p-2.5 rounded-xl border-2 text-xs font-semibold transition-all flex flex-col items-center gap-1 ${
                         format === opt.value
                           ? "border-violet-500 bg-violet-50 text-violet-700"
@@ -465,16 +416,152 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </div>
               </div>
 
-              {/* Preview URL direta */}
-              {!uploadB64 && postUrl && (
-                <div className="rounded-xl overflow-hidden border bg-slate-50 flex items-center justify-center min-h-24">
-                  <img
-                    src={postUrl}
-                    alt="Preview"
-                    className="max-h-48 object-contain"
-                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  />
+              {/* ── CARROSSEL: upload múltiplo ── */}
+              {isCarousel ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Slides do carrossel *</Label>
+                    <span className="text-xs text-slate-400">
+                      {carouselSlides.length}/{MAX_CAROUSEL_SLIDES} slides
+                    </span>
+                  </div>
+
+                  {/* Thumbnails */}
+                  {carouselSlides.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {carouselSlides.map((slide, i) => (
+                        <div key={i} className="relative w-16 h-20 rounded-lg overflow-hidden border border-violet-200 flex-none">
+                          <img src={slide.preview} alt={`Slide ${i + 1}`} className="w-full h-full object-cover" />
+                          <button type="button" onClick={() => removeCarouselSlide(i)}
+                            className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white hover:bg-red-600 transition-colors">
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                          <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/50 text-white px-1 rounded font-bold">
+                            {i + 1}
+                          </span>
+                        </div>
+                      ))}
+
+                      {/* Botão adicionar mais */}
+                      {carouselSlides.length < MAX_CAROUSEL_SLIDES && (
+                        <label
+                          className="w-16 h-20 rounded-lg border-2 border-dashed border-violet-200 flex flex-col items-center justify-center cursor-pointer hover:border-violet-400 hover:bg-violet-50 transition-colors text-slate-400 flex-none"
+                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                          onDrop={e => {
+                            e.preventDefault(); e.stopPropagation();
+                            const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+                            if (files.length) handleCarouselFiles(files);
+                          }}>
+                          <Upload className="w-4 h-4 opacity-60" />
+                          <span className="text-[9px] mt-0.5 font-medium">+ Mais</span>
+                          <input ref={carouselRef} type="file" accept="image/*" multiple className="hidden"
+                            onChange={e => {
+                              const files = Array.from(e.target.files ?? []);
+                              if (files.length) handleCarouselFiles(files);
+                              e.target.value = "";
+                            }} />
+                        </label>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Drop zone inicial */}
+                  {carouselSlides.length === 0 && (
+                    <label
+                      className="flex flex-col items-center justify-center gap-3 py-10 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-violet-400 hover:bg-violet-50/40 transition-colors"
+                      onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={e => {
+                        e.preventDefault(); e.stopPropagation();
+                        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+                        if (files.length) handleCarouselFiles(files);
+                      }}>
+                      <div className="w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center">
+                        <GalleryHorizontal className="w-6 h-6 text-violet-500" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-slate-700">Arraste os slides ou clique para selecionar</p>
+                        <p className="text-xs text-slate-400 mt-1">Selecione múltiplos arquivos de uma vez — até {MAX_CAROUSEL_SLIDES} slides</p>
+                        <p className="text-xs text-slate-400">Salve cada slide do Instagram como imagem e faça upload</p>
+                      </div>
+                      <input type="file" accept="image/*" multiple className="hidden"
+                        onChange={e => {
+                          const files = Array.from(e.target.files ?? []);
+                          if (files.length) handleCarouselFiles(files);
+                        }} />
+                    </label>
+                  )}
+
+                  {carouselSlides.length > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                      <GalleryHorizontal className="w-4 h-4 text-violet-500 flex-none" />
+                      <p className="text-xs text-violet-700">
+                        <strong>{carouselSlides.length} slide{carouselSlides.length > 1 ? "s" : ""}</strong> prontos — o Claude vai analisar a sequência completa e extrair o padrão visual do carrossel.
+                      </p>
+                    </div>
+                  )}
                 </div>
+
+              ) : (
+                /* ── SINGLE IMAGE: upload + URL ── */
+                <>
+                  <div className="space-y-1.5">
+                    <Label>Imagem de referência *</Label>
+                    <label
+                      className={`flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+                        uploadB64
+                          ? "border-violet-400 bg-violet-50"
+                          : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/40"
+                      }`}
+                      onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={e => {
+                        e.preventDefault(); e.stopPropagation();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file && file.type.startsWith("image/")) handleUploadFile(file);
+                      }}>
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={e => { if (e.target.files?.[0]) handleUploadFile(e.target.files[0]); }} />
+                      {uploadPreview ? (
+                        <>
+                          <img src={uploadPreview} alt="Referência" className="w-14 h-14 object-cover rounded-lg flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-violet-700">Imagem carregada ✓</p>
+                            <p className="text-xs text-slate-400">Clique para trocar</p>
+                          </div>
+                          <button type="button" onClick={e => { e.preventDefault(); clearUpload(); }}
+                            className="text-slate-400 hover:text-red-500 flex-shrink-0">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                            <Camera className="w-5 h-5 text-slate-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600">Arraste ou clique para enviar</p>
+                            <p className="text-xs text-slate-400">Salve o post do Instagram como imagem e faça upload</p>
+                          </div>
+                        </>
+                      )}
+                    </label>
+                  </div>
+
+                  {!uploadB64 && (
+                    <div className="space-y-1.5">
+                      <Label className="text-slate-500">Ou URL direta da imagem</Label>
+                      <Input value={postUrl} onChange={e => setPostUrl(e.target.value)}
+                        placeholder="https://... (não funciona com links do Instagram)" type="url" />
+                      <p className="text-xs text-amber-600">⚠️ URLs do Instagram bloqueiam acesso server-side — prefira o upload acima.</p>
+                    </div>
+                  )}
+
+                  {!uploadB64 && postUrl && (
+                    <div className="rounded-xl overflow-hidden border bg-slate-50 flex items-center justify-center min-h-24">
+                      <img src={postUrl} alt="Preview" className="max-h-48 object-contain"
+                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    </div>
+                  )}
+                </>
               )}
 
               {error && (
@@ -483,10 +570,11 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </p>
               )}
             </>
-          ) : tab === "add" && result ? (
-            /* ── Resultado da análise ── */
+          )}
+
+          {/* ── RESULTADO DA ANÁLISE ── */}
+          {tab === "add" && result && (
             <div className="space-y-4">
-              {/* Sucesso banner */}
               <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-100 rounded-xl">
                 <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
                   <Check className="w-4 h-4 text-green-600" />
@@ -497,37 +585,35 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </div>
               </div>
 
-              {/* Preview imagem — usa base64 local (sempre disponível) */}
+              {/* Preview da imagem */}
               {uploadPreview ? (
                 <div className="rounded-xl overflow-hidden border bg-slate-50 flex items-center justify-center">
                   <img src={uploadPreview} alt="Referência analisada" className="max-h-56 object-contain" />
                 </div>
+              ) : carouselSlides.length > 0 ? (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {carouselSlides.map((s, i) => (
+                    <div key={i} className="flex-none w-20 h-24 rounded-lg overflow-hidden border border-slate-200">
+                      <img src={s.preview} alt={`Slide ${i + 1}`} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
               ) : imageUrl ? (
                 <div className="rounded-xl overflow-hidden border bg-slate-50 flex items-center justify-center min-h-24">
-                  <img
-                    src={imageUrl}
-                    alt="Referência analisada"
-                    className="max-h-56 object-contain"
+                  <img src={imageUrl} alt="Referência analisada" className="max-h-56 object-contain"
                     onError={e => {
                       const el = e.currentTarget.parentElement;
-                      if (el) el.innerHTML = `
-                        <div class="flex flex-col items-center gap-2 py-8 text-slate-400">
-                          <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                          <p class="text-sm font-medium text-slate-500">Referência salva com sucesso</p>
-                          <p class="text-xs text-slate-400">Preview indisponível — a análise foi salva normalmente</p>
-                        </div>`;
-                    }}
-                  />
+                      if (el) el.innerHTML = `<div class="flex flex-col items-center gap-2 py-8 text-slate-400"><svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p class="text-sm font-medium text-slate-500">Referência salva com sucesso</p><p class="text-xs text-slate-400">Preview indisponível — a análise foi salva normalmente</p></div>`;
+                    }} />
                 </div>
               ) : (
                 <div className="rounded-xl border bg-slate-50 flex flex-col items-center gap-2 py-8 text-slate-400">
                   <Camera className="w-10 h-10 opacity-30" />
                   <p className="text-sm font-medium text-slate-500">Referência salva com sucesso</p>
-                  <p className="text-xs text-slate-400">A análise foi salva e está disponível para síntese</p>
                 </div>
               )}
 
-              {/* Pilar + formato + zone */}
+              {/* Tags */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full ${PILAR_COLORS[result.pilar] ?? "bg-slate-100 text-slate-600"}`}>
                   {result.pilar}
@@ -537,15 +623,14 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                   {FORMAT_OPTIONS.find(f => f.value === result.format)?.label ?? result.format}
                 </Badge>
                 <Badge variant="outline" className="text-xs capitalize">{result.composition_zone}</Badge>
-                {postUrl && (
-                  <a href={postUrl} target="_blank" rel="noopener"
+                {!isCarousel && imageUrl && (
+                  <a href={imageUrl} target="_blank" rel="noopener"
                     className="ml-auto text-xs text-violet-600 hover:underline flex items-center gap-1">
-                    <ExternalLink className="w-3 h-3" /> Ver post original
+                    <ExternalLink className="w-3 h-3" /> Ver original
                   </a>
                 )}
               </div>
 
-              {/* Descrição do estilo */}
               <div className="p-4 bg-slate-50 rounded-xl space-y-1">
                 <p className="text-xs font-medium text-slate-400 uppercase tracking-wide flex items-center gap-1">
                   <Layout className="w-3.5 h-3.5" /> Estilo visual
@@ -554,7 +639,6 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 <p className="text-xs text-slate-400 italic">{result.color_mood}</p>
               </div>
 
-              {/* Cores dominantes */}
               {dominantColors.length > 0 && (
                 <div className="p-4 bg-slate-50 rounded-xl space-y-2">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wide flex items-center gap-1">
@@ -571,7 +655,6 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </div>
               )}
 
-              {/* Visual headline style */}
               {result.visual_headline_style && (
                 <div className="p-4 bg-slate-50 rounded-xl space-y-1">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wide flex items-center gap-1">
@@ -581,22 +664,16 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
                 </div>
               )}
 
-              {/* Visual prompt (colapsado) */}
               <details className="p-4 bg-violet-50 rounded-xl space-y-1 cursor-pointer">
-                <summary className="text-xs font-medium text-violet-500 uppercase tracking-wide">
-                  Visual Prompt (para Freepik / FAL.ai)
-                </summary>
+                <summary className="text-xs font-medium text-violet-500 uppercase tracking-wide">Visual Prompt</summary>
                 <p className="text-sm text-slate-700 mt-2 leading-relaxed">{result.visual_prompt}</p>
               </details>
-
               <details className="p-4 bg-indigo-50 rounded-xl space-y-1 cursor-pointer">
-                <summary className="text-xs font-medium text-indigo-500 uppercase tracking-wide">
-                  Layout Prompt (para composição img2img)
-                </summary>
+                <summary className="text-xs font-medium text-indigo-500 uppercase tracking-wide">Layout Prompt</summary>
                 <p className="text-sm text-slate-700 mt-2 leading-relaxed">{result.layout_prompt}</p>
               </details>
             </div>
-          ) : null}
+          )}
         </div>
 
         {/* Footer */}
@@ -611,12 +688,12 @@ export function AnalyzeReferenceModal({ client, onClose, onSaved }: Props) {
           ) : (
             <>
               <Button variant="outline" onClick={onClose}>Cancelar</Button>
-              <Button
-                onClick={handleAnalyze}
-                disabled={loading || (!uploadB64 && !postUrl.trim())}
+              <Button onClick={handleAnalyze} disabled={loading || !canAnalyze}
                 className="bg-violet-600 hover:bg-violet-700 text-white min-w-[160px]">
                 {loading
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analisando...</>
+                  : isCarousel
+                  ? <><GalleryHorizontal className="w-4 h-4 mr-2" />Analisar {carouselSlides.length > 0 ? `${carouselSlides.length} slides` : "carrossel"}</>
                   : <><ScanSearch className="w-4 h-4 mr-2" />Extrair DNA visual</>}
               </Button>
             </>
