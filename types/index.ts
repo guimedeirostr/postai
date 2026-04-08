@@ -76,6 +76,8 @@ export interface DesignExample {
   headline_style?:       string;
   typography_hierarchy?: string;
   logo_placement?:       LogoPlacement;
+  /** HTML/CSS template gerado pelo Claude Vision para replicar o design profissional */
+  html_template?:        string;
   /**
    * Origem deste exemplo:
    *   "library"         — adicionado manualmente via DNA modal (padrão)

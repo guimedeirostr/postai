@@ -72,7 +72,10 @@ import {
 } from "@/lib/art-direction-resolver";
 import { analyzeImage } from "@/lib/image-analysis";
 import { composeLayerStack, layerStackToLayoutPrompt, TONE_PROFILES } from "@/lib/art-direction-engine";
-import type { ArtDirection, BrandProfile, GeneratedPost, ReferenceDNA, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
+import { renderHtml, isRendererEnabled } from "@/lib/chromium-renderer";
+import { fillHtmlTemplate } from "@/lib/prompts/html-template";
+import { uploadToR2 } from "@/lib/r2";
+import type { ArtDirection, BrandProfile, DesignExample, GeneratedPost, ReferenceDNA, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 // Aguarda até 120s — PuLID e ControlNet podem ser mais lentos
 export const maxDuration = 120;
@@ -152,6 +155,67 @@ export async function POST(req: NextRequest) {
     if (libraryImageUrl) {
       const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
       const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
+
+      // ── PATH A: Chromium renderer (qualidade agência) ─────────────────────
+      // Usa o HTML template gerado pelo Claude Vision a partir da referência.
+      // Se o renderer estiver disponível E o design_example tiver template → usa.
+      if (isRendererEnabled()) {
+        try {
+          // Busca o design_example mais recente com html_template
+          const exSnap = await adminDb
+            .collection("clients").doc(post.client_id)
+            .collection("design_examples")
+            .orderBy("created_at", "desc")
+            .limit(5)
+            .get();
+
+          const exWithTemplate = exSnap.docs
+            .map(d => d.data() as DesignExample)
+            .find(e => e.html_template && e.html_template.length > 100);
+
+          if (exWithTemplate?.html_template) {
+            const headline = (post.visual_headline ?? post.headline ?? "") as string;
+            const format   = (post.format ?? "feed") as "feed" | "stories" | "reels_cover";
+            const H        = format === "feed" ? 1350 : 1920;
+
+            const filledHtml = fillHtmlTemplate(exWithTemplate.html_template, {
+              photoUrl:        libraryImageUrl,
+              headline,
+              logoUrl:         client.logo_url         ?? "",
+              brandColor:      client.primary_color     ?? "#000000",
+              secondaryColor:  client.secondary_color   ?? "#ffffff",
+              brandName:       client.name,
+              instagramHandle: client.instagram_handle  ?? "",
+              canvasWidth:     1080,
+              canvasHeight:    H,
+            });
+
+            console.log("[generate-image] Renderizando com Chromium renderer (template HTML)");
+            const jpegBuffer = await renderHtml(filledHtml, format);
+
+            // Upload para R2
+            const key         = `posts/${post_id}/composed.jpg`;
+            const composed_url = await uploadToR2(key, jpegBuffer, "image/jpeg");
+
+            await postDoc.ref.update({
+              image_url:      libraryImageUrl,
+              composed_url,
+              image_provider: "library_direct",
+              status:         "ready",
+            });
+
+            return NextResponse.json({
+              image_url:    libraryImageUrl,
+              composed_url,
+              post_id,
+              provider:     "chromium",
+            });
+          }
+        } catch (renderErr) {
+          // Renderer falhou → fallback para compositor Sharp abaixo
+          console.warn("[generate-image] Chromium renderer falhou (fallback Sharp):", renderErr);
+        }
+      }
 
       // Análise real da foto da biblioteca via Sharp
       // Sempre gera um LayerStack — mesmo sem tone_profile no post (usa fallback warm_organic).

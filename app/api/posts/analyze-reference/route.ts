@@ -19,6 +19,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildReferenceDNAPrompt } from "@/lib/prompts/design-example-analysis";
+import { buildHtmlTemplatePrompt } from "@/lib/prompts/html-template";
 import { uploadToR2 } from "@/lib/r2";
 import type { DesignExample, ReferenceDNA } from "@/types";
 
@@ -67,22 +68,40 @@ export async function POST(req: NextRequest) {
       | "image/webp"
       | "image/gif";
 
-    const response = await anthropic.messages.create({
-      model:      VISION_MODEL,
-      max_tokens: 1600,
-      messages: [{
-        role:    "user",
-        content: [
-          {
-            type:   "image",
-            source: { type: "base64", media_type: mediaType, data: image_base64 },
-          },
-          { type: "text", text: buildReferenceDNAPrompt() },
-        ],
-      }],
-    });
+    // ── Chamadas paralelas ao Claude: DNA estruturado + HTML template ─────────
+    const [dnaResponse, htmlResponse] = await Promise.all([
+      anthropic.messages.create({
+        model:      VISION_MODEL,
+        max_tokens: 1600,
+        messages: [{
+          role:    "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: image_base64 } },
+            { type: "text",  text: buildReferenceDNAPrompt() },
+          ],
+        }],
+      }),
+      anthropic.messages.create({
+        model:      VISION_MODEL,
+        max_tokens: 4096,
+        messages: [{
+          role:    "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: image_base64 } },
+            { type: "text",  text: buildHtmlTemplatePrompt() },
+          ],
+        }],
+      }),
+    ]);
 
-    const raw = response.content[0].type === "text" ? response.content[0].text : "";
+    const raw     = dnaResponse.content[0].type === "text" ? dnaResponse.content[0].text : "";
+    const rawHtml = htmlResponse.content[0].type === "text" ? htmlResponse.content[0].text : "";
+
+    // Limpa eventual markdown fence do HTML
+    const html_template = rawHtml
+      .replace(/^```(?:html)?\s*/im, "")
+      .replace(/\s*```\s*$/m, "")
+      .trim();
 
     let dna: ReferenceDNA;
     try {
@@ -93,6 +112,8 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    console.log(`[analyze-reference] DNA + HTML template gerados. Template: ${html_template.length} chars`);
 
     // ── Auto-save em design_examples quando client_id presente ───────────────
     // Garante que o Stage 0 sempre alimenta a biblioteca da marca — nada se
@@ -134,8 +155,9 @@ export async function POST(req: NextRequest) {
           background_treatment: dna.background_treatment,
           headline_style:       dna.headline_style,
           typography_hierarchy: dna.typography_hierarchy,
-          ...(dna.logo_placement ? { logo_placement: dna.logo_placement } : {}),
-          ...(image_url ? { image_url } : {}),
+          ...(dna.logo_placement  ? { logo_placement  : dna.logo_placement } : {}),
+          ...(image_url           ? { image_url } : {}),
+          ...(html_template       ? { html_template  } : {}),
           intent:               "stage0",
         };
 
@@ -152,7 +174,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...dna, design_example_id });
+    return NextResponse.json({ ...dna, design_example_id, html_template });
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro interno";
