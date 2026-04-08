@@ -453,21 +453,25 @@ export async function generateWithIdeogramText({
   prompt,
   negative_prompt,
   style_type = "REALISTIC",
+  magic_prompt_option = "OFF",
   format,
   post_id,
 }: {
-  prompt:           string;
-  negative_prompt?: string;
-  style_type?:      "REALISTIC" | "DESIGN" | "RENDER_3D" | "ANIME";
-  format:           "feed" | "stories" | "reels_cover";
-  post_id:          string;
+  prompt:                string;
+  negative_prompt?:      string;
+  style_type?:           "REALISTIC" | "DESIGN" | "RENDER_3D" | "ANIME";
+  /** OFF é crítico: impede o Ideogram de reescrever o prompt e alterar o texto */
+  magic_prompt_option?:  "AUTO" | "ON" | "OFF";
+  format:                "feed" | "stories" | "reels_cover";
+  post_id:               string;
 }): Promise<{ task_id: string; image_url?: string; done: boolean }> {
   const ar    = resolveAspectRatio("ideogram-ai/ideogram-v3-turbo", format);
   const input: Record<string, unknown> = {
     prompt,
-    aspect_ratio: ar,
+    aspect_ratio:        ar,
     style_type,
-    output_format: "jpg",
+    magic_prompt_option,
+    output_format:       "jpg",
     ...(negative_prompt ? { negative_prompt } : {}),
   };
 

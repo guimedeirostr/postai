@@ -135,13 +135,34 @@ export async function POST(req: NextRequest) {
     await postDoc.ref.update({ status: "generating" });
 
     // ── Resolver provider final ────────────────────────────────────────────────
-    // Lógica: override explícito > env > post salvo > default
+    // Lógica: override explícito > env > tone_profile auto > post salvo > default
+    //
+    // Auto-ativação Ideogram por tone_profile:
+    // tone_profiles de alto impacto gráfico (bold_aggressive, vibrant_pop) se
+    // beneficiam de tipografia nativa do Ideogram — ativado automaticamente
+    // quando não há foto de biblioteca e não há override explícito.
+    const toneProfileName = (post.layer_stack as LayerStack | undefined)?.tone_profile?.name
+      ?? (post as Record<string, unknown>).tone_profile_name as string | undefined;
+
+    const IDEOGRAM_AUTO_PROFILES = ["bold_aggressive", "vibrant_pop"];
+    const shouldAutoIdeogram =
+      !providerOverride &&
+      !process.env.IMAGE_PROVIDER &&
+      !libraryImageUrl &&
+      isReplicateEnabled() &&
+      IDEOGRAM_AUTO_PROFILES.includes(toneProfileName ?? "");
+
     const resolvedProvider = (
       providerOverride
       ?? process.env.IMAGE_PROVIDER
+      ?? (shouldAutoIdeogram ? "ideogram_text" : undefined)
       ?? (post.image_provider as string | undefined)
       ?? "freepik"
     ) as ImageProvider;
+
+    if (shouldAutoIdeogram) {
+      console.log(`[generate-image] Auto-ativando Ideogram por tone_profile="${toneProfileName}"`);
+    }
 
     // ── Compilar prompt otimizado para o provider ──────────────────────────────
     // Se o post tem art_direction estruturado, usa o compilador.
@@ -423,15 +444,23 @@ export async function POST(req: NextRequest) {
     // Não usa compositor — o texto já sai renderizado na imagem gerada.
     // ═══════════════════════════════════════════════════════════════════════════
     if (resolvedProvider === "ideogram_text" || resolvedProvider === "ideogram") {
-      const headline   = (post.visual_headline ?? post.headline ?? "") as string;
-      const { prompt: ideogramPrompt, negative_prompt, style_type } =
-        buildIdeogramTextPrompt({ client, headline, basePrompt });
+      const headline = (post.visual_headline ?? post.headline ?? "") as string;
+      const { prompt: ideogramPrompt, negative_prompt, style_type, magic_prompt_option } =
+        buildIdeogramTextPrompt({
+          client,
+          headline,
+          basePrompt,
+          toneProfileName,   // ← passa tone_profile para tipografia correta
+        });
+
+      console.log(`[generate-image/ideogram] style_type=${style_type} magic=${magic_prompt_option} tone=${toneProfileName ?? "none"}`);
 
       const result = await generateWithIdeogramText({
-        prompt: ideogramPrompt,
+        prompt:              ideogramPrompt,
         negative_prompt,
         style_type,
-        format:  post.format as "feed" | "stories" | "reels_cover",
+        magic_prompt_option,  // ← OFF por padrão — garante texto exato
+        format:              post.format as "feed" | "stories" | "reels_cover",
         post_id,
       });
 
