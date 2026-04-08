@@ -71,7 +71,7 @@ function CarouselDetailModal({
 
         <div className="p-6 space-y-5">
           {/* Main preview */}
-          <div className="aspect-square w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-slate-100 border">
+          <div className="aspect-[4/5] w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-slate-100 border">
             {current?.composed_url ? (
               <img src={current.composed_url} alt={`Slide ${selected + 1}`} className="w-full h-full object-cover" />
             ) : (
@@ -216,7 +216,7 @@ export default function CarouselsPage() {
                 onClick={() => setSelected(carousel)}>
                 <CardContent className="p-0">
                   {/* Hook thumbnail */}
-                  <div className="aspect-square w-full rounded-t-xl overflow-hidden bg-slate-100">
+                  <div className="aspect-[4/5] w-full rounded-t-xl overflow-hidden bg-slate-100">
                     {hook?.composed_url ? (
                       <img src={hook.composed_url} alt="Hook" className="w-full h-full object-cover" />
                     ) : (

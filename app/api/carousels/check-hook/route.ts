@@ -142,9 +142,11 @@ async function composeAllSlides(
 
     } else if (i === 1 && isPanoramic && panoramicBuffer) {
       // Slide 1 — continuação panorâmica (metade direita da imagem)
+      // Fix #2: isPanoramicContinuation=true → gradiente de marca igual ao hook
       const rightCrop = await slicePanoramic(panoramicBuffer, SLIDE_W);
       url = await composeContentSlide({
         bgImageBuffer: rightCrop,
+        isPanoramicContinuation: true,
         slide, client, slideNum, total, carouselId,
       });
 
@@ -160,11 +162,15 @@ async function composeAllSlides(
       let photoBuf = photoBuffers[photoIdx] ?? null;
       photoIdx++;
 
-      if (!photoBuf && imageProvider === "seedream" && slide.visual_prompt) {
-        console.log(`[check-hook/seedream-edit] Gerando fundo para slide ${i} via Seedream Edit`);
+      // Fix #4 & #5: Gera fundo via Seedream Edit para TODOS os providers quando não há foto da marca
+      // O hook serve como referência visual → coesão de estilo em todos os slides
+      if (!photoBuf && slide.visual_prompt) {
+        console.log(`[check-hook/seedream-edit] Slide ${i} sem foto — gerando fundo via Seedream Edit`);
         photoBuf = await generateSeedreamEditBackground(hookImageUrl, slide.visual_prompt);
         if (photoBuf) {
           console.log(`[check-hook/seedream-edit] Slide ${i} — fundo gerado com sucesso`);
+        } else {
+          console.warn(`[check-hook/seedream-edit] Slide ${i} — Seedream Edit falhou, usando cor sólida`);
         }
       }
 
@@ -231,7 +237,9 @@ export async function GET(req: NextRequest) {
     const client      = { id: carouselData.client_id, ...clientDoc.data() } as BrandProfile;
     const brandPhotos = photosSnap.docs
       .map(d => d.data().url as string)
-      .filter(Boolean);
+      .filter(Boolean)
+      // Fix #3: excluir imagens de posts e carrosseis compostos (apenas fotos brutas da biblioteca)
+      .filter(url => !url.includes("/posts/") && !url.includes("/carousels/"));
 
     await carouselRef.update({
       hook_image_url: result.image_url,

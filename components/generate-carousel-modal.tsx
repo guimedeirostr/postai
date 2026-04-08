@@ -520,7 +520,7 @@ export function GenerateCarouselModal({ client, onClose }: Props) {
                 </div>
 
                 {/* Main preview */}
-                <div className="aspect-square w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
+                <div className="aspect-[4/5] w-full max-w-sm mx-auto rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
                   {selectedComposed?.composed_url ? (
                     <img
                       src={selectedComposed.composed_url}

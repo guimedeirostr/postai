@@ -336,6 +336,74 @@ function buildPhotoContentOverlay(
   );
 }
 
+// ── PANORAMIC CONTINUATION SLIDE overlay (slide 1 — direita do panorâmico) ────
+// Visual idêntico ao hook (gradiente da cor primária) para efeito de continuidade
+// ao deslizar o carrossel. Só o conteúdo muda — o estilo permanece coerente.
+function buildPanoramicContinuationOverlay(
+  slide: CarouselSlide, client: BrandProfile, slideNum: number, total: number
+): React.ReactElement {
+  const primary   = ensureHex(client.primary_color);
+  const secondary = ensureHex(client.secondary_color);
+  const [line1, line2] = splitHeadline(slide.headline);
+  const fs = headlineFontSize(slide.headline);
+
+  return (
+    <div style={{ width: SLIDE_W, height: SLIDE_H, display: "flex", position: "relative", overflow: "hidden" }}>
+      {/* Gradiente de marca idêntico ao hook — continuidade visual */}
+      <div style={{
+        position: "absolute", bottom: 96, left: 0, right: 0,
+        height: Math.round(SLIDE_H * 0.65),
+        background: `linear-gradient(to bottom, ${hexToRgba(primary,0)} 0%, ${hexToRgba(primary,0.58)} 50%, ${hexToRgba(primary,0.94)} 100%)`,
+        display: "flex",
+      }} />
+      {/* Suave overlay no topo para legibilidade */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0,
+        height: Math.round(SLIDE_H * 0.28),
+        background: `linear-gradient(to bottom, ${hexToRgba(primary,0.38)} 0%, transparent 100%)`,
+        display: "flex",
+      }} />
+
+      <BrandStrip clientName={client.name} handle={client.instagram_handle ?? ""} primary={primary} secondary={secondary} />
+      <SlideCounter current={slideNum} total={total} textColor="#ffffff" />
+
+      {/* Conteúdo centralizado — mesma zona de texto do hook */}
+      <div style={{
+        position: "absolute", top: 120, left: 52, right: 52, bottom: 112,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      }}>
+        {slide.icon_emoji && (
+          <div style={{ fontSize: 80, lineHeight: 1, marginBottom: 20, display: "flex" }}>
+            {slide.icon_emoji}
+          </div>
+        )}
+        {slide.subheadline && (
+          <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "Inter", color: "rgba(255,255,255,0.78)", letterSpacing: 2.5, textTransform: "uppercase" as const, marginBottom: 14, display: "flex" }}>
+            {slide.subheadline}
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <span style={{ fontSize: fs, fontWeight: 900, fontFamily: "Montserrat", color: "#ffffff", lineHeight: 1.0, letterSpacing: -1, textAlign: "center" as const }}>
+            {line1}
+          </span>
+          {line2 && (
+            <span style={{ fontSize: fs, fontWeight: 900, fontFamily: "Montserrat", color: secondary, lineHeight: 1.05, letterSpacing: -1, textAlign: "center" as const }}>
+              {line2}
+            </span>
+          )}
+        </div>
+        {slide.body_text && (
+          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "Inter", color: "rgba(255,255,255,0.85)", lineHeight: 1.50, textAlign: "center" as const, marginTop: 24, maxWidth: 900, display: "flex", flexWrap: "wrap" as const, justifyContent: "center" }}>
+            {slide.body_text}
+          </div>
+        )}
+      </div>
+      {/* Logo placeholder */}
+      <div style={{ position: "absolute", top: 40, left: 44, height: 80, width: 200, display: "flex" }} />
+    </div>
+  );
+}
+
 // ── CTA SLIDE overlay ─────────────────────────────────────────────────────────
 function buildCTAOverlay(
   slide: CarouselSlide, client: BrandProfile, slideNum: number, total: number
@@ -422,6 +490,11 @@ export interface ComposeContentSlideOptions {
   carouselId:     string;
   /** Se fornecido: usa como fundo (panorâmica ou foto da marca). */
   bgImageBuffer?: Buffer;
+  /**
+   * Quando true: este slide é a continuação panorâmica do hook (metade direita).
+   * Usa gradiente de marca idêntico ao hook para continuidade visual.
+   */
+  isPanoramicContinuation?: boolean;
 }
 
 /** Composes hook slide — imageBuffer is the pre-cropped background. */
@@ -452,8 +525,9 @@ export async function composeContentSlide(opts: ComposeContentSlideOptions): Pro
 
   const primary   = ensureHex(opts.client.primary_color);
   const secondary = ensureHex(opts.client.secondary_color);
-  const isCTA     = opts.slide.type === "cta";
-  const hasBgImage = !!opts.bgImageBuffer;
+  const isCTA                  = opts.slide.type === "cta";
+  const hasBgImage             = !!opts.bgImageBuffer;
+  const isPanoramicContinuation = opts.isPanoramicContinuation === true;
 
   // Determine darkness for logo selection
   const solidBg   = isCTA ? darken(primary, 10) : resolveBg(opts.slide.bg_style, primary, secondary);
@@ -462,6 +536,9 @@ export async function composeContentSlide(opts: ComposeContentSlideOptions): Pro
   let element: React.ReactElement;
   if (isCTA) {
     element = buildCTAOverlay(opts.slide, opts.client, opts.slideNum, opts.total);
+  } else if (isPanoramicContinuation && hasBgImage) {
+    // Continuação panorâmica — usa gradiente de marca (não overlay preto)
+    element = buildPanoramicContinuationOverlay(opts.slide, opts.client, opts.slideNum, opts.total);
   } else if (hasBgImage) {
     element = buildPhotoContentOverlay(opts.slide, opts.client, opts.slideNum, opts.total);
   } else {
