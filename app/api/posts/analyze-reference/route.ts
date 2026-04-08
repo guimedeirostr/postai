@@ -168,6 +168,7 @@ export async function POST(req: NextRequest) {
         });
 
         design_example_id = ref.id;
+        console.log(`[analyze-reference] design_example salvo: id=${ref.id}, html_template=${html_template.length} chars, image_url=${image_url ? "OK" : "sem imagem"}`);
       } catch (saveErr) {
         // Salvar é best-effort — não bloqueia o Stage 0 se falhar
         console.warn("[posts/analyze-reference] auto-save falhou (non-fatal):", saveErr);

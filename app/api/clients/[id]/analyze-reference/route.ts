@@ -20,10 +20,11 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildReferenceDNAPrompt } from "@/lib/prompts/design-example-analysis";
+import { buildHtmlTemplatePrompt } from "@/lib/prompts/html-template";
 import type { DesignExample, LogoPlacement } from "@/types";
 
-// Claude Vision pode levar 20-40s — aumentar para evitar 504
-export const maxDuration = 90;
+// 2x Claude Vision em paralelo: DNA + HTML template — até 40s cada
+export const maxDuration = 120;
 
 // ── Anthropic client ─────────────────────────────────────────────────────────
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -102,30 +103,58 @@ export async function POST(
       resolvedImageUrl  = imageUrl;
     };
 
-    // ── Chamar Claude Vision com prompt rico (ReferenceDNA completo) ──────────
-    // Unifica os dois fluxos: agora este endpoint extrai TODOS os campos do DNA
-    // (text_zones, background_treatment, headline_style, typography_hierarchy,
-    // logo_placement) — antes estavam apenas em /api/posts/analyze-reference.
-    const message = await anthropic.messages.create({
-      model:      MODEL,
-      max_tokens: 1600,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64Data },
-            },
-            {
-              type: "text",
-              text: buildReferenceDNAPrompt()
-                + (body.format ? `\n\nFormato inferido: ${body.format}` : ""),
-            },
-          ],
-        },
-      ],
-    });
+    // ── Chamar Claude Vision em paralelo: DNA + HTML template ─────────────────
+    // Ambas as chamadas recebem a mesma imagem e retornam em paralelo para
+    // minimizar latência total. O html_template alimenta o Chromium renderer.
+    const [message, htmlMessage] = await Promise.all([
+      anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 1600,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: mediaType, data: base64Data },
+              },
+              {
+                type: "text",
+                text: buildReferenceDNAPrompt()
+                  + (body.format ? `\n\nFormato inferido: ${body.format}` : ""),
+              },
+            ],
+          },
+        ],
+      }),
+      anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: mediaType, data: base64Data },
+              },
+              {
+                type: "text",
+                text: buildHtmlTemplatePrompt(),
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+
+    // ── Extrair HTML template ─────────────────────────────────────────────────
+    const rawHtml = htmlMessage.content[0]?.type === "text" ? htmlMessage.content[0].text : "";
+    const html_template = rawHtml
+      .replace(/^```(?:html)?\s*/im, "")
+      .replace(/\s*```\s*$/m, "")
+      .trim();
+    console.log(`[clients/analyze-reference] html_template gerado: ${html_template.length} chars`);
 
     // ── Parsear JSON retornado ────────────────────────────────────────────────
     const rawText = message.content
@@ -198,6 +227,7 @@ export async function POST(
       ...(headline_style       ? { headline_style }       : {}),
       ...(typography_hierarchy ? { typography_hierarchy } : {}),
       ...(logo_placement       ? { logo_placement }       : {}),
+      ...(html_template && html_template.length > 100 ? { html_template } : {}),
       intent:               "library",
     };
 
@@ -206,6 +236,7 @@ export async function POST(
       ...example,
       created_at: FieldValue.serverTimestamp(),
     });
+    console.log(`[clients/analyze-reference] design_example salvo: id=${ref.id}, html_template=${html_template.length} chars`);
 
     // ── Resposta (inclui todos os campos ricos para a UI atualizar) ──────────
     return NextResponse.json({

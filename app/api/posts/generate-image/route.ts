@@ -159,6 +159,7 @@ export async function POST(req: NextRequest) {
       // ── PATH A: Chromium renderer (qualidade agência) ─────────────────────
       // Usa o HTML template gerado pelo Claude Vision a partir da referência.
       // Se o renderer estiver disponível E o design_example tiver template → usa.
+      console.log(`[generate-image] library_direct: RENDERER_URL=${process.env.RENDERER_URL ? "SET" : "NOT SET"}, client_id=${post.client_id}`);
       if (isRendererEnabled()) {
         try {
           // Busca o design_example mais recente com html_template
@@ -166,12 +167,18 @@ export async function POST(req: NextRequest) {
             .collection("clients").doc(post.client_id)
             .collection("design_examples")
             .orderBy("created_at", "desc")
-            .limit(5)
+            .limit(10)
             .get();
 
-          const exWithTemplate = exSnap.docs
-            .map(d => d.data() as DesignExample)
-            .find(e => e.html_template && e.html_template.length > 100);
+          const allExamples = exSnap.docs.map(d => d.data() as DesignExample);
+          const withTemplate = allExamples.filter(e => e.html_template && e.html_template.length > 100);
+          console.log(`[generate-image] design_examples encontrados: ${allExamples.length}, com html_template: ${withTemplate.length}`);
+          if (allExamples.length > 0) {
+            console.log(`[generate-image] IDs: ${allExamples.map(e => e.id).join(", ")}`);
+            console.log(`[generate-image] Com template: ${withTemplate.map(e => e.id).join(", ") || "nenhum"}`);
+          }
+
+          const exWithTemplate = withTemplate[0] ?? null;
 
           if (exWithTemplate?.html_template) {
             const headline = (post.visual_headline ?? post.headline ?? "") as string;
