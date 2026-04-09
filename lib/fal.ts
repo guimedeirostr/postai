@@ -110,9 +110,12 @@ export function resolveFalModel(): string {
 // FAL.ai suporta: "21:9"|"16:9"|"4:3"|"3:2"|"1:1"|"2:3"|"3:4"|"9:16"|"9:21"
 
 const ASPECT_RATIO: Record<string, string> = {
-  feed:        "3:4",
-  stories:     "9:16",
-  reels_cover: "9:16",
+  feed:               "3:4",
+  stories:            "9:16",
+  reels_cover:        "9:16",
+  linkedin_post:      "16:9",
+  linkedin_carousel:  "1:1",
+  linkedin_article:   "16:9",
 };
 
 function resolveAspect(format: string): string {

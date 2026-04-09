@@ -6,16 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TagInput } from "@/components/tag-input";
-import type { BrandProfile } from "@/types";
+import type { BrandProfile, SocialNetwork } from "@/types";
 
 type FormData = Omit<BrandProfile, "id" | "agency_id" | "created_at">;
+
+const SOCIAL_OPTIONS: { id: SocialNetwork; label: string; icon: string }[] = [
+  { id: "instagram", label: "Instagram", icon: "📸" },
+  { id: "linkedin",  label: "LinkedIn",  icon: "💼" },
+];
 
 const empty: FormData = {
   name: "", logo_url: null, logo_white_url: null,
   primary_color: "#6d28d9", secondary_color: "#4f46e5",
   fonts: [],
   segment: "", target_audience: "", tone_of_voice: "",
-  instagram_handle: "", bio: "", keywords: [], avoid_words: [],
+  instagram_handle: "", linkedin_handle: "", bio: "",
+  keywords: [], avoid_words: [],
+  social_networks: ["instagram"],
 };
 
 interface Props {
@@ -31,7 +38,9 @@ export function ClientFormModal({ client, onClose, onSaved }: Props) {
     fonts: client.fonts ?? [],
     segment: client.segment, target_audience: client.target_audience,
     tone_of_voice: client.tone_of_voice, instagram_handle: client.instagram_handle,
+    linkedin_handle: client.linkedin_handle ?? "",
     bio: client.bio, keywords: client.keywords, avoid_words: client.avoid_words,
+    social_networks: client.social_networks ?? ["instagram"],
   } : empty);
   const [saving, setSaving]         = useState(false);
   const [uploading, setUploading]   = useState<"default" | "white" | false>(false);
@@ -212,15 +221,57 @@ export function ClientFormModal({ client, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          {/* Segmento + Público */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Segmento *</Label>
-              <Input value={form.segment} onChange={e => set("segment", e.target.value)} placeholder="Ex: Saúde e Bem-estar" />
+          {/* Segmento */}
+          <div className="space-y-1.5">
+            <Label>Segmento *</Label>
+            <Input value={form.segment} onChange={e => set("segment", e.target.value)} placeholder="Ex: Saúde e Bem-estar" />
+          </div>
+
+          {/* Redes Sociais */}
+          <div className="space-y-2">
+            <Label>Redes Sociais</Label>
+            <div className="flex gap-2">
+              {SOCIAL_OPTIONS.map(opt => {
+                const active = (form.social_networks ?? ["instagram"]).includes(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      const current = form.social_networks ?? ["instagram"];
+                      const next = active
+                        ? current.filter(n => n !== opt.id)
+                        : [...current, opt.id];
+                      // garante pelo menos uma rede
+                      if (next.length > 0) set("social_networks", next);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                      active
+                        ? "bg-violet-600 text-white border-violet-600"
+                        : "bg-white text-slate-500 border-slate-200 hover:border-violet-300"
+                    }`}
+                  >
+                    <span>{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
-            <div className="space-y-1.5">
-              <Label>Instagram *</Label>
-              <Input value={form.instagram_handle} onChange={e => set("instagram_handle", e.target.value)} placeholder="@handle" />
+
+            {/* Handles */}
+            <div className="grid grid-cols-2 gap-3 mt-1">
+              {(form.social_networks ?? ["instagram"]).includes("instagram") && (
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500 font-medium">Instagram</label>
+                  <Input value={form.instagram_handle} onChange={e => set("instagram_handle", e.target.value)} placeholder="@handle" />
+                </div>
+              )}
+              {(form.social_networks ?? []).includes("linkedin") && (
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500 font-medium">LinkedIn</label>
+                  <Input value={form.linkedin_handle ?? ""} onChange={e => set("linkedin_handle", e.target.value)} placeholder="linkedin.com/company/..." />
+                </div>
+              )}
             </div>
           </div>
 

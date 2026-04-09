@@ -1,11 +1,4 @@
-import type { BrandProfile, DesignExample } from "@/types";
-
-export interface StrategyContext {
-  pilar?: string;
-  publico_especifico?: string;
-  dor_desejo?: string;
-  hook_type?: string;
-}
+import type { BrandProfile, DesignExample, StrategyContext } from "@/types";
 
 export function selectFramework(
   objective: string,
@@ -214,4 +207,126 @@ OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
     "wash_preference": "none|soft|strong"
   }
 }`;
+}
+
+// ── LinkedIn Copy ─────────────────────────────────────────────────────────────
+
+const LINKEDIN_HOOK_GUIDE: Record<string, string> = {
+  "Controvérsia":    "Quebre uma crença comum do mercado logo na linha 1. Ex: 'A maioria das empresas está fazendo X errado.' / 'O que aprendi depois de [erro honesto]:'. Deve provocar reação imediata.",
+  "Número":          "Use dado específico e surpreendente na linha 1. Específico = crível. Ex: '83% dos gestores cometem este erro silencioso.' / 'Perdemos R$120 mil por causa de uma planilha.'",
+  "Story Pessoal":   "Comece com situação real e concreta. Ex: 'Em [mês/ano], recebi a pior ligação da minha carreira.' / 'Olhei para os números e percebi que estávamos indo à falência.' Nada genérico.",
+  "Pergunta":        "Pergunta que o leitor responde mentalmente 'sim' ou que gera dissonância cognitiva. Ex: 'Você já percebeu que os melhores [cargo] nunca fazem X?' / 'Por que empresas como [referência] vencem sempre?'",
+  "Lista":           "Anuncie o número de itens e o benefício claro na linha 1. Ex: '7 sinais de que sua estratégia de X está errada (e como corrigir).' A lista deve ter insights reais, não obviedades.",
+  "Dado de Mercado": "Cite dado ou notícia recente do setor, posicione-se sobre ela. Ex: 'O relatório X acaba de revelar Y. Minha leitura:' / 'O mercado de X cresceu Z% em 2024. O que muda para [segmento]:'",
+};
+
+const LINKEDIN_FORMAT_GUIDE: Record<string, string> = {
+  linkedin_post: `
+POST LINKEDIN (até 3000 chars — texto corrido no feed):
+- Linhas 1 e 2 são TUDO — aparecem antes do "ver mais". Devem gerar clique compulsório.
+- Parágrafos curtos: 1 a 3 linhas. Linha em branco entre cada bloco.
+- Estrutura: Hook (1-2 linhas) → Contexto/Desenvolvimento → Virada/Insight → Lição ou CTA
+- Emojis: use com moderação — apenas para estrutura (→, ✅, ❌, •) nunca decorativo
+- CTA final: convide ao debate ("O que você acha?", "Já passou por isso?", "Discorda? Me conta.")
+- Não termine com "Curta se concordar" ou "Compartilhe se..."
+- Tom: humano e profissional. Nunca corporativo genérico. Voz de pessoa, não de empresa.`,
+
+  linkedin_carousel: `
+CARROSSEL LINKEDIN (PDF com slides — caption + estrutura de slides):
+- Caption do post: Hook forte nas primeiras 2 linhas + promessa do que vem no carrossel
+- O carrossel em si deve ter: Slide 1 (título = hook), Slides 2-N (conteúdo), Slide final (CTA)
+- Na caption, descreva o conteúdo do carrossel para quem não abrir
+- Estrutura recomendada: "Slide 1: [título]" / "Slides 2-7: [pontos principais]" / "Slide final: [CTA]"
+- CTA: pedir para salvar ("Salva esse post") é o mais eficaz para carrossel`,
+
+  linkedin_article: `
+ARTIGO LINKEDIN (indexado pelo Google — 800 a 2000 palavras):
+- Caption do post que divulga o artigo: Hook nas primeiras 2 linhas + resumo do aprendizado principal
+- O artigo deve ter: Título forte, introdução com problema, desenvolvimento com exemplos reais, conclusão com ação
+- Escreva a caption como se fosse o "trailer" do artigo — suficiente para engajar, não completo
+- Artigos geram menos alcance no feed mas constroem autoridade de longo prazo (SEO)`,
+};
+
+export function buildLinkedInCopyPrompt(
+  client:   BrandProfile,
+  format:   string,
+  objective: string,
+  strategy?: StrategyContext,
+): string {
+  const hookType   = strategy?.hook_type ?? "Story Pessoal";
+  const hookGuide  = LINKEDIN_HOOK_GUIDE[hookType] ?? LINKEDIN_HOOK_GUIDE["Story Pessoal"];
+  const formatGuide = LINKEDIN_FORMAT_GUIDE[format] ?? LINKEDIN_FORMAT_GUIDE.linkedin_post;
+
+  return `Você é um ghostwriter sênior especializado em LinkedIn para o mercado brasileiro, com 10+ anos criando conteúdo de thought leadership para executivos e marcas B2B. Você entende profundamente o algoritmo do LinkedIn e como criar posts que geram debate, compartilhamentos e leads qualificados.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BRAND BRIEF — ${client.name.toUpperCase()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Segmento:       ${client.segment}
+Público-alvo:   ${client.target_audience}
+Tom de voz:     ${client.tone_of_voice}
+LinkedIn:       ${client.linkedin_handle || "não informado"}
+${client.bio ? `Sobre a marca:  ${client.bio}` : ""}
+${client.keywords.length ? `Keywords:       ${client.keywords.join(", ")}` : ""}
+${client.avoid_words.length ? `NUNCA use:      ${client.avoid_words.join(", ")}` : ""}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TIPO DE HOOK: ${hookType}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${hookGuide}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMATO: ${format.toUpperCase()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${formatGuide}
+
+${strategy && (strategy.pilar || strategy.publico_especifico || strategy.dor_desejo) ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BRIEFING DO ESTRATEGISTA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${strategy.pilar ? `Pilar LinkedIn:        ${strategy.pilar}` : ""}
+${strategy.publico_especifico ? `Público específico:    ${strategy.publico_especifico}` : ""}
+${strategy.dor_desejo ? `Dor/Desejo profissional: ${strategy.dor_desejo}` : ""}
+
+O público específico e a dor/desejo devem ser reconhecíveis no post — o leitor deve pensar "isso é sobre mim".
+
+` : ""}━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS DE OURO — NUNCA QUEBRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Linha 1 + linha 2 (antes do "ver mais") = o post inteiro em miniatura. Devem ser irresistíveis.
+2. Nunca comece com "Hoje quero falar sobre..." / "Venho compartilhar..." / "É com grande satisfação..." — são mortes instantâneas de alcance.
+3. Escreva como pessoa, não como empresa. Voz ativa, primeira pessoa quando possível.
+4. Zero jargão vazio: "ecossistema", "sinergia", "soluções inovadoras", "transformação digital" sem contexto real.
+5. Cada parágrafo tem UMA ideia. Nunca misture dois pontos no mesmo bloco.
+6. Hashtags: máximo 5, ultra-relevantes para o nicho. Nunca genéricas (#sucesso #negócios #vida).
+7. CTA sempre gera debate ou reflexão — nunca é "clique no link". LinkedIn premia comentários.
+8. visual_headline: versão ultra-curta para imagem de capa do carrossel ou thumbnail (máx 6 palavras, impacto máximo).
+9. Números reais convencem. Se não houver dado real, use "estimativa" ou "experiência" — não invente.
+10. O post deve ter uma TESE clara. O leitor deve conseguir resumir em 1 frase o que aprendeu.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT — JSON VÁLIDO APENAS (sem markdown, sem explicações)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${format === "linkedin_carousel" ? `{
+  "visual_headline": "máximo 6 palavras — título do slide 1 / capa",
+  "headline": "linha 1 da caption do post (o hook — máx 140 chars)",
+  "caption": "caption do post que acompanha o carrossel: hook nas 2 primeiras linhas + resumo do que tem dentro + CTA para salvar",
+  "hashtags": ["3 a 5 hashtags relevantes, sem #"],
+  "framework_used": "HOOK_TIPO usado",
+  "hook_type": "${hookType}",
+  "slides": [
+    { "headline": "Slide 1 — título/hook (max 8 palavras)", "subheadline": "subtítulo opcional (max 12 palavras)", "body": null },
+    { "headline": "Slide 2 — primeiro ponto (max 8 palavras)", "subheadline": null, "body": "2-3 frases com o conteúdo deste slide" },
+    { "headline": "Slide 3 — segundo ponto (max 8 palavras)", "subheadline": null, "body": "2-3 frases com o conteúdo deste slide" },
+    { "headline": "Último slide — CTA (max 8 palavras)", "subheadline": "chamada para ação ou reflexão final", "body": null }
+  ]
+}
+
+REGRA SLIDES: gere entre 4 e 8 slides. Slide 1 = capa/hook. Slides intermediários = 1 ponto cada. Último slide = CTA/reflexão. body pode ser null para slides de impacto visual.` : `{
+  "visual_headline": "máximo 6 palavras para capa/thumbnail",
+  "headline": "linha 1 do post — o hook completo (máx 140 chars, sem ponto final obrigatório)",
+  "caption": "post completo no formato ${format}, seguindo as regras acima, com quebras de linha reais (\\n)",
+  "hashtags": ["3 a 5 hashtags relevantes, sem #"],
+  "framework_used": "HOOK_TIPO usado",
+  "hook_type": "${hookType}"
+}`}`;
 }

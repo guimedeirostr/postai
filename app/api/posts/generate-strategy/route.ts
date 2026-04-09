@@ -4,8 +4,8 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { buildStrategyPrompt } from "@/lib/prompts/strategy";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
-import { fetchTrendContext } from "@/lib/tavily";
-import type { BrandProfile, StrategyBriefing } from "@/types";
+import { fetchTrendContext, fetchLinkedInTrendContext } from "@/lib/tavily";
+import type { BrandProfile, StrategyBriefing, SocialNetwork } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL     = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
@@ -23,8 +23,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json() as { client_id?: string; campaign_focus?: string };
-    const { client_id, campaign_focus } = body;
+    const body = await req.json() as { client_id?: string; campaign_focus?: string; social_network?: SocialNetwork };
+    const { client_id, campaign_focus, social_network } = body;
 
     if (!client_id) {
       return NextResponse.json({ error: "client_id é obrigatório" }, { status: 400 });
@@ -38,18 +38,16 @@ export async function POST(req: NextRequest) {
     const client = { id: clientDoc.id, ...clientDoc.data() } as BrandProfile;
 
     // Busca tendências em tempo real (não-bloqueante — falha silenciosamente)
-    const trendContext = await fetchTrendContext(
-      client.segment ?? "",
-      campaign_focus,
-    );
+    const fetchFn = social_network === "linkedin" ? fetchLinkedInTrendContext : fetchTrendContext;
+    const trendContext = await fetchFn(client.segment ?? "", campaign_focus).catch(() => null);
     if (trendContext) {
-      console.log(`[generate-strategy] Tavily tendências injetadas: "${trendContext.query}"`);
+      console.log(`[generate-strategy/${social_network ?? "instagram"}] Tavily tendências injetadas: "${trendContext.query}"`);
     }
 
     const response = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 1024,
-      system:     buildStrategyPrompt(client, campaign_focus, trendContext),
+      system:     buildStrategyPrompt(client, campaign_focus, trendContext, social_network),
       messages: [{
         role:    "user",
         content: "Gere o briefing estratégico para o próximo post deste cliente.",

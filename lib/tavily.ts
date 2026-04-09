@@ -39,6 +39,71 @@ export function isTavilyEnabled(): boolean {
 }
 
 /**
+ * Busca notícias e tendências B2B para LinkedIn — mercado, setor, negócios.
+ *
+ * Foco em: insights de mercado, notícias do setor, tendências profissionais.
+ * Usado pelo Estrategista LinkedIn para gerar thought leadership relevante.
+ */
+export async function fetchLinkedInTrendContext(
+  segment: string,
+  focus?:  string,
+): Promise<TrendContext | null> {
+  if (!isTavilyEnabled()) return null;
+
+  const apiKey = process.env.TAVILY_API_KEY!;
+
+  const query = focus
+    ? `tendências mercado ${segment} ${focus} Brasil 2025 B2B LinkedIn negócios`
+    : `notícias tendências ${segment} Brasil 2025 mercado profissional insights`;
+
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        query,
+        search_depth:         "basic",
+        max_results:          5,
+        include_answer:       true,
+        include_raw_content:  false,
+        topic:                "news",    // foco em notícias recentes para LinkedIn
+      }),
+      signal: AbortSignal.timeout(6_000),
+    });
+
+    if (!res.ok) {
+      console.warn(`[tavily/linkedin] HTTP ${res.status} — continuando sem tendências`);
+      return null;
+    }
+
+    const data = await res.json() as TavilySearchResponse;
+
+    const goodResults = data.results
+      .filter(r => r.score > 0.4)
+      .slice(0, 3);
+
+    if (!goodResults.length && !data.answer) return null;
+
+    const summaryParts: string[] = [];
+    if (data.answer) summaryParts.push(data.answer.slice(0, 250));
+
+    const snippets = goodResults.map(r =>
+      `• ${r.title}: ${r.content.slice(0, 120).replace(/\n/g, " ")}`
+    );
+
+    const summary = summaryParts.join(" ") || snippets.slice(0, 1).join("");
+
+    return { query, summary: summary.slice(0, 300), snippets };
+  } catch (e) {
+    console.warn("[tavily/linkedin] Falha na busca (non-fatal):", e);
+    return null;
+  }
+}
+
+/**
  * Busca tendências relevantes para o segmento da marca no Instagram/redes sociais.
  *
  * @param segment     Segmento da marca (ex: "restaurante gourmet", "academia")

@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
-import { buildCopyPrompt } from "@/lib/prompts/copy";
+import { buildCopyPrompt, buildLinkedInCopyPrompt } from "@/lib/prompts/copy";
 import { extractPromptFromImage } from "@/lib/freepik";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import { composeLayerStack, layerStackToLayoutPrompt } from "@/lib/art-direction-engine";
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       extra_instructions,
       caption_suggestion,
       no_persist,
+      social_network,
     } = await req.json() as {
       client_id: string;
       theme: string;
@@ -76,6 +77,8 @@ export async function POST(req: NextRequest) {
       caption_suggestion?: string;
       /** Se true, não salva no Firestore — usado para regerar campos individuais de um post existente */
       no_persist?: boolean;
+      /** Rede social alvo — altera o prompt e a estrutura do output */
+      social_network?: "instagram" | "linkedin";
     };
 
     let reference_dna: ReferenceDNA | undefined = reference_dna_inline;
@@ -244,6 +247,58 @@ export async function POST(req: NextRequest) {
       ].join("");
 
       userContent = referenceTextBlock;
+    }
+
+    // ── LinkedIn: prompt especializado, sem análise de imagem ───────────────────
+    if (social_network === "linkedin") {
+      const liResponse = await anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 4096,
+        system:     buildLinkedInCopyPrompt(
+          client,
+          format,
+          objective,
+          Object.keys(strategy).length ? strategy : undefined,
+        ),
+        messages: [{ role: "user", content: `Tema: ${theme}\nObjetivo: ${objective}\n\nEscreva o melhor post LinkedIn possível para este cliente.` }],
+      });
+
+      const liRaw      = liResponse.content[0].type === "text" ? liResponse.content[0].text : "";
+      const liStripped = liRaw.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/m, "").trim();
+      let liParsed: CopyResult | null = null;
+      try { liParsed = JSON.parse(liStripped) as CopyResult; } catch { /* continua */ }
+      if (!liParsed) {
+        const f = liRaw.indexOf("{"), l = liRaw.lastIndexOf("}");
+        if (f !== -1 && l > f) try { liParsed = JSON.parse(liRaw.slice(f, l + 1)) as CopyResult; } catch { /* */ }
+      }
+      if (!liParsed) {
+        return NextResponse.json({ error: "Falha ao parsear resposta LinkedIn. Tente novamente." }, { status: 500 });
+      }
+
+      if (no_persist) return NextResponse.json(liParsed);
+
+      const liRef = adminDb.collection("posts").doc();
+      await liRef.set({
+        id:              liRef.id,
+        agency_id:       user.uid,
+        client_id,
+        client_name:     client.name,
+        theme,
+        objective,
+        format,
+        social_network:  "linkedin",
+        visual_headline: liParsed.visual_headline,
+        headline:        liParsed.headline,
+        caption:         liParsed.caption,
+        hashtags:        liParsed.hashtags,
+        framework_used:  liParsed.framework_used,
+        hook_type:       liParsed.hook_type,
+        image_url:       null,
+        status:          "ready",
+        created_at:      FieldValue.serverTimestamp(),
+      });
+
+      return NextResponse.json({ ...liParsed, post_id: liRef.id });
     }
 
     const response = await anthropic.messages.create({

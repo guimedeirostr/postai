@@ -32,9 +32,12 @@ export type ImagenModel = (typeof IMAGEN_MODELS)[keyof typeof IMAGEN_MODELS];
 // ─── Aspect ratio mapping ──────────────────────────────────────────────────────
 
 const FORMAT_ASPECT: Record<string, string> = {
-  feed:        "3:4",   // Instagram feed 4:5 → closest supported is 3:4
-  stories:     "9:16",  // Stories / Reels — exact
-  reels_cover: "9:16",
+  feed:               "3:4",   // Instagram feed 4:5 → closest supported is 3:4
+  stories:            "9:16",  // Stories / Reels — exact
+  reels_cover:        "9:16",
+  linkedin_post:      "16:9",
+  linkedin_carousel:  "1:1",
+  linkedin_article:   "16:9",
 };
 
 // ─── Error class ───────────────────────────────────────────────────────────────

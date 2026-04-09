@@ -7,10 +7,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import type { BrandProfile, StrategyBriefing, ReferenceDNA } from "@/types";
+import type { BrandProfile, StrategyBriefing, ReferenceDNA, SocialNetwork } from "@/types";
 import { FORMAT_OPTIONS, FORMAT_ASPECT } from "@/lib/post-formats";
 
-type Format = "feed" | "stories" | "reels_cover";
+const LINKEDIN_FORMAT_OPTIONS = [
+  { value: "linkedin_post",      label: "Post",      desc: "Até 3.000 chars · Feed" },
+  { value: "linkedin_carousel",  label: "Carrossel", desc: "PDF com slides" },
+  { value: "linkedin_article",   label: "Artigo",    desc: "800–2000 palavras · SEO" },
+] as const;
+
+const LINKEDIN_PILAR_COLORS: Record<string, string> = {
+  "Thought Leadership":       "bg-blue-100 text-blue-700",
+  "Educação":                  "bg-emerald-100 text-emerald-700",
+  "Case / Resultado":          "bg-amber-100 text-amber-700",
+  "Bastidores Profissionais":  "bg-orange-100 text-orange-700",
+  "Tendência de Mercado":      "bg-sky-100 text-sky-700",
+  "Reconhecimento":            "bg-pink-100 text-pink-700",
+  "Debate":                    "bg-red-100 text-red-700",
+};
+
+type Format = "feed" | "stories" | "reels_cover" | "linkedin_post" | "linkedin_article" | "linkedin_carousel";
 
 // Step 0 = referência visual, Step 1 = strategy, Step 2 = form + generate
 type Step = 0 | 1 | 2;
@@ -47,6 +63,7 @@ interface CopyResult {
   image_url?:         string | null;
   composed_url?:      string | null;
   reference_warning?: string;
+  slides?:            Array<{ headline: string; subheadline?: string | null; body?: string | null }>;
 }
 
 interface Props {
@@ -66,6 +83,15 @@ const PILAR_COLORS: Record<string, string> = {
 };
 
 export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
+  // Network selector — inicia na primeira rede habilitada do cliente
+  const hasLinkedIn   = !!(client.social_networks?.includes("linkedin"));
+  const [socialNetwork, setSocialNetwork] = useState<SocialNetwork>(
+    client.social_networks?.includes("instagram") ? "instagram"
+    : hasLinkedIn ? "linkedin"
+    : "instagram"
+  );
+  const isLinkedIn = socialNetwork === "linkedin";
+
   // Step management
   const [step,          setStep]          = useState<Step>(0);
 
@@ -102,6 +128,13 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [captionSuggestion,  setCaptionSuggestion]  = useState("");
   const [libUploadLoading,   setLibUploadLoading]   = useState(false);
   const [libUploadError,     setLibUploadError]     = useState<string | null>(null);
+
+  // ── LinkedIn image state ──────────────────────────────────────────────────
+  const [liImgLoading,   setLiImgLoading]   = useState(false);
+  const [liImgError,     setLiImgError]     = useState<string | null>(null);
+  const [liComposedUrl,  setLiComposedUrl]  = useState<string | null>(null);
+  const [liSlideUrls,    setLiSlideUrls]    = useState<string[]>([]);
+  const [liTaskId,       setLiTaskId]       = useState<string | null>(null);
 
   // ── Logo size para Gemini ─────────────────────────────────────────────────
   const [logoSize, setLogoSize] = useState<"S" | "M" | "L">("M");
@@ -356,7 +389,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       const res  = await fetch("/api/posts/generate-strategy", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ client_id: client.id, campaign_focus: campaignFocus || undefined }),
+        body:    JSON.stringify({ client_id: client.id, campaign_focus: campaignFocus || undefined, social_network: socialNetwork }),
       });
       const data = await res.json() as StrategyBriefing & { error?: string };
 
@@ -391,7 +424,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     setLoading(true);
     setResult(null);
 
-    const body: Record<string, string> = { client_id: client.id, theme, objective, format };
+    const body: Record<string, string> = { client_id: client.id, theme, objective, format, social_network: socialNetwork };
     if (strategy) {
       if (strategy.pilar)             body.pilar             = strategy.pilar;
       if (strategy.publico_especifico) body.publico_especifico = strategy.publico_especifico;
@@ -798,7 +831,67 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     }
   }
 
-  const pilarColorClass = strategy ? (PILAR_COLORS[strategy.pilar] ?? "bg-slate-100 text-slate-700") : "";
+  // ── LinkedIn image / slides generator ────────────────────────────────────
+  async function handleGenerateLinkedInImages() {
+    if (!result?.post_id) return;
+    setLiImgLoading(true);
+    setLiImgError(null);
+    setLiComposedUrl(null);
+    setLiSlideUrls([]);
+    setLiTaskId(null);
+
+    try {
+      const res  = await fetch("/api/posts/generate-linkedin-images", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ post_id: result.post_id }),
+      });
+      const data = await res.json() as {
+        linkedin_slide_urls?: string[];
+        image_url?:           string;
+        composed_url?:        string;
+        task_id?:             string;
+        status?:              string;
+        error?:               string;
+      };
+
+      if (!res.ok) { setLiImgError(data.error ?? "Erro ao gerar imagem LinkedIn"); return; }
+
+      // Carousel: slides ready immediately
+      if (data.linkedin_slide_urls?.length) {
+        setLiSlideUrls(data.linkedin_slide_urls);
+        return;
+      }
+
+      // Sync provider (fal/imagen4): image + composed returned immediately
+      if (data.composed_url) { setLiComposedUrl(data.composed_url); return; }
+      if (data.image_url)    { setLiComposedUrl(data.image_url); return; }
+
+      // Async provider (Freepik/Seedream): poll check-image
+      const task_id = data.task_id;
+      if (!task_id) { setLiImgError("Nenhuma imagem retornada"); return; }
+      setLiTaskId(task_id);
+
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 4000));
+        const check     = await fetch(`/api/posts/check-image?task_id=${task_id}&post_id=${result.post_id}`);
+        const checkData = await check.json() as { status: string; composed_url?: string; image_url?: string; error?: string };
+        if (checkData.status === "COMPLETED") {
+          setLiComposedUrl(checkData.composed_url ?? checkData.image_url ?? null);
+          return;
+        }
+        if (checkData.status === "FAILED") { setLiImgError(checkData.error ?? "Falha ao gerar imagem"); return; }
+      }
+      setLiImgError("Timeout: imagem demorou mais que o esperado.");
+    } catch {
+      setLiImgError("Erro inesperado. Tente novamente.");
+    } finally {
+      setLiImgLoading(false);
+    }
+  }
+
+  const allPilarColors  = { ...PILAR_COLORS, ...LINKEDIN_PILAR_COLORS };
+  const pilarColorClass = strategy ? (allPilarColors[strategy.pilar] ?? "bg-slate-100 text-slate-700") : "";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -816,15 +909,40 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
               <p className="text-xs text-slate-400">{client.segment}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Seletor de rede — só aparece se o cliente tiver LinkedIn habilitado */}
+            {hasLinkedIn && (
+              <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => { setSocialNetwork("instagram"); setFormat("feed"); setStrategy(null); }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                    !isLinkedIn ? "bg-white text-violet-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  📸 Instagram
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSocialNetwork("linkedin"); setFormat("linkedin_post"); setStrategy(null); }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                    isLinkedIn ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  💼 LinkedIn
+                </button>
+              </div>
+            )}
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-          {/* ─── STEP 0: Referência Visual ─── */}
-          {step === 0 && !result && (
+          {/* ─── STEP 0: Referência Visual (Instagram only) ─── */}
+          {step === 0 && !result && !isLinkedIn && (
             <div className="space-y-5">
               {/* Step indicator */}
               <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -1220,12 +1338,12 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
               <div className="space-y-2">
                 <Label>Formato</Label>
                 <div className="grid grid-cols-3 gap-2">
-                  {FORMAT_OPTIONS.map(opt => (
+                  {(isLinkedIn ? LINKEDIN_FORMAT_OPTIONS : FORMAT_OPTIONS).map(opt => (
                     <button key={opt.value} type="button"
-                      onClick={() => setFormat(opt.value)}
+                      onClick={() => setFormat(opt.value as Format)}
                       className={`p-3 rounded-xl border-2 text-left transition-all ${
                         format === opt.value
-                          ? "border-violet-500 bg-violet-50"
+                          ? isLinkedIn ? "border-blue-500 bg-blue-50" : "border-violet-500 bg-violet-50"
                           : "border-slate-200 hover:border-slate-300"
                       }`}>
                       <p className="text-sm font-medium text-slate-900">{opt.label}</p>
@@ -1249,8 +1367,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   placeholder="Ex: Educar e gerar curiosidade para agendar consulta" />
               </div>
 
-              {/* ── Preview do layout (sem custo de IA) ─────────────────────── */}
-              {(referenceDna || selectedExampleId) && theme && (
+              {/* ── Preview do layout (sem custo de IA) — Instagram only ────── */}
+              {!isLinkedIn && (referenceDna || selectedExampleId) && theme && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
@@ -1283,8 +1401,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 </div>
               )}
 
-              {/* Referência visual (opcional) */}
-              <div className="space-y-2">
+              {/* Referência visual (opcional) — Instagram only */}
+              {!isLinkedIn && <div className="space-y-2">
                 <Label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
                   <ScanSearch className="w-3.5 h-3.5 text-emerald-500" />
                   Referência visual <span className="text-slate-400 font-normal">(opcional)</span>
@@ -1355,7 +1473,17 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                     ⚠️ {referenceWarn}
                   </p>
                 )}
-              </div>
+              </div>}
+
+              {/* LinkedIn info banner */}
+              {isLinkedIn && (
+                <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                  <span className="text-blue-500 mt-0.5 text-sm">💼</span>
+                  <p className="text-xs text-blue-700 leading-relaxed">
+                    <strong>LinkedIn:</strong> A IA vai buscar tendências de mercado em tempo real, criar um post com thought leadership e hook profissional adaptado ao algoritmo do LinkedIn.
+                  </p>
+                </div>
+              )}
 
               {/* Sugestão de legenda */}
               <div className="space-y-1.5">
@@ -1604,14 +1732,90 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 </div>
               </div>
 
-              {/* Visual prompt */}
-              <div className="p-4 bg-violet-50 rounded-xl space-y-2">
-                <Label className="text-xs text-violet-500 uppercase tracking-wide">Prompt visual (Freepik)</Label>
-                <p className="text-slate-600 text-sm italic">{result.visual_prompt}</p>
-              </div>
+              {/* Visual prompt — Instagram only */}
+              {!isLinkedIn && result.visual_prompt && (
+                <div className="p-4 bg-violet-50 rounded-xl space-y-2">
+                  <Label className="text-xs text-violet-500 uppercase tracking-wide">Prompt visual (Freepik)</Label>
+                  <p className="text-slate-600 text-sm italic">{result.visual_prompt}</p>
+                </div>
+              )}
 
-              {/* ── Imagem ── */}
-              {result.image_url ? (
+              {/* ── LinkedIn image / slides section ── */}
+              {isLinkedIn && (format === "linkedin_post" || format === "linkedin_carousel") && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-blue-500" />
+                    <Label className="text-xs text-blue-600 uppercase tracking-wide font-semibold">
+                      {format === "linkedin_carousel" ? "Slides do Carrossel" : "Imagem do Post"}
+                    </Label>
+                  </div>
+
+                  {/* Carousel slides preview */}
+                  {format === "linkedin_carousel" && liSlideUrls.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        {liSlideUrls.map((url, idx) => (
+                          <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover" />
+                            <a href={url} download={`slide-${idx + 1}.jpg`} target="_blank"
+                              className="absolute bottom-1 right-1 bg-black/50 rounded-md p-1 text-white hover:bg-black/70">
+                              <Download className="w-3 h-3" />
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => { setLiSlideUrls([]); setLiImgError(null); }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-medium hover:bg-slate-50 transition-colors w-full justify-center">
+                        <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                        Regerar slides
+                      </button>
+                    </div>
+                  )}
+
+                  {/* linkedin_post image preview */}
+                  {format === "linkedin_post" && liComposedUrl && (
+                    <div className="space-y-2">
+                      <div className="rounded-xl overflow-hidden border w-full aspect-video">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={liComposedUrl} alt="Imagem LinkedIn" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex gap-2">
+                        <a href={liComposedUrl} download={`linkedin-post-${result.post_id}.jpg`} target="_blank"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-medium hover:bg-slate-50 transition-colors">
+                          <Download className="w-3.5 h-3.5" /> Download
+                        </a>
+                        <button
+                          onClick={() => { setLiComposedUrl(null); setLiImgError(null); }}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-medium hover:bg-slate-50 transition-colors">
+                          <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                          Regerar imagem
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Generate button */}
+                  {(format === "linkedin_carousel" ? liSlideUrls.length === 0 : !liComposedUrl) && (
+                    <Button
+                      onClick={handleGenerateLinkedInImages}
+                      disabled={liImgLoading}
+                      className="w-full text-white bg-blue-600 hover:bg-blue-700"
+                    >
+                      {liImgLoading
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{format === "linkedin_carousel" ? "Gerando slides..." : "Gerando imagem..."}</>
+                        : <><ImageIcon className="w-4 h-4 mr-2" />{format === "linkedin_carousel" ? "Gerar slides do carrossel" : "Gerar imagem do post"}</>
+                      }
+                    </Button>
+                  )}
+
+                  {liImgError && <p className="text-xs text-red-500 text-center">{liImgError}</p>}
+                </div>
+              )}
+
+              {/* ── Imagem — Instagram only ── */}
+              {!isLinkedIn && (result.image_url ? (
                 <div className="space-y-2">
                   {/* Toggle raw vs composed */}
                   {result.image_url && composedUrl && (
@@ -2105,7 +2309,8 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                     <p className="text-xs text-red-500 text-center">{imgError}</p>
                   )}
                 </div>
-              )}
+              ))}
+
 
               <Button variant="outline" className="w-full" onClick={() => {
                 setResult(null);
@@ -2156,11 +2361,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
           <div className="flex justify-end gap-3 px-6 py-4 border-t">
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
 
-            {/* Stage 0: Referência */}
+            {/* Stage 0: Referência (Instagram) / Avançar (LinkedIn vai direto ao step 1) */}
             {step === 0 && (
               <Button
                 onClick={() => setStep(1)}
-                className="bg-violet-600 hover:bg-violet-700 text-white min-w-[160px]"
+                className={`text-white min-w-[160px] ${isLinkedIn ? "bg-blue-600 hover:bg-blue-700" : "bg-violet-600 hover:bg-violet-700"}`}
               >
                 {selectedExampleId
                   ? <><Check className="w-4 h-4 mr-2" />Usar esta referência</>
@@ -2193,10 +2398,12 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 )}
                 <Button onClick={handleGenerate}
                   disabled={loading || !theme || !objective}
-                  className="bg-violet-600 hover:bg-violet-700 text-white min-w-[140px]">
+                  className={`text-white min-w-[140px] ${isLinkedIn ? "bg-blue-600 hover:bg-blue-700" : "bg-violet-600 hover:bg-violet-700"}`}>
                   {loading
                     ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
-                    : <><Sparkles className="w-4 h-4 mr-2" />Gerar post</>}
+                    : isLinkedIn
+                      ? <><span className="mr-1.5 text-sm">💼</span>Gerar post LinkedIn</>
+                      : <><Sparkles className="w-4 h-4 mr-2" />Gerar post</>}
                 </Button>
               </div>
             )}

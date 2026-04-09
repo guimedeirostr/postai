@@ -87,6 +87,10 @@ const MYSTIC_ASPECT: Record<string, string> = {
   carousel_panoramic: "widescreen_16_9",  // wide para panorâmica 2 slides (2160×1350)
   stories:            "social_story_9_16",
   reels_cover:        "social_story_9_16",
+  // LinkedIn
+  linkedin_post:      "widescreen_16_9",  // 1200×628 → approx 16:9
+  linkedin_carousel:  "square_1_1",       // 1080×1080 por slide
+  linkedin_article:   "widescreen_16_9",  // capa do artigo
 };
 
 /**
@@ -95,9 +99,12 @@ const MYSTIC_ASPECT: Record<string, string> = {
  * social_story_9_16 (1536×2730) is an exact match for stories/reels.
  */
 const SEEDREAM_ASPECT: Record<string, string> = {
-  feed:        "traditional_3_4",
-  stories:     "social_story_9_16",
-  reels_cover: "social_story_9_16",
+  feed:             "traditional_3_4",
+  stories:          "social_story_9_16",
+  reels_cover:      "social_story_9_16",
+  linkedin_post:    "widescreen_16_9",
+  linkedin_carousel:"square_1_1",
+  linkedin_article: "widescreen_16_9",
 };
 
 export function freepikAspect(format: string, provider: "mystic" | "seedream" = "mystic"): string {

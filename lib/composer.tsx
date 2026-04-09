@@ -51,7 +51,7 @@ export interface ComposeOptions {
   clientName:           string;           // Nome do cliente (bottom strip)
   primaryColor:         string;           // Hex da cor primária da marca
   secondaryColor:       string;           // Hex da cor secundária
-  format:               "feed" | "stories" | "reels_cover";
+  format:               "feed" | "stories" | "reels_cover" | "linkedin_post" | "linkedin_article" | "linkedin_carousel";
   postId:               string;
   // Opcionais — derivados do ReferenceDNA / BrandDNA quando presentes
   compositionZone?:     "left" | "right" | "bottom" | "top" | "center";

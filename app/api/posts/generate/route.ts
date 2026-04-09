@@ -27,16 +27,18 @@ import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
 import type { DocumentReference } from "firebase-admin/firestore";
 import { buildStrategyPrompt } from "@/lib/prompts/strategy";
-import { buildCopyPrompt } from "@/lib/prompts/copy";
+import { buildCopyPrompt, buildLinkedInCopyPrompt } from "@/lib/prompts/copy";
+import { fetchLinkedInTrendContext } from "@/lib/tavily";
 import { buildArtDirectorPrompt } from "@/lib/prompts/art-director";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
+import { fetchTrendContext } from "@/lib/tavily";
 import { createTask, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 import { composePost } from "@/lib/composer";
 import { resolveArtDirection, toComposeOverrides } from "@/lib/art-direction-resolver";
 import { compilePromptForProvider, type ImageProvider } from "@/lib/prompt-compiler";
-import type { ArtDirection, BrandProfile, BrandDNA, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA } from "@/types";
+import type { ArtDirection, BrandProfile, BrandDNA, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA, SocialNetwork } from "@/types";
 
 // Allow up to 60s — Imagen 4 is synchronous and can take 5–15s
 export const maxDuration = 60;
@@ -77,8 +79,11 @@ export async function POST(req: NextRequest) {
       reference_dna?:        ReferenceDNA;
       /** Alternativa: ID de um design_example já salvo na biblioteca da marca */
       reference_example_id?: string;
+      /** Rede social alvo. Default: "instagram" */
+      social_network?:       SocialNetwork;
     };
     const { client_id, campaign_focus, reference_example_id } = body;
+    const social_network: SocialNetwork = body.social_network ?? "instagram";
     let reference_dna: ReferenceDNA | undefined = body.reference_dna;
 
     if (!client_id) {
@@ -140,12 +145,18 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Step 1: Strategy agent ────────────────────────────────────────────────
-    await postRef.update({ status: "strategy" });
+    await postRef.update({ status: "strategy", social_network });
+
+    // Busca tendências em paralelo com a criação do post (non-blocking)
+    const trendContext = await (social_network === "linkedin"
+      ? fetchLinkedInTrendContext(client.segment, campaign_focus)
+      : fetchTrendContext(client.segment, campaign_focus)
+    ).catch(() => null);
 
     const strategyRes = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 1024,
-      system:     buildStrategyPrompt(client, campaign_focus),
+      system:     buildStrategyPrompt(client, campaign_focus, trendContext, social_network),
       messages:   [{ role: "user", content: "Gere o briefing estratégico para o próximo post deste cliente." }],
     });
 
@@ -250,6 +261,73 @@ export async function POST(req: NextRequest) {
       };
       // Coloca na frente — Art Director prioriza os primeiros exemplos
       designExamples = [syntheticExample, ...designExamples].slice(0, 5);
+    }
+
+    // ── Desvio LinkedIn: copy especializado + retorno imediato (sem imagem) ───
+    if (social_network === "linkedin") {
+      await postRef.update({ status: "copy" });
+
+      const liStrategy: StrategyContext = {
+        pilar:              briefing.pilar,
+        publico_especifico: briefing.publico_especifico,
+        dor_desejo:         briefing.dor_desejo,
+        hook_type:          briefing.hook_type,
+      };
+
+      const liCopyRes = await anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 4096,
+        system:     buildLinkedInCopyPrompt(
+          client,
+          briefing.formato_sugerido,
+          briefing.objetivo,
+          liStrategy,
+        ),
+        messages: [{ role: "user", content: `Tema: ${briefing.tema}\nObjetivo: ${briefing.objetivo}\n\nEscreva o melhor post LinkedIn possível para este cliente.` }],
+      });
+
+      const liCopyRaw = liCopyRes.content[0].type === "text" ? liCopyRes.content[0].text : "";
+      let liCopy: {
+        visual_headline: string; headline: string; caption: string;
+        hashtags: string[]; framework_used: string; hook_type: string;
+      };
+      try {
+        liCopy = parseJson(liCopyRaw);
+      } catch {
+        await postRef.update({ status: "failed", error: "Falha ao parsear copy LinkedIn" });
+        return NextResponse.json({ error: "Falha ao parsear resposta do Agente de Copy LinkedIn", raw: liCopyRaw }, { status: 500 });
+      }
+
+      await postRef.update({
+        theme:           briefing.tema,
+        visual_headline: liCopy.visual_headline,
+        headline:        liCopy.headline,
+        caption:         liCopy.caption,
+        hashtags:        liCopy.hashtags,
+        framework_used:  liCopy.framework_used,
+        hook_type:       liCopy.hook_type,
+        image_url:       null,
+        status:          "ready",
+      });
+
+      return NextResponse.json({
+        post_id:        postRef.id,
+        task_id:        null,
+        image_url:      null,
+        composed_url:   null,
+        image_provider: null,
+        social_network: "linkedin",
+        briefing,
+        copy: {
+          visual_headline: liCopy.visual_headline,
+          headline:        liCopy.headline,
+          caption:         liCopy.caption,
+          hashtags:        liCopy.hashtags,
+          framework_used:  liCopy.framework_used,
+          hook_type:       liCopy.hook_type,
+        },
+        art_direction: null,
+      });
     }
 
     // ── Step 3: Copy agent ────────────────────────────────────────────────────
@@ -388,7 +466,7 @@ export async function POST(req: NextRequest) {
       try {
         image_url      = await generateImageFal({
           prompt:  compiledFinal,
-          format:  briefing.formato_sugerido,
+          format:  briefing.formato_sugerido as "feed" | "stories" | "reels_cover",
           post_id: postRef.id,
           model:   resolveFalModel(),
         });
@@ -405,7 +483,7 @@ export async function POST(req: NextRequest) {
       try {
         image_url      = await imagenGenerate({
           prompt:  compiledFinal,
-          format:  briefing.formato_sugerido,
+          format:  briefing.formato_sugerido as "feed" | "stories" | "reels_cover",
           post_id: postRef.id,
           model:   resolveImagenModel(),
         });

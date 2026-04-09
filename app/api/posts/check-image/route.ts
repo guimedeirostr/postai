@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/session";
 import { pollTask, pollSeedreamTask, FreepikAuthError } from "@/lib/freepik";
 import { pollReplicateImage } from "@/lib/replicate";
 import { composePost } from "@/lib/composer";
+import { composeLinkedInPost } from "@/lib/composer-linkedin";
 import {
   loadDnaSources,
   resolveArtDirection,
@@ -103,21 +104,30 @@ export async function GET(req: NextRequest) {
         const clientSnap = await adminDb.collection("clients").doc(post.client_id).get();
         const client     = { id: clientSnap.id, ...clientSnap.data() } as BrandProfile;
 
-        const dna = await loadDnaSources(post);
-        const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
+        if (post.format === "linkedin_post") {
+          composed_url = await composeLinkedInPost({
+            imageUrl:     result.image_url,
+            logoUrl:      client.logo_url,
+            primaryColor: client.primary_color,
+            postId:       post_id,
+          });
+        } else {
+          const dna = await loadDnaSources(post);
+          const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
 
-        composed_url = await composePost({
-          imageUrl:             result.image_url,
-          logoUrl:              client.logo_url,
-          visualHeadline:       post.visual_headline ?? post.headline ?? client.name,
-          instagramHandle:      client.instagram_handle,
-          clientName:           client.name,
-          primaryColor:         client.primary_color,
-          secondaryColor:       client.secondary_color,
-          format:               post.format ?? "feed",
-          postId:               post_id,
-          ...toComposeOverrides(ad),
-        });
+          composed_url = await composePost({
+            imageUrl:             result.image_url,
+            logoUrl:              client.logo_url,
+            visualHeadline:       post.visual_headline ?? post.headline ?? client.name,
+            instagramHandle:      client.instagram_handle,
+            clientName:           client.name,
+            primaryColor:         client.primary_color,
+            secondaryColor:       client.secondary_color,
+            format:               post.format ?? "feed",
+            postId:               post_id,
+            ...toComposeOverrides(ad),
+          });
+        }
         await postRef.update({ composed_url, status: "ready" });
       } catch (composeErr) {
         console.error("[check-image] Compositor error (non-fatal):", composeErr);

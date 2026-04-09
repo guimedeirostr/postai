@@ -1,5 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 
+export type SocialNetwork = "instagram" | "linkedin";
+
 export interface Agency {
   id: string;
   name: string;
@@ -23,6 +25,8 @@ export interface BrandProfile {
   keywords: string[];
   avoid_words: string[];
   instagram_handle: string;
+  linkedin_handle?: string;
+  social_networks?: SocialNetwork[];   // redes habilitadas para este cliente
   bio: string;
   created_at: Timestamp;
 }
@@ -33,7 +37,7 @@ export interface StrategyBriefing {
   objetivo: string;
   publico_especifico: string;
   dor_desejo: string;
-  formato_sugerido: "feed" | "stories" | "reels_cover";
+  formato_sugerido: "feed" | "stories" | "reels_cover" | "linkedin_post" | "linkedin_article" | "linkedin_carousel";
   hook_type: string;
   rationale: string;
 }
@@ -133,7 +137,8 @@ export interface GeneratedPost {
   client_name: string;
   theme: string;
   objective: string;
-  format: "feed" | "stories" | "reels_cover";
+  format: "feed" | "stories" | "reels_cover" | "linkedin_post" | "linkedin_article" | "linkedin_carousel";
+  social_network?: SocialNetwork;
   visual_headline?: string;   // máx 6 palavras para overlay na imagem
   headline: string;
   caption: string;
@@ -166,6 +171,10 @@ export interface GeneratedPost {
   control_image_url?: string | null;
   /** Tipo de controle ControlNet utilizado */
   control_type?: "canny" | "depth" | null;
+  /** Slides estruturados para linkedin_carousel (gerado pelo buildLinkedInCopyPrompt) */
+  slides?: Array<{ headline: string; subheadline?: string | null; body?: string | null }>;
+  /** URLs das imagens compostas dos slides (preenchido após generate-linkedin-images) */
+  linkedin_slide_urls?: string[];
   status: "pending" | "strategy" | "copy" | "art_direction" | "generating" | "composing" | "ready" | "approved" | "rejected" | "failed";
   created_at: Timestamp;
 }
