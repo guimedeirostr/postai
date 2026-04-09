@@ -1,21 +1,17 @@
 /**
  * POST /api/posts/generate-image-gemini
  *
- * Rota EXPERIMENTAL — pipeline enxuto usando Gemini 3.1 Flash Image Preview.
+ * Pipeline Gemini 3.1 Flash Image Preview.
  *
- * Diferença vs /generate-image:
- *   - SEM polling (retorno síncrono — Gemini gera via streaming e retorna buffer)
- *   - SEM Visual Perception Agent, SEM OCR loop, SEM MiDaS depth
- *   - Gemini gera Foto + Texto nativo em uma chamada
- *   - Sharp só adiciona: Logo + Footer (assinatura da marca)
- *   - Aceita referência de imagem de 2 origens:
- *       A) Foto da biblioteca do cliente (library_url)
- *       B) visual_prompt_template do DNA da marca (fallback textual)
+ * Arquitetura:
+ *   1. Gemini  → gera APENAS o visual/foto (sem texto — evita alucinações)
+ *   2. Sharp   → compõe: Logo + Headline (SVG exato) + Footer
  *
  * Body:
  *   post_id        string  (obrigatório)
  *   library_url?   string  — foto da biblioteca para img2img
  *   resolution?    "1K" | "2K" | "4K"   (default: "2K")
+ *   logo_size?     "S" | "M" | "L"      (default: "M")
  *
  * Retorna:
  *   { image_url, post_id, provider: "gemini" }
@@ -29,7 +25,7 @@ import { uploadToR2 } from "@/lib/r2";
 import { generateWithGemini, isGeminiEnabled } from "@/lib/gemini-image";
 import type { BrandProfile, BrandDNA, GeneratedPost } from "@/types";
 
-export const maxDuration = 120; // Gemini pode levar até 60s em 4K
+export const maxDuration = 120;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -44,33 +40,106 @@ async function fetchAsB64(url: string): Promise<{ b64: string; mime: string } | 
   } catch { return null; }
 }
 
+/** Escapa caracteres especiais XML para uso em SVG */
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/** Quebra texto em linhas respeitando o máximo de caracteres por linha */
+function wrapText(text: string, maxCharsPerLine: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (test.length > maxCharsPerLine && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/**
+ * Gera buffer SVG com o headline para composição via Sharp.
+ * O texto é renderizado pelo Sharp (librsvg) — 100% fiel, sem alucinações.
+ */
+function buildHeadlineSvg(headline: string, canvasWidth = 1080): Buffer {
+  const wordCount   = headline.split(" ").length;
+  const fontSize    = wordCount <= 3 ? 96 : wordCount <= 6 ? 82 : wordCount <= 9 ? 68 : 56;
+  const maxChars    = wordCount <= 3 ? 14 : wordCount <= 6 ? 18 : wordCount <= 9 ? 22 : 26;
+  const lineHeight  = Math.round(fontSize * 1.28);
+
+  const lines      = wrapText(headline, maxChars);
+  const svgWidth   = canvasWidth - 80; // 40px margem em cada lado
+  const svgHeight  = lines.length * lineHeight + 20;
+
+  const tspans = lines
+    .map((line, i) =>
+      `<tspan x="${svgWidth / 2}" dy="${i === 0 ? fontSize : lineHeight}">${escapeXml(line)}</tspan>`
+    )
+    .join("");
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}">
+    <text
+      x="${svgWidth / 2}"
+      y="0"
+      font-family="Arial Black, Arial, Helvetica, sans-serif"
+      font-weight="900"
+      font-size="${fontSize}"
+      fill="#111111"
+      text-anchor="middle"
+      letter-spacing="-1"
+    >${tspans}</text>
+  </svg>`;
+
+  return Buffer.from(svg);
+}
+
 /** Dimensões da logo por tamanho */
 const LOGO_DIMS: Record<string, { w: number; h: number }> = {
-  S: { w: 180,  h: 54  },
-  M: { w: 280,  h: 84  },
-  L: { w: 400,  h: 120 },
+  S: { w: 180, h: 54  },
+  M: { w: 280, h: 84  },
+  L: { w: 400, h: 120 },
 };
 
-/** Compõe logo e footer sobre o buffer gerado pelo Gemini */
-async function addLogoAndFooter(
+/**
+ * Compõe a imagem final:
+ *   1. Redimensiona para 1080×1350
+ *   2. Footer colorido (baixo)
+ *   3. Headline SVG (centro/baixo)
+ *   4. Logo (canto superior esquerdo)
+ */
+async function composeImage(
   imageBuffer: Buffer,
   client:      BrandProfile,
+  headline:    string,
   logoSize:    "S" | "M" | "L" = "M",
 ): Promise<Buffer> {
-  // Redimensiona para 1080×1350 (4:5 Instagram)
+
+  // 1. Resize base
   let base = await sharp(imageBuffer)
     .resize(1080, 1350, { fit: "cover", position: "attention" })
     .toBuffer();
 
-  // Footer bar na base (72px com cor primária)
+  // 2. Footer bar
   const primary = client.primary_color?.startsWith("#")
     ? client.primary_color
     : `#${client.primary_color ?? "6d28d9"}`;
+  const hex = primary.replace("#", "");
+  const r   = parseInt(hex.slice(0, 2), 16) || 109;
+  const g   = parseInt(hex.slice(2, 4), 16) || 40;
+  const b   = parseInt(hex.slice(4, 6), 16) || 217;
 
-  const hex    = primary.replace("#", "");
-  const r      = parseInt(hex.slice(0, 2), 16) || 109;
-  const g      = parseInt(hex.slice(2, 4), 16) || 40;
-  const b      = parseInt(hex.slice(4, 6), 16) || 217;
   const footer = await sharp({
     create: { width: 1080, height: 72, channels: 4, background: { r, g, b, alpha: 1 } },
   }).png().toBuffer();
@@ -79,10 +148,34 @@ async function addLogoAndFooter(
     .composite([{ input: footer, top: 1350 - 72, left: 0 }])
     .toBuffer();
 
-  // Logo (usa logo_white_url em fundo escuro, logo_url como fallback)
-  const logoUrl   = client.logo_white_url ?? client.logo_url;
-  const isWhite   = !!client.logo_white_url;
-  const dims      = LOGO_DIMS[logoSize] ?? LOGO_DIMS.M;
+  // 3. Headline via SVG (Sharp/librsvg renderiza o texto — sem alucinações)
+  if (headline.trim()) {
+    try {
+      const svgBuf    = buildHeadlineSvg(headline, 1080);
+      const svgMeta   = await sharp(svgBuf).metadata();
+      const svgHeight = svgMeta.height ?? 200;
+
+      // Posição: centro vertical da área útil (abaixo do logo, acima do footer)
+      const areaTop    = 160;
+      const areaBottom = 1350 - 72;
+      const areaCenter = Math.round((areaTop + areaBottom) / 2);
+      const top        = Math.max(areaTop, Math.min(areaCenter - Math.round(svgHeight / 2), areaBottom - svgHeight));
+      const left       = 40;
+
+      base = await sharp(base)
+        .composite([{ input: svgBuf, top, left }])
+        .toBuffer();
+
+      console.log(`[gemini/headline] SVG composto — "${headline.slice(0, 40)}", top:${top}, height:${svgHeight}`);
+    } catch (txtErr) {
+      console.warn("[gemini/headline] Falha ao compor headline:", txtErr instanceof Error ? txtErr.message : txtErr);
+    }
+  }
+
+  // 4. Logo
+  const logoUrl    = client.logo_white_url ?? client.logo_url;
+  const isWhite    = !!client.logo_white_url;
+  const dims       = LOGO_DIMS[logoSize] ?? LOGO_DIMS.M;
   let   logoPlaced = false;
 
   if (logoUrl) {
@@ -94,51 +187,41 @@ async function addLogoAndFooter(
       });
 
       if (!logoRes.ok) {
-        console.warn(`[gemini/logo] HTTP ${logoRes.status} ao buscar logo — usando fallback SVG`);
+        console.warn(`[gemini/logo] HTTP ${logoRes.status} — usando fallback SVG`);
       } else {
-        const contentType = logoRes.headers.get("content-type") ?? "";
-        console.log(`[gemini/logo] content-type: ${contentType}, size: ${logoRes.headers.get("content-length")} bytes`);
-
         const logoBuffer = Buffer.from(await logoRes.arrayBuffer());
-
-        // Detectar se tem canal alpha (PNG/WebP) ou não (JPEG)
-        const logoMeta = await sharp(logoBuffer).metadata();
-        const hasAlpha = (logoMeta.channels ?? 3) === 4;
+        const logoMeta   = await sharp(logoBuffer).metadata();
+        const hasAlpha   = (logoMeta.channels ?? 3) === 4;
 
         let logoSharp = sharp(logoBuffer)
           .resize(dims.w, dims.h, { fit: "inside", withoutEnlargement: false });
 
-        // Negate só para logo padrão (não branca) com transparência — inverte preto→branco
-        // Para JPEG (sem alpha), adiciona canal alpha e usa mix-blend ao invés de negate
         if (!isWhite) {
           if (hasAlpha) {
             logoSharp = logoSharp.negate({ alpha: false });
           } else {
-            // JPEG: converte para PNG com fundo transparente forçando inversão via flatten
             logoSharp = logoSharp
-              .flatten({ background: { r: 255, g: 255, b: 255 } }) // garante fundo branco
-              .negate()                                               // inverte tudo (branco→preto, preto→branco)
+              .flatten({ background: { r: 255, g: 255, b: 255 } })
+              .negate()
               .toColourspace("srgb");
           }
         }
 
         const logoBuf = await logoSharp.png().toBuffer();
-        const topPad  = Math.round((140 - (dims.h)) / 2);
+        const topPad  = Math.round((140 - dims.h) / 2);
         base = await sharp(base)
           .composite([{ input: logoBuf, top: Math.max(topPad, 16), left: 44 }])
           .toBuffer();
 
         logoPlaced = true;
-        console.log(`[gemini/logo] Logo composta com sucesso — ${dims.w}×${dims.h}px, top:${Math.max(topPad, 16)}, left:44`);
+        console.log(`[gemini/logo] Composta — ${dims.w}×${dims.h}px`);
       }
     } catch (logoErr) {
-      console.error("[gemini/logo] Erro ao processar logo:", logoErr instanceof Error ? logoErr.message : logoErr);
+      console.error("[gemini/logo] Erro:", logoErr instanceof Error ? logoErr.message : logoErr);
     }
-  } else {
-    console.warn("[gemini/logo] client.logo_url e client.logo_white_url estão vazios");
   }
 
-  // Fallback: nome da marca em branco no footer quando logo não carregou
+  // Fallback: nome da marca quando logo falha
   if (!logoPlaced) {
     try {
       const brandName = client.name ?? "Marca";
@@ -149,66 +232,52 @@ async function addLogoAndFooter(
           font-weight="700"
           font-size="${fontSize}"
           fill="white"
-          letter-spacing="-0.5">${brandName.toUpperCase()}</text>
+          letter-spacing="-0.5">${escapeXml(brandName.toUpperCase())}</text>
       </svg>`;
-      const svgBuf = Buffer.from(svgText);
       const topPad = Math.round((140 - dims.h) / 2);
       base = await sharp(base)
-        .composite([{ input: svgBuf, top: Math.max(topPad, 16), left: 44 }])
+        .composite([{ input: Buffer.from(svgText), top: Math.max(topPad, 16), left: 44 }])
         .toBuffer();
-      console.log(`[gemini/logo] Fallback SVG com nome "${brandName}" aplicado`);
+      console.log(`[gemini/logo] Fallback SVG "${brandName}" aplicado`);
     } catch (svgErr) {
-      console.warn("[gemini/logo] Fallback SVG também falhou:", svgErr instanceof Error ? svgErr.message : svgErr);
+      console.warn("[gemini/logo] Fallback SVG falhou:", svgErr instanceof Error ? svgErr.message : svgErr);
     }
   }
 
   return sharp(base).jpeg({ quality: 95 }).toBuffer();
 }
 
-// ── Montar prompt para o Gemini ───────────────────────────────────────────────
+// ── Prompt para o Gemini (APENAS visual — sem texto) ─────────────────────────
 function buildGeminiPrompt(
   post:   GeneratedPost,
   client: BrandProfile,
   dna?:   BrandDNA | null,
 ): string {
-  const headline  = (post.visual_headline ?? post.headline ?? "").slice(0, 60);
-  const visual    = (post.visual_prompt   ?? "").slice(0, 400);
-  const brandDNA  = dna?.visual_prompt_template
-    ? `\n\nBrand visual style: ${dna.visual_prompt_template.slice(0, 300)}`
+  const visual   = (post.visual_prompt ?? "").slice(0, 400);
+  const brandDNA = dna?.visual_prompt_template
+    ? `Brand visual style: ${dna.visual_prompt_template.slice(0, 300)}`
     : "";
 
-  // Instrui o Gemini a compor foto + texto sobrepostos em um único quadro
   return [
-    `Create a professional Instagram post image (4:5 portrait).`,
+    `Create a professional Instagram post PHOTO (4:5 portrait).`,
+    `This is a PHOTO ONLY — do NOT add any text, words, letters, or typography anywhere in the image.`,
     ``,
     `VISUAL CONCEPT:`,
     visual || "High-quality brand photography, clean and modern.",
-    brandDNA,
+    brandDNA ? `\n${brandDNA}` : "",
     ``,
-    `DESIGN COLORS (for background/accents only — do NOT render as text):`,
+    `DESIGN COLORS (use only for props, backgrounds, accents):`,
     `- Primary: ${client.primary_color ?? "#6d28d9"}`,
     `- Secondary: ${client.secondary_color ?? "#ffffff"}`,
     `- Visual tone: ${(client.tone_of_voice ?? "professional").slice(0, 80)}`,
     ``,
-    `MANDATORY TEXT — copy this EXACTLY, letter by letter, no changes:`,
-    `>>> ${headline} <<<`,
-    ``,
-    `TEXT RULES:`,
-    `- Render only the text between >>> and <<<, nothing else`,
-    `- Do NOT paraphrase, do NOT repeat words, do NOT add punctuation`,
-    `- Use bold, large typography — high contrast against background`,
-    `- Place text in the central or lower-central area of the image`,
-    ``,
-    `STRICT BLANK ZONES — these areas must be 100% empty (no text, no graphics, no brand name, no decorations):`,
-    `- TOP-LEFT CORNER: approximately the top 10% height × left 25% width — leave completely empty for logo overlay`,
-    `- BOTTOM STRIP: approximately the bottom 6% height — leave completely empty for footer overlay`,
-    ``,
-    `ABSOLUTE PROHIBITIONS:`,
-    `- Do NOT write any brand name, company name, or product name anywhere`,
-    `- Do NOT add any logo, icon, badge, or watermark`,
-    `- Do NOT add borders or padding`,
-    `- Do NOT add any text other than the mandatory headline above`,
-  ].join("\n");
+    `RULES:`,
+    `- NO text, NO words, NO letters, NO numbers, NO labels anywhere`,
+    `- NO logo, NO watermark, NO badge, NO icon`,
+    `- NO borders, NO padding`,
+    `- Leave the lower half of the image with a clean, light area suitable for text overlay`,
+    `- Leave the top-left corner clean (no subjects, no clutter) for logo overlay`,
+  ].filter(Boolean).join("\n");
 }
 
 // ── Route Handler ─────────────────────────────────────────────────────────────
@@ -253,7 +322,7 @@ export async function POST(req: NextRequest) {
     }
     const client = { id: post.client_id, ...clientDoc.data() } as BrandProfile;
 
-    // ── Buscar DNA da marca (opcional — enriquece o prompt) ───────────────────
+    // ── Buscar DNA da marca (opcional) ────────────────────────────────────────
     let dna: BrandDNA | null = null;
     try {
       const dnaDoc = await adminDb
@@ -264,27 +333,21 @@ export async function POST(req: NextRequest) {
     } catch { /* DNA é opcional */ }
 
     // ── Resolver imagem de referência ─────────────────────────────────────────
-    // Prioridade: 1. library_url do body  2. library_url salvo no post
     const libraryUrl = body.library_url ?? (post as unknown as Record<string, unknown>).library_image_url as string | undefined;
     let reference: { b64: string; mime: string } | null = null;
 
     if (libraryUrl) {
-      console.log(`[gemini] Buscando referência de biblioteca: ${libraryUrl}`);
+      console.log(`[gemini] Buscando referência: ${libraryUrl}`);
       reference = await fetchAsB64(libraryUrl);
-      if (!reference) {
-        console.warn("[gemini] Falha ao baixar referência — prosseguindo sem img2img");
-      }
-    } else if (dna?.visual_prompt_template) {
-      // Sem foto: usa template de DNA no prompt (já incluso em buildGeminiPrompt)
-      console.log("[gemini] Sem referência de foto — usando DNA textual no prompt");
+      if (!reference) console.warn("[gemini] Falha ao baixar referência — prosseguindo sem img2img");
     }
 
     // ── Marcar post como gerando ──────────────────────────────────────────────
     await postRef.update({ status: "generating", image_provider: "gemini" });
 
-    // ── Chamar Gemini ─────────────────────────────────────────────────────────
+    // ── Chamar Gemini (só visual, sem texto) ──────────────────────────────────
     const prompt = buildGeminiPrompt(post, client, dna);
-    console.log(`[gemini] Gerando imagem — formato: ${post.format ?? "feed"}, resolução: ${body.resolution ?? "2K"}, ref: ${reference ? "sim" : "não"}`);
+    console.log(`[gemini] Gerando visual — formato: ${post.format ?? "feed"}, resolução: ${body.resolution ?? "2K"}, ref: ${reference ? "sim" : "não"}`);
 
     const geminiResult = await generateWithGemini({
       prompt,
@@ -294,8 +357,9 @@ export async function POST(req: NextRequest) {
       resolution:     body.resolution ?? "2K",
     });
 
-    // ── Compor: Logo + Footer ─────────────────────────────────────────────────
-    const composed = await addLogoAndFooter(geminiResult.buffer, client, body.logo_size ?? "M");
+    // ── Compor: Logo + Headline (SVG) + Footer ────────────────────────────────
+    const headline = (post.visual_headline ?? post.headline ?? "").trim();
+    const composed = await composeImage(geminiResult.buffer, client, headline, body.logo_size ?? "M");
 
     // ── Upload para R2 ────────────────────────────────────────────────────────
     const r2Key    = `posts/${user.uid}/${post_id}/gemini-${Date.now()}.jpg`;
@@ -315,7 +379,6 @@ export async function POST(req: NextRequest) {
       image_url: imageUrl,
       post_id,
       provider:  "gemini",
-      ...(geminiResult.text ? { model_text: geminiResult.text } : {}),
     });
 
   } catch (err) {
