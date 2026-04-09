@@ -139,6 +139,10 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   // ── Logo size para Gemini ─────────────────────────────────────────────────
   const [logoSize, setLogoSize] = useState<"S" | "M" | "L">("M");
 
+  // ── Visual prompt — edição e tradução automática ──────────────────────────
+  const [editedPrompt,   setEditedPrompt]   = useState("");
+  const [isTranslating,  setIsTranslating]  = useState(false);
+
   // ── Edit / Reload de campos de copy ──────────────────────────────────────
   type CopyField = "visual_headline" | "headline" | "caption";
   const [editField,        setEditField]        = useState<CopyField | null>(null);
@@ -471,6 +475,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
 
     if (res.ok) {
       setResult(data as unknown as CopyResult);
+      setEditedPrompt((data as unknown as CopyResult).visual_prompt ?? "");
       onGenerated();
       if (data.reference_warning) setReferenceWarn(data.reference_warning as string);
     } else {
@@ -605,6 +610,11 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
     try {
       // Monta payload base; adiciona params avançados conforme o modo FAL
       const payload: Record<string, unknown> = { post_id: result.post_id };
+
+      // Inclui override do prompt se o usuário editou
+      if (editedPrompt && editedPrompt !== result.visual_prompt) {
+        payload.visual_prompt_override = editedPrompt;
+      }
 
       if (imageMode === "fal") {
         payload.provider = "fal";
@@ -1732,11 +1742,52 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                 </div>
               </div>
 
-              {/* Visual prompt — Instagram only */}
+              {/* Visual prompt — editável com tradução automática */}
               {!isLinkedIn && result.visual_prompt && (
                 <div className="p-4 bg-violet-50 rounded-xl space-y-2">
-                  <Label className="text-xs text-violet-500 uppercase tracking-wide">Prompt visual (Freepik)</Label>
-                  <p className="text-slate-600 text-sm italic">{result.visual_prompt}</p>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-violet-500 uppercase tracking-wide">Prompt visual (Freepik)</Label>
+                    <button
+                      onClick={async () => {
+                        if (!editedPrompt.trim() || isTranslating) return;
+                        setIsTranslating(true);
+                        try {
+                          const res = await fetch("/api/translate", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: editedPrompt }),
+                          });
+                          const data = await res.json() as { translated?: string; error?: string };
+                          if (res.ok && data.translated) {
+                            setEditedPrompt(data.translated);
+                          }
+                        } catch { /* silencioso */ }
+                        finally { setIsTranslating(false); }
+                      }}
+                      disabled={isTranslating}
+                      className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 disabled:opacity-50 transition-colors font-medium"
+                    >
+                      {isTranslating
+                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Traduzindo...</>
+                        : <><Wand2 className="w-3 h-3" /> Traduzir para EN</>
+                      }
+                    </button>
+                  </div>
+                  <textarea
+                    value={editedPrompt}
+                    onChange={e => setEditedPrompt(e.target.value)}
+                    rows={5}
+                    className="w-full text-slate-700 text-sm rounded-lg border border-violet-200 bg-white px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-violet-400 leading-relaxed"
+                    placeholder="Descreva a imagem em português ou inglês..."
+                  />
+                  {editedPrompt !== result.visual_prompt && (
+                    <button
+                      onClick={() => setEditedPrompt(result.visual_prompt)}
+                      className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      ↩ Restaurar original
+                    </button>
+                  )}
                 </div>
               )}
 

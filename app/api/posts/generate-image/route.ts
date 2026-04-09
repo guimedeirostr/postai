@@ -95,23 +95,26 @@ export async function POST(req: NextRequest) {
     const {
       post_id,
       provider: providerOverride,
-      image_url:          libraryImageUrl,
-      character_lock_url: characterLockUrl,
-      control_image_url:  controlImageUrl,
+      image_url:            libraryImageUrl,
+      character_lock_url:   characterLockUrl,
+      control_image_url:    controlImageUrl,
       control_type,
       id_weight,
       control_strength,
       replicate_model,
+      visual_prompt_override,
     } = await req.json() as {
-      post_id:             string;
-      provider?:           string;
-      image_url?:          string;
-      character_lock_url?: string;
-      control_image_url?:  string;
-      control_type?:       "canny" | "depth";
-      id_weight?:          number;
-      control_strength?:   number;
-      replicate_model?:    ReplicateImageModel;
+      post_id:               string;
+      provider?:             string;
+      image_url?:            string;
+      character_lock_url?:   string;
+      control_image_url?:    string;
+      control_type?:         "canny" | "depth";
+      id_weight?:            number;
+      control_strength?:     number;
+      replicate_model?:      ReplicateImageModel;
+      /** Prompt editado pelo usuário no frontend — substitui o gerado pela IA */
+      visual_prompt_override?: string;
     };
 
     if (!post_id) {
@@ -130,6 +133,13 @@ export async function POST(req: NextRequest) {
         { error: "Post sem visual_prompt — rode generate-copy primeiro" },
         { status: 400 }
       );
+    }
+
+    // ── Aplicar override do prompt (usuário editou no frontend) ───────────────
+    if (visual_prompt_override?.trim() && visual_prompt_override !== post.visual_prompt) {
+      await postDoc.ref.update({ visual_prompt: visual_prompt_override.trim() });
+      post.visual_prompt = visual_prompt_override.trim();
+      console.log(`[generate-image] visual_prompt substituído pelo usuário (${post.visual_prompt.length} chars)`);
     }
 
     await postDoc.ref.update({ status: "generating" });
