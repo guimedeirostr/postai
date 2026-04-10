@@ -277,6 +277,7 @@ export async function POST(req: NextRequest) {
 
       if (no_persist) return NextResponse.json(liParsed);
 
+      const liRawCopy = liParsed as unknown as Record<string, unknown>;
       const liRef = adminDb.collection("posts").doc();
       await liRef.set({
         id:              liRef.id,
@@ -293,6 +294,11 @@ export async function POST(req: NextRequest) {
         hashtags:        liParsed.hashtags,
         framework_used:  liParsed.framework_used,
         hook_type:       liParsed.hook_type,
+        // Salva slides do carrossel para reconstituir no detalhe do post
+        ...(liRawCopy.slides ? { slides: liRawCopy.slides } : {}),
+        // Salva instruções extras para histórico
+        ...(extra_instructions ? { extra_instructions } : {}),
+        ...(pilar ? { pilar } : {}),
         image_url:       null,
         status:          "ready",
         created_at:      FieldValue.serverTimestamp(),

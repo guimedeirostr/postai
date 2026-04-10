@@ -14,9 +14,12 @@ import type { BrandProfile, GeneratedPost } from "@/types";
 import { PostComposer } from "@/components/post-composer";
 import { AnalyzeReferenceModal } from "@/components/analyze-reference-modal";
 const FORMAT_LABEL: Record<string, string> = {
-  feed:        "Feed",
-  stories:     "Stories",
-  reels_cover: "Capa de Reels",
+  feed:               "Feed",
+  stories:            "Stories",
+  reels_cover:        "Capa de Reels",
+  linkedin_post:      "LinkedIn · Post",
+  linkedin_article:   "LinkedIn · Artigo",
+  linkedin_carousel:  "LinkedIn · Carrossel",
 };
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
