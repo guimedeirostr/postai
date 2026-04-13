@@ -55,6 +55,11 @@ export interface CanvasState {
   composedUrl:     string | null;
   approveStatus:   StepStatus;
 
+  // ── Remove Background ─────────────────────────────────────────────────────
+  transparentUrl:  string | null;
+  removeBgStatus:  StepStatus;
+  removeBgError:   string | null;
+
   // ── Actions ───────────────────────────────────────────────────────────────
   loadClients:     () => Promise<void>;
   selectClient:    (id: string) => void;
@@ -65,6 +70,7 @@ export interface CanvasState {
   pollImage:       (taskId: string, postId: string) => Promise<void>;
   approvePost:     () => Promise<void>;
   rejectPost:      () => Promise<void>;
+  removeBackground:() => Promise<void>;
   resetStep:       (step: "strategy" | "copy" | "image" | "all") => void;
 }
 
@@ -95,8 +101,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   imageError:    null,
   qualityScore:  null,
 
-  composedUrl:   null,
-  approveStatus: "idle",
+  composedUrl:    null,
+  approveStatus:  "idle",
+
+  transparentUrl: null,
+  removeBgStatus: "idle",
+  removeBgError:  null,
 
   // ── Load clients list ──────────────────────────────────────────────────────
   loadClients: async () => {
@@ -287,6 +297,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     } catch { /* silent */ }
   },
 
+  // ── Remove Background ──────────────────────────────────────────────────────
+  removeBackground: async () => {
+    const { postId } = get();
+    if (!postId) return;
+
+    set({ removeBgStatus: "loading", removeBgError: null });
+    try {
+      const res  = await fetch(`/api/posts/${postId}/remove-bg`, { method: "POST" });
+      const data = await res.json() as { transparent_url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro ao remover fundo");
+      set({ transparentUrl: data.transparent_url ?? null, removeBgStatus: "done" });
+    } catch (e) {
+      set({
+        removeBgStatus: "error",
+        removeBgError: e instanceof Error ? e.message : "Erro desconhecido",
+      });
+    }
+  },
+
   // ── Reset steps ────────────────────────────────────────────────────────────
   resetStep: (step) => {
     if (step === "all") {
@@ -295,13 +324,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         copy: null,     copyStatus: "idle",     copyError: null,
         postId: null, taskId: null, imageUrl: null, imageStatus: "idle", imageError: null, qualityScore: null,
         composedUrl: null, approveStatus: "idle",
+        transparentUrl: null, removeBgStatus: "idle", removeBgError: null,
       });
     } else if (step === "strategy") {
       set({ briefing: null, strategyStatus: "idle", strategyError: null });
     } else if (step === "copy") {
       set({ copy: null, copyStatus: "idle", copyError: null });
     } else if (step === "image") {
-      set({ postId: null, taskId: null, imageUrl: null, imageStatus: "idle", imageError: null, qualityScore: null, composedUrl: null, approveStatus: "idle" });
+      set({
+        postId: null, taskId: null, imageUrl: null, imageStatus: "idle", imageError: null,
+        qualityScore: null, composedUrl: null, approveStatus: "idle",
+        transparentUrl: null, removeBgStatus: "idle", removeBgError: null,
+      });
     }
   },
 }));

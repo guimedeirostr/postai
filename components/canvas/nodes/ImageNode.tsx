@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { ImageIcon, RotateCcw, RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
+import { ImageIcon, RotateCcw, RefreshCw, AlertCircle, ExternalLink, Scissors, Download } from "lucide-react";
 import BaseNode from "@/components/canvas/BaseNode";
 import { useCanvasStore } from "@/lib/canvas-store";
+import type { StepStatus } from "@/lib/canvas-store";
 
 // ── Provider display label ─────────────────────────────────────────────────────
 
@@ -143,6 +144,90 @@ function ErrorState({
   );
 }
 
+// ── Remove Background button ──────────────────────────────────────────────────
+
+function RemoveBgSection({
+  status,
+  error,
+  transparentUrl,
+  onRemove,
+}: {
+  status:         StepStatus;
+  error:          string | null;
+  transparentUrl: string | null;
+  onRemove:       () => void;
+}) {
+  if (status === "done" && transparentUrl) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+            Fundo removido
+          </span>
+        </div>
+        {/* Checkerboard preview = transparency */}
+        <div
+          className="w-full rounded-lg overflow-hidden"
+          style={{
+            backgroundImage:
+              "repeating-conic-gradient(#e2e8f0 0% 25%, white 0% 50%) 0 0 / 12px 12px",
+            height: 80,
+          }}
+        >
+          <img
+            src={transparentUrl}
+            alt="Sem fundo"
+            className="w-full h-full object-contain"
+          />
+        </div>
+        <a
+          href={transparentUrl}
+          download
+          className="nodrag nopan inline-flex items-center justify-center gap-1 text-[11px] font-medium text-emerald-600 hover:text-emerald-800 transition-colors"
+        >
+          <Download className="h-3 w-3" />
+          Baixar PNG Transparente
+        </a>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-[11px] text-red-600">{error ?? "Erro ao remover fundo"}</p>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="nodrag nopan inline-flex items-center gap-1 text-[11px] font-medium text-red-500 hover:text-red-700 transition-colors"
+        >
+          <RotateCcw className="h-3 w-3" />
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onRemove}
+      disabled={status === "loading"}
+      className={[
+        "nodrag nopan w-full",
+        "inline-flex items-center justify-center gap-1.5 text-[11px] font-medium",
+        "rounded-lg border border-violet-200 px-2 py-1.5 transition-colors duration-150",
+        status === "loading"
+          ? "text-violet-300 border-violet-100 cursor-not-allowed"
+          : "text-violet-600 hover:bg-violet-50 hover:border-violet-300",
+      ].join(" ")}
+    >
+      <Scissors className="h-3 w-3" />
+      {status === "loading" ? "Removendo fundo..." : "✂ Remover Fundo (PNG)"}
+    </button>
+  );
+}
+
 // ── Done state ────────────────────────────────────────────────────────────────
 
 function DoneState({
@@ -150,15 +235,23 @@ function DoneState({
   composedUrl,
   imageProvider,
   qualityScore,
+  transparentUrl,
+  removeBgStatus,
+  removeBgError,
   onRegenerate,
   onVariation,
+  onRemoveBg,
 }: {
-  imageUrl:      string | null;
-  composedUrl:   string | null;
-  imageProvider: string | null;
-  qualityScore:  number | null;
-  onRegenerate:  () => void;
-  onVariation:   () => void;
+  imageUrl:       string | null;
+  composedUrl:    string | null;
+  imageProvider:  string | null;
+  qualityScore:   number | null;
+  transparentUrl: string | null;
+  removeBgStatus: StepStatus;
+  removeBgError:  string | null;
+  onRegenerate:   () => void;
+  onVariation:    () => void;
+  onRemoveBg:     () => void;
 }) {
   const displayUrl = composedUrl ?? imageUrl;
 
@@ -204,8 +297,21 @@ function DoneState({
         </div>
       )}
 
+      {/* Remove background */}
+      {displayUrl && (
+        <RemoveBgSection
+          status={removeBgStatus}
+          error={removeBgError}
+          transparentUrl={transparentUrl}
+          onRemove={onRemoveBg}
+        />
+      )}
+
+      {/* Separator */}
+      <div className="h-px bg-slate-100" />
+
       {/* Action buttons */}
-      <div className="flex gap-2 pt-0.5">
+      <div className="flex gap-2">
         <button
           type="button"
           onClick={onRegenerate}
@@ -217,7 +323,7 @@ function DoneState({
           ].join(" ")}
         >
           <RefreshCw className="h-3 w-3" />
-          🔄 Regerar
+          Regerar
         </button>
         <button
           type="button"
@@ -229,7 +335,7 @@ function DoneState({
             "text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors duration-150",
           ].join(" ")}
         >
-          ➡ Gerar Variação
+          Variação
         </button>
       </div>
     </div>
@@ -243,14 +349,18 @@ export type ImageNodeType = Node<{ label: string }, "image">;
 // ── ImageNode ─────────────────────────────────────────────────────────────────
 
 export default function ImageNode({ selected }: NodeProps<ImageNodeType>) {
-  const imageUrl      = useCanvasStore((s) => s.imageUrl);
-  const composedUrl   = useCanvasStore((s) => s.composedUrl);
-  const imageStatus   = useCanvasStore((s) => s.imageStatus);
-  const imageError    = useCanvasStore((s) => s.imageError);
-  const imageProvider = useCanvasStore((s) => s.imageProvider);
-  const qualityScore  = useCanvasStore((s) => s.qualityScore);
-  const runImage      = useCanvasStore((s) => s.runImage);
-  const resetStep     = useCanvasStore((s) => s.resetStep);
+  const imageUrl        = useCanvasStore((s) => s.imageUrl);
+  const composedUrl     = useCanvasStore((s) => s.composedUrl);
+  const imageStatus     = useCanvasStore((s) => s.imageStatus);
+  const imageError      = useCanvasStore((s) => s.imageError);
+  const imageProvider   = useCanvasStore((s) => s.imageProvider);
+  const qualityScore    = useCanvasStore((s) => s.qualityScore);
+  const transparentUrl  = useCanvasStore((s) => s.transparentUrl);
+  const removeBgStatus  = useCanvasStore((s) => s.removeBgStatus);
+  const removeBgError   = useCanvasStore((s) => s.removeBgError);
+  const runImage        = useCanvasStore((s) => s.runImage);
+  const resetStep       = useCanvasStore((s) => s.resetStep);
+  const removeBgAction  = useCanvasStore((s) => s.removeBackground);
 
   function handleRetry() {
     resetStep("image");
@@ -263,7 +373,6 @@ export default function ImageNode({ selected }: NodeProps<ImageNodeType>) {
   }
 
   function handleVariation() {
-    // Runs image again without resetting copy/strategy — a different seed/run
     runImage();
   }
 
@@ -302,8 +411,12 @@ export default function ImageNode({ selected }: NodeProps<ImageNodeType>) {
             composedUrl={composedUrl}
             imageProvider={imageProvider}
             qualityScore={qualityScore}
+            transparentUrl={transparentUrl}
+            removeBgStatus={removeBgStatus}
+            removeBgError={removeBgError}
             onRegenerate={handleRegenerate}
             onVariation={handleVariation}
+            onRemoveBg={removeBgAction}
           />
         )}
       </BaseNode>
