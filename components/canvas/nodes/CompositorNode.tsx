@@ -7,7 +7,7 @@ import BaseNode from "@/components/canvas/BaseNode";
 import FontSelectorModal from "@/components/canvas/FontSelectorModal";
 import HTMLPostPreview from "@/components/canvas/HTMLPostPreview";
 import { buildGenericTemplate } from "@/lib/prompts/generic-template";
-import { useCanvasStore, FONT_PAIRS } from "@/lib/canvas-store";
+import { useCanvasStore } from "@/lib/canvas-store";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -121,8 +121,7 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
   const runHtmlRefinement   = useCanvasStore((s) => s.runHtmlRefinement);
   const clearRefinedHtml    = useCanvasStore((s) => s.clearRefinedHtml);
 
-  const activePair   = selectedFont ? FONT_PAIRS.find(p => p.id === selectedFont.pairId) : null;
-  const fontHint     = activePair ? (FONT_PAIRS.find(p => p.id === selectedFont!.pairId)?.headlineStyleHint ?? "") : "";
+  // selectedFont now carries actual family names — no pairId or hint needed
   const isComposing  = compositorStatus === "loading";
   const isRefining   = htmlRefinementStatus === "loading";
   const isImageReady = imageStatus === "done" && !!imageUrl;
@@ -160,13 +159,14 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
       gradientOverlay,
       textBgOverlay,
       textPosition,
-      fontStyleHint:         fontHint,
+      headlineFont:          selectedFont?.headlineFont,
+      bodyFont:              selectedFont?.bodyFont,
       logoOverlay,
       logoPlacementOverride: logoPlacement,
       footerVisible,
       footerOverlay,
     });
-  }, [imageUrl, copy, briefing, client, headlineColor, accentColor, gradientOverlay, textBgOverlay, textPosition, fontHint, logoOverlay, logoPlacement, footerVisible, footerOverlay]);
+  }, [imageUrl, copy, briefing, client, headlineColor, accentColor, gradientOverlay, textBgOverlay, textPosition, selectedFont, logoOverlay, logoPlacement, footerVisible, footerOverlay]);
 
   return (
     <>
@@ -222,7 +222,8 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
                 gradientOverlay={gradientOverlay}
                 textBgOverlay={textBgOverlay}
                 textPosition={textPosition}
-                fontStyleHint={fontHint}
+                headlineFont={selectedFont?.headlineFont}
+                bodyFont={selectedFont?.bodyFont}
                 logoOverlay={logoOverlay}
                 logoPlacement={logoPlacement}
                 footerVisible={footerVisible}
@@ -322,17 +323,17 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
                 ].join(" ")}
               >
                 <Type className="h-3.5 w-3.5 flex-none" />
-                {activePair ? (
-                  <span className="flex items-center gap-1.5 flex-1">
+                {selectedFont ? (
+                  <span className="flex items-center gap-1.5 flex-1 min-w-0">
                     <span
                       className="inline-block w-3 h-3 rounded-full border border-slate-200 flex-none"
-                      style={{ backgroundColor: selectedFont?.color ?? "#fff" }}
+                      style={{ backgroundColor: selectedFont.color ?? "#fff" }}
                     />
-                    <span className="font-semibold">{activePair.headline.cssFamily}</span>
-                    <span className="text-slate-400">+ {activePair.secondary.cssFamily}</span>
+                    <span className="font-semibold truncate">{selectedFont.headlineFont}</span>
+                    <span className="text-slate-400 flex-none">+ {selectedFont.bodyFont}</span>
                   </span>
                 ) : (
-                  <span className="flex-1 text-left">Escolher Par de Fontes</span>
+                  <span className="flex-1 text-left">Escolher Fontes</span>
                 )}
               </button>
             </div>

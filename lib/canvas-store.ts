@@ -12,42 +12,61 @@ import type { BrandProfile, StrategyBriefing } from "@/types";
 
 // ── Font pair definitions (shared with FontSelectorModal) ─────────────────────
 
-export type FontPairId = "modern" | "editorial" | "script" | "minimal";
+export type FontPairId = "modern" | "editorial" | "script" | "minimal" | "bold" | "luxury" | "urban" | "classic";
 
 export interface FontPair {
-  id:          FontPairId;
-  label:       string;
-  descriptor:  string;
-  headline: { cssFamily: string; weight: number; googleId: string };
-  secondary:{ cssFamily: string; weight: number; googleId: string };
-  /** Keyword sent as font_family to compose API → resolved by typography.ts */
-  headlineStyleHint: string;
+  id:               FontPairId;
+  label:            string;
+  descriptor:       string;
+  /** Google Font family name for headline/title */
+  headlineFont:     string;
+  /** Google Font family name for body/caption */
+  bodyFont:         string;
+  headlineWeight:   number;
+  bodyWeight:       number;
+  headlineUppercase?: boolean;
 }
 
 export const FONT_PAIRS: FontPair[] = [
   {
-    id: "modern", label: "Bebas Neue + Heebo", descriptor: "Impacto Urbano",
-    headline:  { cssFamily: "Bebas Neue",        weight: 400, googleId: "Bebas+Neue:wght@400"             },
-    secondary: { cssFamily: "Heebo",             weight: 400, googleId: "Heebo:wght@400;500"              },
-    headlineStyleHint: "",        // default → Montserrat Black (closest to Bebas Neue)
+    id: "modern",    label: "Bebas Neue + Open Sans",         descriptor: "Impacto Urbano",
+    headlineFont: "Bebas Neue",          bodyFont: "Open Sans",
+    headlineWeight: 400, bodyWeight: 400, headlineUppercase: true,
   },
   {
-    id: "editorial", label: "Playfair + Raleway", descriptor: "Elegância Editorial",
-    headline:  { cssFamily: "Playfair Display",  weight: 700, googleId: "Playfair+Display:wght@700;900"   },
-    secondary: { cssFamily: "Raleway",           weight: 400, googleId: "Raleway:wght@400;500"            },
-    headlineStyleHint: "serif",   // → PlayfairDisplay
+    id: "editorial", label: "Playfair Display + Raleway",     descriptor: "Elegância Editorial",
+    headlineFont: "Playfair Display",    bodyFont: "Raleway",
+    headlineWeight: 700, bodyWeight: 400,
   },
   {
-    id: "script", label: "Caveat + Karla", descriptor: "Artesanal & Script",
-    headline:  { cssFamily: "Caveat",            weight: 700, googleId: "Caveat:wght@700"                 },
-    secondary: { cssFamily: "Karla",             weight: 400, googleId: "Karla:wght@400;500"              },
-    headlineStyleHint: "script",  // → DancingScript
+    id: "script",    label: "Pacifico + Nunito",              descriptor: "Artesanal & Script",
+    headlineFont: "Pacifico",            bodyFont: "Nunito",
+    headlineWeight: 400, bodyWeight: 400,
   },
   {
-    id: "minimal", label: "Jakarta + Inter", descriptor: "Minimal & Clean",
-    headline:  { cssFamily: "Plus Jakarta Sans", weight: 700, googleId: "Plus+Jakarta+Sans:wght@700;800"  },
-    secondary: { cssFamily: "Inter",             weight: 400, googleId: "Inter:wght@400;500"              },
-    headlineStyleHint: "minimal", // → Inter Medium
+    id: "minimal",   label: "Plus Jakarta Sans + Inter",      descriptor: "Minimal & Clean",
+    headlineFont: "Plus Jakarta Sans",   bodyFont: "Inter",
+    headlineWeight: 700, bodyWeight: 400,
+  },
+  {
+    id: "bold",      label: "Oswald + Source Sans 3",         descriptor: "Bold Condensado",
+    headlineFont: "Oswald",              bodyFont: "Source Sans 3",
+    headlineWeight: 700, bodyWeight: 400, headlineUppercase: true,
+  },
+  {
+    id: "luxury",    label: "Cormorant Garamond + Jost",      descriptor: "Luxo Refinado",
+    headlineFont: "Cormorant Garamond",  bodyFont: "Jost",
+    headlineWeight: 600, bodyWeight: 400,
+  },
+  {
+    id: "urban",     label: "Barlow Condensed + Barlow",      descriptor: "Urbano Industrial",
+    headlineFont: "Barlow Condensed",    bodyFont: "Barlow",
+    headlineWeight: 700, bodyWeight: 400, headlineUppercase: true,
+  },
+  {
+    id: "classic",   label: "Merriweather + Lato",            descriptor: "Clássico Confiável",
+    headlineFont: "Merriweather",        bodyFont: "Lato",
+    headlineWeight: 700, bodyWeight: 400,
   },
 ];
 
@@ -105,7 +124,7 @@ export interface CanvasState {
   visualPromptEdit:  string;
   referenceImageUrl: string | null;   // data URL (upload) or CDN URL (client bank)
   fontModalOpen:     boolean;
-  selectedFont:      { pairId: FontPairId; color: string } | null;
+  selectedFont:      { headlineFont: string; bodyFont: string; color: string } | null;
 
   // ── Compositor ────────────────────────────────────────────────────────────
   textPosition:      "top" | "center" | "bottom-left" | "bottom-full";
@@ -151,7 +170,7 @@ export interface CanvasState {
   setReferenceImageUrl: (url: string | null) => void;
   openFontModal:        () => void;
   closeFontModal:       () => void;
-  selectFont:           (font: { pairId: FontPairId; color: string }) => void;
+  selectFont:           (font: { headlineFont: string; bodyFont: string; color: string }) => void;
 
   // ── Compositor actions ─────────────────────────────────────────────────────
   setTextPosition:  (pos: "top" | "center" | "bottom-left" | "bottom-full") => void;
@@ -564,10 +583,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           post_id:          postId,
           image_url:        imageUrl ?? undefined,
           html_override:    get().refinedHtml ?? undefined,
-          font_family:      selectedFont
-            ? (FONT_PAIRS.find(p => p.id === selectedFont.pairId)?.headlineStyleHint || undefined)
-            : undefined,
-          font_color:       selectedFont?.color ?? undefined,
+          headline_font:    selectedFont?.headlineFont ?? undefined,
+          body_font:        selectedFont?.bodyFont     ?? undefined,
+          font_color:       selectedFont?.color        ?? undefined,
           text_position:    textPosition,
           logo_placement:   logoPlacement,
           footer_visible:   footerVisible,

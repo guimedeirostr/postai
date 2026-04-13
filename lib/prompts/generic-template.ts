@@ -85,6 +85,10 @@ export interface GenericTemplateData {
   textPosition?:         string;
   /** Hint de estilo tipográfico: ""|"serif"|"script"|"minimal" */
   fontStyleHint?:        string;
+  /** Nome real da família Google Font para o headline (ex: "Bebas Neue") */
+  headlineFont?:         string;
+  /** Nome real da família Google Font para o body (ex: "Lato") */
+  bodyFont?:             string;
   /** Badge de fundo atrás do logo (padrão: true) */
   logoOverlay?:          boolean;
   /** Override de posição do logo */
@@ -103,10 +107,32 @@ export function buildGenericTemplate(data: GenericTemplateData): string {
 
   const ls = data.layer_stack;
 
-  // ── Font pair ──────────────────────────────────────────────────────────────
-  const fontHint   = data.fontStyleHint ?? "";
-  const fontCfg    = FONT_PAIR_CONFIG[fontHint] ?? FONT_PAIR_CONFIG[""];
-  const googleFont = `https://fonts.googleapis.com/css2?family=${fontCfg.googleParams}&display=swap`;
+  // ── Font resolution: dynamic family names take priority over hint-based config ──
+  let googleFont:  string;
+  let hlFamily:    string;
+  let hlWeight:    number;
+  let hlTransform: string;
+  let bdFamily:    string;
+
+  if (data.headlineFont || data.bodyFont) {
+    // Dynamic: use actual Google Font family names passed from the Compositor
+    hlFamily    = data.headlineFont ?? "Montserrat";
+    bdFamily    = data.bodyFont     ?? hlFamily;
+    hlWeight    = 700;
+    hlTransform = "none";
+    const hlParam = hlFamily.replace(/ /g, "+");
+    const bdParam = bdFamily.replace(/ /g, "+");
+    googleFont  = `https://fonts.googleapis.com/css2?family=${hlParam}:wght@400;700;900&family=${bdParam}:wght@400;500;700&display=swap`;
+  } else {
+    // Legacy: keyword-based config (backward compat)
+    const fontHint  = data.fontStyleHint ?? "";
+    const fontCfg   = FONT_PAIR_CONFIG[fontHint] ?? FONT_PAIR_CONFIG[""];
+    hlFamily    = fontCfg.headlineFamily;
+    hlWeight    = fontCfg.headlineWeight;
+    hlTransform = fontCfg.headlineTransform;
+    bdFamily    = fontCfg.bodyFamily;
+    googleFont  = `https://fonts.googleapis.com/css2?family=${fontCfg.googleParams}&display=swap`;
+  }
 
   // ── Colors ────────────────────────────────────────────────────────────────
   const hl1Color  = data.headlineColor  ?? "#ffffff";
@@ -208,23 +234,23 @@ ${hasWash ? `.wash{
   pointer-events:none;
 }` : ""}
 ${data.preHeadline ? `.pre-hl{
-  font-family:'${fontCfg.bodyFamily}',sans-serif;
+  font-family:'${bdFamily}',sans-serif;
   font-weight:400;font-size:30px;letter-spacing:0.14em;text-transform:uppercase;
   color:rgba(255,255,255,0.82);text-shadow:0 1px 6px rgba(0,0,0,0.7);
   margin-bottom:10px;word-break:break-word;
 }` : ""}
 .hl{
-  font-family:'${fontCfg.headlineFamily}',sans-serif;
-  font-weight:${fontCfg.headlineWeight};
+  font-family:'${hlFamily}',sans-serif;
+  font-weight:${hlWeight};
   font-size:${headlineSize}px;line-height:1.06;
-  text-transform:${fontCfg.headlineTransform};
+  text-transform:${hlTransform};
   color:${hl1Color};
   text-shadow:0 2px 14px rgba(0,0,0,0.65),0 0 40px rgba(0,0,0,0.25);
   letter-spacing:-0.01em;word-break:break-word;margin-bottom:3px;
 }
 .hl.accent{color:${hl2Color};}
 ${data.captionFirstLine ? `.cap-line{
-  font-family:'${fontCfg.bodyFamily}',sans-serif;
+  font-family:'${bdFamily}',sans-serif;
   font-weight:400;font-size:28px;
   color:rgba(255,255,255,0.78);text-shadow:0 1px 6px rgba(0,0,0,0.7);
   margin-top:14px;word-break:break-word;
@@ -237,8 +263,8 @@ ${showFooter ? `.footer{
   display:flex;align-items:center;justify-content:space-between;
   padding:0 50px;
 }
-.footer-name{color:#fff;font-size:26px;font-family:'${fontCfg.bodyFamily}',sans-serif;font-weight:700;letter-spacing:0.06em;}
-.footer-handle{color:${hl2Color};font-size:26px;font-family:'${fontCfg.bodyFamily}',sans-serif;font-weight:700;letter-spacing:0.04em;}` : ""}
+.footer-name{color:#fff;font-size:26px;font-family:'${bdFamily}',sans-serif;font-weight:700;letter-spacing:0.06em;}
+.footer-handle{color:${hl2Color};font-size:26px;font-family:'${bdFamily}',sans-serif;font-weight:700;letter-spacing:0.04em;}` : ""}
 ${logoPos !== "none" && data.logoUrl ? `.logo-wrap{
   position:absolute;${logoPositionCSS}
   ${showLogoBadge ? `background:rgba(${brandRgb},0.55);border-radius:10px;padding:8px;` : ""}

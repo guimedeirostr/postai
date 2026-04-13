@@ -28,6 +28,8 @@ export interface HTMLPostPreviewProps {
   textBgOverlay?:    boolean;
   textPosition?:     string;
   fontStyleHint?:    string;
+  headlineFont?:     string;
+  bodyFont?:         string;
   logoOverlay?:      boolean;
   logoPlacement?:    string;
   footerVisible?:    boolean;
@@ -44,7 +46,7 @@ export default function HTMLPostPreview({
   imageUrl, headline, brandName, instagramHandle, brandColor, secondaryColor,
   logoUrl, preHeadline, captionFirstLine,
   headlineColor, accentColor, gradientOverlay, textBgOverlay, textPosition,
-  fontStyleHint, logoOverlay, logoPlacement, footerVisible, footerOverlay,
+  fontStyleHint, headlineFont, bodyFont, logoOverlay, logoPlacement, footerVisible, footerOverlay,
   previewWidth = 340,
   className = "",
 }: HTMLPostPreviewProps) {
@@ -71,6 +73,8 @@ export default function HTMLPostPreview({
       textBgOverlay,
       textPosition,
       fontStyleHint,
+      headlineFont,
+      bodyFont,
       logoOverlay,
       logoPlacementOverride: logoPlacement,
       footerVisible,
@@ -82,7 +86,7 @@ export default function HTMLPostPreview({
     imageUrl, headline, brandName, instagramHandle, brandColor, secondaryColor,
     logoUrl, preHeadline, captionFirstLine,
     headlineColor, accentColor, gradientOverlay, textBgOverlay, textPosition,
-    fontStyleHint, logoOverlay, logoPlacement, footerVisible, footerOverlay,
+    fontStyleHint, headlineFont, bodyFont, logoOverlay, logoPlacement, footerVisible, footerOverlay,
   ]);
 
   if (!html) return null;

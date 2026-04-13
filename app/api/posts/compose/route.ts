@@ -72,6 +72,8 @@ export async function POST(req: NextRequest) {
       logo_overlay?:    boolean;
       headline_color?:  string;
       accent_color?:    string;
+      headline_font?:   string;
+      body_font?:       string;
       html_override?:   string;
     };
 
@@ -88,6 +90,8 @@ export async function POST(req: NextRequest) {
       logo_overlay,
       headline_color,
       accent_color,
+      headline_font,
+      body_font,
       html_override,
     } = body;
 
@@ -179,6 +183,8 @@ export async function POST(req: NextRequest) {
             textBgOverlay:         text_bg_overlay,
             textPosition:          text_position,
             fontStyleHint:         font_family,
+            headlineFont:          headline_font,
+            bodyFont:              body_font,
             logoOverlay:           logo_overlay,
             logoPlacementOverride: logo_placement,
             footerVisible:         footer_visible,
