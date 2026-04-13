@@ -28,23 +28,25 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { DocumentReference } from "firebase-admin/firestore";
 import { buildStrategyPrompt } from "@/lib/prompts/strategy";
 import { buildCopyPrompt, buildLinkedInCopyPrompt } from "@/lib/prompts/copy";
-import { fetchLinkedInTrendContext } from "@/lib/tavily";
+import { fetchLinkedInTrendContext, fetchTrendContext, readTrendCache, writeTrendCache } from "@/lib/tavily";
 import { buildArtDirectorPrompt } from "@/lib/prompts/art-director";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
-import { fetchTrendContext } from "@/lib/tavily";
+import { evaluateImageQuality } from "@/lib/vision-quality";
 import { createTask, FreepikAuthError } from "@/lib/freepik";
 import { generateImage as imagenGenerate, isImagen4Enabled, resolveImagenModel, ImagenError } from "@/lib/imagen";
 import { generateImageFal, isFalEnabled, resolveFalModel, FalError } from "@/lib/fal";
 import { composePost } from "@/lib/composer";
 import { resolveArtDirection, toComposeOverrides } from "@/lib/art-direction-resolver";
 import { compilePromptForProvider, type ImageProvider } from "@/lib/prompt-compiler";
-import type { ArtDirection, BrandProfile, BrandDNA, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA, SocialNetwork } from "@/types";
+import type { ArtDirection, BrandProfile, BrandDNA, CopyDNA, MoodboardItem, StrategyBriefing, StrategyContext, DesignExample, ReferenceDNA, SocialNetwork } from "@/types";
 
 // Allow up to 60s — Imagen 4 is synchronous and can take 5–15s
 export const maxDuration = 60;
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL     = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
+const anthropic       = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const MODEL           = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
+const STRATEGY_MODEL  = "claude-sonnet-4-6";
+const THINKING_BUDGET = 8000;
 
 const ASPECT_RATIO: Record<string, string> = {
   feed:        "social_post_4_5",
@@ -147,20 +149,32 @@ export async function POST(req: NextRequest) {
     // ── Step 1: Strategy agent ────────────────────────────────────────────────
     await postRef.update({ status: "strategy", social_network });
 
-    // Busca tendências em paralelo com a criação do post (non-blocking)
-    const trendContext = await (social_network === "linkedin"
-      ? fetchLinkedInTrendContext(client.segment, campaign_focus)
-      : fetchTrendContext(client.segment, campaign_focus)
-    ).catch(() => null);
+    // Tendências: cache-first (cron job pré-busca diariamente), fallback ao vivo
+    const fetchFn = social_network === "linkedin" ? fetchLinkedInTrendContext : fetchTrendContext;
+    const trendContext = await readTrendCache(client_id, social_network)
+      .catch(() => null)
+      .then(async cached => {
+        if (cached) return cached;
+        const live = await fetchFn(client.segment, campaign_focus).catch(() => null);
+        if (live) await writeTrendCache(client_id, social_network, live, user.uid).catch(() => null);
+        return live;
+      });
 
-    const strategyRes = await anthropic.messages.create({
-      model:      MODEL,
-      max_tokens: 1024,
+    // Strategy Agent: Extended Thinking (Sonnet) para raciocínio de mercado real
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const strategyRes = await (anthropic.messages.create as (params: any) => Promise<Anthropic.Message>)({
+      model:      STRATEGY_MODEL,
+      max_tokens: 16000,
+      thinking:   { type: "enabled", budget_tokens: THINKING_BUDGET },
       system:     buildStrategyPrompt(client, campaign_focus, trendContext, social_network),
       messages:   [{ role: "user", content: "Gere o briefing estratégico para o próximo post deste cliente." }],
     });
 
-    const strategyRaw = strategyRes.content[0].type === "text" ? strategyRes.content[0].text : "";
+    // Extended Thinking: content[0] é bloco "thinking" — filtrar só texto
+    const strategyRaw = (strategyRes.content as Array<{ type: string; text?: string }>)
+      .filter(b => b.type === "text")
+      .map(b => b.text ?? "")
+      .join("");
     let briefing: StrategyBriefing;
     try {
       briefing = parseJson<StrategyBriefing>(strategyRaw);
@@ -180,19 +194,20 @@ export async function POST(req: NextRequest) {
       rationale:          briefing.rationale,
     });
 
-    // ── Step 1b: Carregar BrandDNA sintetizado (se existir) ──────────────────
-    let brandDna: BrandDNA | null = null;
-    try {
-      const dnaDoc = await adminDb
-        .collection("clients").doc(client_id)
-        .collection("brand_dna").doc("current")
-        .get();
-      if (dnaDoc.exists) {
-        brandDna = dnaDoc.data() as BrandDNA;
-      }
-    } catch {
-      // Non-fatal — geração continua sem BrandDNA
-    }
+    // ── Step 1b: Carregar BrandDNA + CopyDNA + MoodBoard (em paralelo) ─────────
+    const [brandDnaResult, copyDnaResult, moodboardResult] = await Promise.allSettled([
+      adminDb.collection("clients").doc(client_id).collection("brand_dna").doc("current").get(),
+      adminDb.collection("clients").doc(client_id).collection("copy_dna").doc("current").get(),
+      adminDb.collection("clients").doc(client_id).collection("moodboard")
+        .orderBy("created_at", "desc").limit(6).get(),
+    ]);
+
+    const brandDna: BrandDNA | null = brandDnaResult.status === "fulfilled" && brandDnaResult.value.exists
+      ? brandDnaResult.value.data() as BrandDNA : null;
+    const copyDna: CopyDNA | null = copyDnaResult.status === "fulfilled" && copyDnaResult.value.exists
+      ? copyDnaResult.value.data() as CopyDNA : null;
+    const moodboardItems: MoodboardItem[] = moodboardResult.status === "fulfilled"
+      ? moodboardResult.value.docs.map(d => ({ id: d.id, ...d.data() } as MoodboardItem)) : [];
 
     // ── Step 2a: Se reference_dna fornecido, salva no Firestore ─────────────
     if (reference_dna) {
@@ -362,6 +377,7 @@ export async function POST(req: NextRequest) {
         designExamples.length ? designExamples : undefined,
         !!reference_dna,
         reference_dna?.visual_prompt,   // lock visual style to reference DNA
+        copyDna ?? undefined,           // padrões aprendidos dos posts aprovados
       ),
       messages:   [{ role: "user", content: copyUserContent }],
     });
@@ -415,6 +431,7 @@ export async function POST(req: NextRequest) {
           },
           designExamples.length ? designExamples : undefined,
           brandDna ?? undefined,
+          moodboardItems.length ? moodboardItems : undefined,
         ),
         messages: [{ role: "user", content: "Gere a direção de arte profissional para este post." }],
       });
@@ -512,6 +529,45 @@ export async function POST(req: NextRequest) {
         const msg = freepikErr instanceof Error ? freepikErr.message : "Erro Freepik";
         console.error("[generate] Freepik error (non-fatal):", msg);
         await postRef.update({ status: "ready", freepik_error: msg });
+      }
+    }
+
+    // ── Step 5b: Vision Quality Gate (providers síncronos apenas) ────────────
+    // Avalia se a imagem gerada suporta o headline e o logo antes de compor.
+    // Freepik é async — avaliação ocorre em check-image.
+    const MAX_QUALITY_RETRIES = 1;
+    if (image_url && !task_id) {
+      for (let attempt = 0; attempt <= MAX_QUALITY_RETRIES; attempt++) {
+        const quality = await evaluateImageQuality(
+          image_url,
+          copy.visual_headline ?? briefing.tema,
+          client.primary_color,
+        ).catch(() => null);
+
+        if (quality) {
+          await postRef.update({ quality_score: quality.score, quality_notes: quality.notes }).catch(() => null);
+          if (quality.passed || attempt === MAX_QUALITY_RETRIES) break;
+
+          // Score baixo — tenta regeração com negative prompt reforçado
+          console.log(`[generate] Quality score ${quality.score} < 60 — retrying image generation (attempt ${attempt + 1})`);
+          const negativeBoost = "busy background, text in image, watermark, distorted, overcrowded composition";
+          const retryPrompt   = `${compiledFinal}, clear negative space for text overlay, minimalist composition`;
+
+          try {
+            if (isFalEnabled()) {
+              image_url = await generateImageFal({ prompt: retryPrompt, format: briefing.formato_sugerido as "feed" | "stories" | "reels_cover", post_id: postRef.id, model: resolveFalModel() });
+              await postRef.update({ image_url, image_provider: "fal" });
+            } else if (isImagen4Enabled()) {
+              image_url = await imagenGenerate({ prompt: retryPrompt, format: briefing.formato_sugerido as "feed" | "stories" | "reels_cover", post_id: postRef.id, model: resolveImagenModel() });
+              await postRef.update({ image_url, image_provider: "imagen4" });
+            }
+          } catch {
+            break; // se retry falhar, segue com o que tem
+          }
+          void negativeBoost; // used implicitly in retryPrompt
+        } else {
+          break;
+        }
       }
     }
 

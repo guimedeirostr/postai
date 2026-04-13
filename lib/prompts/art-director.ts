@@ -1,4 +1,4 @@
-import type { BrandProfile, StrategyBriefing, DesignExample, BrandDNA } from "@/types";
+import type { BrandProfile, StrategyBriefing, DesignExample, BrandDNA, MoodboardItem } from "@/types";
 
 export interface ArtDirection {
   visual_style:       string;
@@ -88,11 +88,12 @@ export interface CopyContext {
 }
 
 export function buildArtDirectorPrompt(
-  client:          BrandProfile,
-  briefing:        StrategyBriefing,
-  copy:            CopyContext,
-  designExamples?: DesignExample[],
-  brandDna?:       BrandDNA
+  client:           BrandProfile,
+  briefing:         StrategyBriefing,
+  copy:             CopyContext,
+  designExamples?:  DesignExample[],
+  brandDna?:        BrandDNA,
+  moodboardItems?:  MoodboardItem[],
 ): string {
   const defaults = PILAR_STYLE_MAP[briefing.pilar] ?? PILAR_STYLE_MAP["Engajamento"];
 
@@ -130,10 +131,31 @@ INSTRUÇÃO: use os templates acima como ponto de partida obrigatório.
 Adapte ao tema e ao visual_headline — mas NÃO altere o estilo, composição e tipografia aprendidos.
 ` : "";
 
+  // Bloco de MoodBoard — referências visuais externas para enriquecer a direção de arte
+  const relevantMoodboard = moodboardItems?.filter(
+    item => !item.applies_to_pillar?.length || item.applies_to_pillar.includes(briefing.pilar)
+  ).slice(0, 3) ?? [];
+
+  const moodboardBlock = relevantMoodboard.length > 0 ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎨 MOODBOARD DA MARCA (${relevantMoodboard.length} referências de estilo externas)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Estes são itens de moodboard aprovados pelo cliente como inspiração de estilo.
+Use-os para enriquecer o visual_prompt com nível de qualidade editorial — não copie, inspire-se.
+
+${relevantMoodboard.map((item, i) => `Referência ${i + 1}:
+  Estilo: ${item.style_notes}
+  Composição: ${item.composition_notes}
+  Paleta: ${item.color_palette.join(", ")}
+  Tags: ${item.inspiration_tags.join(", ")}`).join("\n\n")}
+
+INSTRUÇÃO: incorpore o mood, qualidade visual e paleta destas referências ao final_visual_prompt.
+` : "";
+
   return `Você é um Diretor de Arte sênior especializado em social media para marcas brasileiras, com 15 anos de experiência em campanhas para Instagram.
 
 Sua função: receber um briefing estratégico e uma copy já escrita, e transformar isso em uma DIREÇÃO DE ARTE PROFISSIONAL completa — elevando o visual_prompt de genérico para cinematográfico, digno de agência.
-${brandDnaBlock}
+${brandDnaBlock}${moodboardBlock}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PERFIL DA MARCA — ${client.name.toUpperCase()}

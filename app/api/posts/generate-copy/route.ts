@@ -3,12 +3,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { FieldValue } from "firebase-admin/firestore";
-import { buildCopyPrompt, buildLinkedInCopyPrompt } from "@/lib/prompts/copy";
+import { buildCopyPrompt, buildLinkedInCopyPrompt, COPY_TOOLS, executeCopyTool, type CopyToolInput } from "@/lib/prompts/copy";
 import { extractPromptFromImage } from "@/lib/freepik";
 import { checkRateLimit, AI_DAILY_LIMIT } from "@/lib/rate-limit";
 import { composeLayerStack, layerStackToLayoutPrompt } from "@/lib/art-direction-engine";
 import { analyzeImage } from "@/lib/image-analysis";
-import type { BrandProfile, StrategyContext, ReferenceDNA, DesignExample, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
+import type { BrandProfile, CopyDNA, StrategyContext, ReferenceDNA, DesignExample, BackgroundAnalysis, ToneProfile, LayerStack } from "@/types";
 
 export const maxDuration = 60;
 
@@ -93,6 +93,13 @@ export async function POST(req: NextRequest) {
     }
 
     const client = { id: clientDoc.id, ...clientDoc.data() } as BrandProfile;
+
+    // Carrega CopyDNA sintetizado (non-fatal)
+    let copyDna: CopyDNA | null = null;
+    try {
+      const dnaDoc = await adminDb.collection("clients").doc(client_id).collection("copy_dna").doc("current").get();
+      if (dnaDoc.exists) copyDna = dnaDoc.data() as CopyDNA;
+    } catch { /* continua sem DNA */ }
 
     // ── Resolver reference_dna a partir de reference_example_id ──────────────
     // Permite escolher uma referência já salva na biblioteca sem re-uploadar.
@@ -307,22 +314,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ...liParsed, post_id: liRef.id });
     }
 
-    const response = await anthropic.messages.create({
-      model:      MODEL,
-      max_tokens: 4096,
-      system:     buildCopyPrompt(
-        client,
-        format,
-        objective,
-        Object.keys(strategy).length ? strategy : undefined,
-        undefined,
-        !!(referenceImageBase64 || reference_dna),
-        reference_dna?.visual_prompt,   // lock visual style to reference DNA
-      ),
-      messages: [{ role: "user", content: userContent }],
-    });
+    // ── Agentic loop com Tool Use ─────────────────────────────────────────────
+    // Claude pode chamar validate_visual_prompt e check_brand_compliance
+    // antes de finalizar o output. Máximo 3 rounds.
+    const useTools = process.env.ENABLE_COPY_TOOLS !== "false";
+    const MAX_TOOL_ROUNDS = 3;
 
-    const raw = response.content[0].type === "text" ? response.content[0].text : "";
+    const systemPrompt = buildCopyPrompt(
+      client,
+      format,
+      objective,
+      Object.keys(strategy).length ? strategy : undefined,
+      undefined,
+      !!(referenceImageBase64 || reference_dna),
+      reference_dna?.visual_prompt,
+      copyDna ?? undefined,
+    );
+
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: userContent }];
+    let raw = "";
+
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      const response = await anthropic.messages.create({
+        model:      MODEL,
+        max_tokens: 4096,
+        system:     systemPrompt,
+        ...(useTools ? { tools: COPY_TOOLS as unknown as Anthropic.Tool[] } : {}),
+        messages,
+      });
+
+      if (response.stop_reason === "end_turn" || !useTools) {
+        raw = response.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
+        break;
+      }
+
+      if (response.stop_reason === "tool_use") {
+        const toolResults: Anthropic.ToolResultBlockParam[] = response.content
+          .filter(b => b.type === "tool_use")
+          .map(b => {
+            const block  = b as Anthropic.ToolUseBlock;
+            const result = executeCopyTool(block.name, block.input as CopyToolInput, client);
+            return { type: "tool_result" as const, tool_use_id: block.id, content: result };
+          });
+
+        messages.push({ role: "assistant", content: response.content });
+        messages.push({ role: "user", content: toolResults });
+        continue;
+      }
+
+      // stop_reason inesperado — extrai texto e para
+      raw = response.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
+      break;
+    }
 
     // Parser robusto: tenta 3 estratégias antes de desistir
     function extractCopyJson(text: string): CopyResult | null {

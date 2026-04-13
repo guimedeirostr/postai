@@ -6,9 +6,10 @@ export function buildStrategyPrompt(
   campaign_focus?: string,
   trendContext?:   TrendContext | null,
   social_network?: "instagram" | "linkedin",
+  calendarMode?:   { month: number; year: number; post_count: number; already_planned: string[] },
 ): string {
   if (social_network === "linkedin") {
-    return buildLinkedInStrategyPrompt(client, campaign_focus, trendContext);
+    return buildLinkedInStrategyPrompt(client, campaign_focus, trendContext, calendarMode);
   }
   const dayOfWeek = new Date().toLocaleDateString("pt-BR", { weekday: "long" });
 
@@ -52,7 +53,32 @@ PILARES DE CONTEÚDO DISPONÍVEIS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SUA MISSÃO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Analise o perfil da marca, o contexto temporal e o eventual foco de campanha. Selecione o pilar e tema mais estratégico para HOJE. Pense como um CMO que quer maximizar engajamento E conversão com um único post.
+${calendarMode
+  ? `Você está gerando um CALENDÁRIO EDITORIAL para ${calendarMode.post_count} posts de ${new Date(calendarMode.year, calendarMode.month - 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}.
+
+REGRAS DO CALENDÁRIO:
+- Distribua equilibrando TODOS os pilares (Produto, Educação, Prova Social, Bastidores, Engajamento, Promoção, Trend)
+- Não repita o mesmo tema nos 7 dias seguintes
+- scheduled_date: distribua ao longo do mês, segunda a sexta, formato YYYY-MM-DD
+- Varie os formatos: feed, stories, reels_cover
+${calendarMode.already_planned.length ? `- Temas JÁ planejados (não repita): ${calendarMode.already_planned.join(", ")}` : ""}
+
+Retorne APENAS um JSON ARRAY de ${calendarMode.post_count} briefings (sem markdown):
+
+[
+  {
+    "pilar": "Produto|Educação|Prova Social|Bastidores|Engajamento|Promoção|Trend",
+    "tema": "tema específico — 1 frase",
+    "objetivo": "objetivo — 1 frase com verbo de ação",
+    "publico_especifico": "segmento específico",
+    "dor_desejo": "dor ou desejo cirúrgico",
+    "formato_sugerido": "feed|stories|reels_cover",
+    "hook_type": "Dor|Curiosidade|Pergunta|Prova Social|Controvérsia|Número",
+    "rationale": "Por que este tema neste dia — 1 frase",
+    "scheduled_date": "YYYY-MM-DD"
+  }
+]`
+  : `Analise o perfil da marca, o contexto temporal e o eventual foco de campanha. Selecione o pilar e tema mais estratégico para HOJE. Pense como um CMO que quer maximizar engajamento E conversão com um único post.
 
 Retorne APENAS JSON válido (sem markdown, sem explicações, sem texto fora do JSON):
 
@@ -65,6 +91,7 @@ Retorne APENAS JSON válido (sem markdown, sem explicações, sem texto fora do 
   "formato_sugerido": "feed|stories|reels_cover",
   "hook_type": "Dor|Curiosidade|Pergunta|Prova Social|Controvérsia|Número",
   "rationale": "Por que esta estratégia agora — 1-2 frases conectando o contexto temporal, o perfil da marca e o objetivo"
+}`
 }`;
 }
 
@@ -74,6 +101,7 @@ function buildLinkedInStrategyPrompt(
   client:          BrandProfile,
   campaign_focus?: string,
   trendContext?:   TrendContext | null,
+  calendarMode?:   { month: number; year: number; post_count: number; already_planned: string[] },
 ): string {
   const dayOfWeek = new Date().toLocaleDateString("pt-BR", { weekday: "long" });
 

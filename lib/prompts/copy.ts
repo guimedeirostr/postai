@@ -1,4 +1,120 @@
-import type { BrandProfile, DesignExample, StrategyContext } from "@/types";
+import type { BrandProfile, DesignExample, StrategyContext, CopyDNA } from "@/types";
+
+// ── Tool Use definitions ──────────────────────────────────────────────────────
+// Ferramentas que o Copy Agent pode chamar durante a geração.
+// Executadas localmente (TypeScript puro — sem chamadas extras à API).
+
+export interface CopyToolInput {
+  visual_prompt?:    string;
+  composition_zone?: string;
+  text?:             string;
+  check_type?:       "caption" | "headline" | "visual_headline";
+}
+
+export const COPY_TOOLS = [
+  {
+    name:        "validate_visual_prompt",
+    description: "Validates whether a visual_prompt will generate a text-overlay-friendly image. Checks for adequate negative space, no existing text/typography, not overly complex.",
+    input_schema: {
+      type:       "object",
+      properties: {
+        visual_prompt:    { type: "string", description: "The visual prompt to validate" },
+        composition_zone: { type: "string", description: "Where text will be placed: left|right|top|bottom|center" },
+      },
+      required: ["visual_prompt"],
+    },
+  },
+  {
+    name:        "check_brand_compliance",
+    description: "Validates copy text against brand avoid_words, tone, and brand voice guidelines. Returns violations and suggestions.",
+    input_schema: {
+      type:       "object",
+      properties: {
+        text:       { type: "string", description: "The text to check" },
+        check_type: { type: "string", enum: ["caption", "headline", "visual_headline"], description: "Type of copy being checked" },
+      },
+      required: ["text", "check_type"],
+    },
+  },
+] as const;
+
+/**
+ * Executa tool calls do Copy Agent localmente (TypeScript puro).
+ * Retorna uma string JSON com o resultado — injetada de volta no loop de mensagens.
+ */
+export function executeCopyTool(
+  name:    string,
+  input:   CopyToolInput,
+  client:  BrandProfile,
+): string {
+  if (name === "validate_visual_prompt") {
+    const prompt = input.visual_prompt ?? "";
+    const issues: string[] = [];
+
+    // Detecta menções a texto/tipografia (proibido no visual_prompt)
+    const textPatterns = /\b(text|typography|words?|letters?|font|caption|headline|overlay|watermark|sign|banner|label|price|logo)\b/i;
+    if (textPatterns.test(prompt)) {
+      issues.push("Contains text/typography references — remove all mentions of text, words, fonts, overlays");
+    }
+
+    // Prompt muito curto (genérico)
+    if (prompt.split(" ").length < 15) {
+      issues.push("Too short — needs more detail: scene description, lighting, camera, mood, style");
+    }
+
+    // Prompt muito longo (risco de prompt injection ou confusão)
+    if (prompt.split(" ").length > 250) {
+      issues.push("Too long — trim to under 200 words for best results");
+    }
+
+    // Verifica se descreve espaço para overlay (positivo)
+    const hasNegativeSpace = /\b(negative space|empty|clean background|minimal|space for text|open area|bokeh|blurred background)\b/i.test(prompt);
+
+    return JSON.stringify({
+      valid:             issues.length === 0,
+      has_negative_space: hasNegativeSpace,
+      issues,
+      suggestion:        issues.length > 0 ? "Revise the visual_prompt to fix these issues before finalizing" : "Visual prompt looks good",
+    });
+  }
+
+  if (name === "check_brand_compliance") {
+    const text = input.text ?? "";
+    const violations: string[] = [];
+    const suggestions: string[] = [];
+
+    // Checa avoid_words da marca
+    for (const word of (client.avoid_words ?? [])) {
+      const regex = new RegExp(`\\b${word}\\b`, "i");
+      if (regex.test(text)) {
+        violations.push(`Forbidden word detected: "${word}"`);
+        suggestions.push(`Replace "${word}" with a brand-aligned alternative`);
+      }
+    }
+
+    // Detecta frases genéricas de IA
+    const aiPhrases = [
+      "no mundo atual", "num cenário onde", "em um mundo cada vez mais",
+      "em um cenário de", "é com satisfação", "venho compartilhar",
+      "hoje quero falar", "como sabemos", "é inegável que",
+    ];
+    for (const phrase of aiPhrases) {
+      if (text.toLowerCase().includes(phrase)) {
+        violations.push(`Generic AI phrase detected: "${phrase}"`);
+        suggestions.push(`Rewrite with specific, concrete language instead of "${phrase}"`);
+      }
+    }
+
+    return JSON.stringify({
+      compliant:  violations.length === 0,
+      violations,
+      suggestions,
+      check_type: input.check_type,
+    });
+  }
+
+  return JSON.stringify({ error: `Unknown tool: ${name}` });
+}
 
 export function selectFramework(
   objective: string,
@@ -93,21 +209,41 @@ ${lines}
 }
 
 export function buildCopyPrompt(
-  client: BrandProfile,
-  format: string,
-  objective: string,
-  strategy?: StrategyContext,
-  designExamples?: DesignExample[],
-  hasReferenceImage?: boolean,
-  referenceDnaVisualPrompt?: string    // quando fornecido, bloqueia o estilo visual
+  client:                   BrandProfile,
+  format:                   string,
+  objective:                string,
+  strategy?:                StrategyContext,
+  designExamples?:          DesignExample[],
+  hasReferenceImage?:       boolean,
+  referenceDnaVisualPrompt?: string,   // quando fornecido, bloqueia o estilo visual
+  copyDna?:                 CopyDNA,   // padrões aprendidos dos posts aprovados
 ): string {
   const { framework, hook, description } = selectFramework(objective, strategy?.hook_type);
   const hookGuide    = HOOK_GUIDE[hook] ?? HOOK_GUIDE["Dor"];
   const formatGuide  = FORMAT_GUIDE[format] ?? FORMAT_GUIDE.feed;
   const examplesBlock = designExamples?.length ? buildExamplesBlock(designExamples) : "";
 
-  return `Você é um copywriter sênior especialista em Instagram para o mercado brasileiro, com 10+ anos criando conteúdo viral para marcas.
+  // Bloco de CopyDNA — padrões de escrita aprendidos dos posts aprovados
+  const copyDnaBlock = copyDna && copyDna.approved_posts_count >= 3 ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧠 DNA DE COPY APRENDIDO (${copyDna.approved_posts_count} posts aprovados — confiança ${copyDna.confidence_score}/100)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRIORIDADE MÁXIMA. Estes são os padrões de escrita que FUNCIONAM para esta marca — extraídos de posts reais aprovados.
+APLIQUE ANTES de qualquer outra instrução de copy.
 
+Padrão de hook:       ${copyDna.hook_patterns}
+Padrão de frases:     ${copyDna.sentence_patterns}
+Nível de vocabulário: ${copyDna.vocabulary_level}
+Padrão de CTA:        ${copyDna.cta_patterns}
+Uso de emojis:        ${copyDna.emoji_style}
+Frameworks preferidos: ${copyDna.dominant_frameworks.join(", ")}
+Hook types preferidos: ${copyDna.dominant_hooks.join(", ")}
+${copyDna.top_hooks.length ? `\nMelhores hooks aprovados (inspire-se):\n${copyDna.top_hooks.map((h, i) => `${i + 1}. "${h}"`).join("\n")}` : ""}
+
+` : "";
+
+  return `Você é um copywriter sênior especialista em Instagram para o mercado brasileiro, com 10+ anos criando conteúdo viral para marcas.
+${copyDnaBlock}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BRAND BRIEF — ${client.name.toUpperCase()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━

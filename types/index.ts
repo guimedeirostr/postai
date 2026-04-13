@@ -40,6 +40,8 @@ export interface StrategyBriefing {
   formato_sugerido: "feed" | "stories" | "reels_cover" | "linkedin_post" | "linkedin_article" | "linkedin_carousel";
   hook_type: string;
   rationale: string;
+  /** Apenas no modo calendário (generate-calendar) — data sugerida de publicação */
+  scheduled_date?: string;  // YYYY-MM-DD
 }
 
 export interface BrandPhoto {
@@ -176,6 +178,11 @@ export interface GeneratedPost {
   /** URLs das imagens compostas dos slides (preenchido após generate-linkedin-images) */
   linkedin_slide_urls?: string[];
   status: "pending" | "strategy" | "copy" | "art_direction" | "generating" | "composing" | "ready" | "approved" | "rejected" | "failed";
+  /** Score de qualidade pós-geração (0–100) avaliado via Claude Vision */
+  quality_score?: number;
+  quality_notes?: string;
+  /** Data agendada para publicação (gerado pelo Agente de Calendário) */
+  scheduled_date?: string;  // YYYY-MM-DD
   created_at: Timestamp;
 }
 
@@ -407,6 +414,76 @@ export interface CarouselSlide {
   icon_emoji?:       string;
   number_highlight?: string;
   composed_url?:     string | null;
+}
+
+// ── MoodBoard ─────────────────────────────────────────────────────────────────
+// Referências visuais externas por cliente. Diferente de design_examples
+// (posts da própria marca), o MoodBoard é inspiração de estilo — Pinterest,
+// Behance, fotos de referência. Alimenta o Art Director com contexto visual rico.
+
+export interface MoodboardItem {
+  id:                 string;
+  agency_id:          string;
+  client_id:          string;
+  r2_key:             string;
+  url:                string;
+  filename:           string;
+  // Análise Claude Vision
+  style_notes:        string;   // estilo artístico, mood, paleta descrita
+  composition_notes:  string;   // layout, zonas, espaço negativo
+  color_palette:      string[]; // cores dominantes em hex
+  inspiration_tags:   string[]; // ["minimal", "editorial", "warm", "bold"]
+  applies_to_pillar:  string[]; // quais pilares este mood combina ["Produto", "Luxo"]
+  created_at:         Timestamp;
+}
+
+// ── Copy DNA ──────────────────────────────────────────────────────────────────
+// Padrões de escrita aprendidos dos posts APROVADOS de um cliente.
+// Gerado automaticamente a cada aprovação. Alimenta o Copy Agent como lei.
+// Armazenado em clients/{client_id}/copy_dna/current no Firestore.
+
+export interface CopyDNA {
+  client_id:             string;
+  agency_id:             string;
+
+  // Metadados de aprendizado
+  approved_posts_count:  number;
+  confidence_score:      number;  // 0–100
+
+  // Padrões numéricos aprendidos
+  avg_caption_length:    number;
+  avg_emoji_density:     number;  // emojis por parágrafo
+  dominant_frameworks:   string[]; // ["PASTOR", "AIDA"]
+  dominant_hooks:        string[]; // ["Dor", "Número"]
+
+  // Padrões qualitativos (escritos pelo Claude após análise do corpus)
+  hook_patterns:         string;  // "Começa com dor direta, usa 'você' em 2ª pessoa"
+  sentence_patterns:     string;  // "Frases curtas 10-15 palavras, quebra de linha a cada 2 frases"
+  vocabulary_level:      "simple" | "technical" | "mixed";
+  cta_patterns:          string;  // "Sempre termina com pergunta"
+  emoji_style:           string;  // "Funcional apenas: ✅ ❌ → para estrutura"
+
+  // Melhores hooks aprovados (até 3 primeiros 100 chars)
+  top_hooks:             string[];
+
+  updated_at: Timestamp;
+  created_at: Timestamp;
+}
+
+// ── Trend Cache ───────────────────────────────────────────────────────────────
+// Cache de tendências buscadas pelo cron job diário para cada cliente.
+// Evita chamadas Tavily on-demand durante geração.
+
+export interface TrendCache {
+  client_id:   string;
+  agency_id:   string;
+  date:        string;  // YYYY-MM-DD
+  segment:     string;
+  social:      "instagram" | "linkedin";
+  query:       string;
+  summary:     string;
+  snippets:    string[];
+  created_at:  Timestamp;
 }
 
 export interface GeneratedCarousel {

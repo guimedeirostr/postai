@@ -13,6 +13,9 @@
  * Custo estimado: ~$0.01 por busca (Free tier: 1.000 buscas/mês)
  */
 
+import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
+
 interface TavilySearchResult {
   title:   string;
   url:     string;
@@ -169,5 +172,62 @@ export async function fetchTrendContext(
   } catch (e) {
     console.warn("[tavily] Falha na busca (non-fatal):", e);
     return null;
+  }
+}
+
+/**
+ * Reads trend cache for a client from today's Firestore document.
+ * Returns null if no cache exists for today.
+ */
+export async function readTrendCache(
+  client_id: string,
+  social: "instagram" | "linkedin",
+): Promise<TrendContext | null> {
+  const date = new Date().toISOString().split("T")[0];
+  const docId = `${client_id}_${social}_${date}`;
+
+  try {
+    const snap = await adminDb.collection("trend_cache").doc(docId).get();
+    if (!snap.exists) return null;
+
+    const data = snap.data()!;
+    return {
+      query:    data.query    as string,
+      summary:  data.summary  as string,
+      snippets: data.snippets as string[],
+    };
+  } catch (e) {
+    console.warn(`[tavily/cache] Falha ao ler cache ${docId} (non-fatal):`, e);
+    return null;
+  }
+}
+
+/**
+ * Writes trend data to Firestore cache for today.
+ */
+export async function writeTrendCache(
+  client_id: string,
+  social: "instagram" | "linkedin",
+  trend: TrendContext,
+  agency_id: string,
+): Promise<void> {
+  const date = new Date().toISOString().split("T")[0];
+  const docId = `${client_id}_${social}_${date}`;
+
+  try {
+    await adminDb.collection("trend_cache").doc(docId).set(
+      {
+        client_id,
+        social,
+        query:      trend.query,
+        summary:    trend.summary,
+        snippets:   trend.snippets,
+        agency_id,
+        created_at: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch (e) {
+    console.warn(`[tavily/cache] Falha ao gravar cache ${docId} (non-fatal):`, e);
   }
 }
