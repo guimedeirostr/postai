@@ -17,29 +17,36 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import ClientNode   from "@/components/canvas/nodes/ClientNode";
-import StrategyNode  from "@/components/canvas/nodes/StrategyNode";
-import CopyNode      from "@/components/canvas/nodes/CopyNode";
-import ImageNode     from "@/components/canvas/nodes/ImageNode";
-import ComposedNode  from "@/components/canvas/nodes/ComposedNode";
+import ClientNode            from "@/components/canvas/nodes/ClientNode";
+import StrategyNode          from "@/components/canvas/nodes/StrategyNode";
+import CopyNode              from "@/components/canvas/nodes/CopyNode";
+import CreativeDirectorNode  from "@/components/canvas/nodes/CreativeDirectorNode";
+import CompositorNode        from "@/components/canvas/nodes/CompositorNode";
+import PostFinalNode         from "@/components/canvas/nodes/PostFinalNode";
 import { useCanvasStore } from "@/lib/canvas-store";
 import { Sparkles, RotateCcw } from "lucide-react";
 
 // ── Node type registry ────────────────────────────────────────────────────────
 const nodeTypes = {
-  client:   ClientNode,
-  strategy: StrategyNode,
-  copy:     CopyNode,
-  image:    ImageNode,
-  composed: ComposedNode,
+  client:     ClientNode,
+  strategy:   StrategyNode,
+  copy:       CopyNode,
+  creative:   CreativeDirectorNode,
+  compositor: CompositorNode,
+  postfinal:  PostFinalNode,
 } as const;
 
-// ── Initial layout — pipeline flows left → right ──────────────────────────────
+// ── Initial layout — L-shaped pipeline ───────────────────────────────────────
+//
+//  Row 1 (top):    Client(40,180) → Strategy(380,60) → Copy(700,60)
+//                                                              ↓
+//  Row 2 (bottom): PostFinal(1420,400) ← Compositor(1060,400) ← CreativeDirector(700,400)
+//
 const INITIAL_NODES: Node[] = [
   {
     id:       "client-1",
     type:     "client",
-    position: { x: 40,   y: 160 },
+    position: { x: 40,   y: 180 },
     data:     { label: "Cliente" },
   },
   {
@@ -51,67 +58,83 @@ const INITIAL_NODES: Node[] = [
   {
     id:       "copy-1",
     type:     "copy",
-    position: { x: 720,  y: 60 },
+    position: { x: 700,  y: 60 },
     data:     { label: "Copy" },
   },
   {
-    id:       "image-1",
-    type:     "image",
-    position: { x: 1080, y: 60 },
-    data:     { label: "Imagem" },
+    id:       "creative-1",
+    type:     "creative",
+    position: { x: 700,  y: 400 },
+    data:     { label: "Diretor Criativo" },
   },
   {
-    id:       "composed-1",
-    type:     "composed",
-    position: { x: 1460, y: 60 },
+    id:       "compositor-1",
+    type:     "compositor",
+    position: { x: 1060, y: 400 },
+    data:     { label: "Compositor" },
+  },
+  {
+    id:       "postfinal-1",
+    type:     "postfinal",
+    position: { x: 1420, y: 400 },
     data:     { label: "Post Final" },
   },
 ];
 
 const INITIAL_EDGES: Edge[] = [
   {
-    id:             "e-client-strategy",
-    source:         "client-1",
-    sourceHandle:   "out",
-    target:         "strategy-1",
-    targetHandle:   "in",
-    animated:       true,
-    style:          { stroke: "#8b5cf6", strokeWidth: 2 },
+    id:           "e-client-strategy",
+    source:       "client-1",
+    sourceHandle: "out",
+    target:       "strategy-1",
+    targetHandle: "in",
+    animated:     true,
+    style:        { stroke: "#8b5cf6", strokeWidth: 2 },
   },
   {
-    id:             "e-strategy-copy",
-    source:         "strategy-1",
-    sourceHandle:   "out",
-    target:         "copy-1",
-    targetHandle:   "in",
-    animated:       true,
-    style:          { stroke: "#8b5cf6", strokeWidth: 2 },
+    id:           "e-strategy-copy",
+    source:       "strategy-1",
+    sourceHandle: "out",
+    target:       "copy-1",
+    targetHandle: "in",
+    animated:     true,
+    style:        { stroke: "#8b5cf6", strokeWidth: 2 },
   },
   {
-    id:             "e-copy-image",
-    source:         "copy-1",
-    sourceHandle:   "out",
-    target:         "image-1",
-    targetHandle:   "in",
-    animated:       true,
-    style:          { stroke: "#8b5cf6", strokeWidth: 2 },
+    id:           "e-copy-creative",
+    source:       "copy-1",
+    sourceHandle: "out",
+    target:       "creative-1",
+    targetHandle: "in",
+    animated:     true,
+    style:        { stroke: "#8b5cf6", strokeWidth: 2 },
   },
   {
-    id:             "e-image-composed",
-    source:         "image-1",
-    sourceHandle:   "out",
-    target:         "composed-1",
-    targetHandle:   "in",
-    animated:       true,
-    style:          { stroke: "#8b5cf6", strokeWidth: 2 },
+    id:           "e-creative-compositor",
+    source:       "creative-1",
+    sourceHandle: "out",
+    target:       "compositor-1",
+    targetHandle: "in",
+    animated:     true,
+    style:        { stroke: "#8b5cf6", strokeWidth: 2 },
+  },
+  {
+    id:           "e-compositor-postfinal",
+    source:       "compositor-1",
+    sourceHandle: "out",
+    target:       "postfinal-1",
+    targetHandle: "in",
+    animated:     true,
+    style:        { stroke: "#8b5cf6", strokeWidth: 2 },
   },
 ];
 
 // ── Dynamic edge color based on pipeline status ───────────────────────────────
 function useAnimatedEdges(edges: Edge[], setEdges: (updater: (eds: Edge[]) => Edge[]) => void) {
-  const strategyStatus = useCanvasStore(s => s.strategyStatus);
-  const copyStatus     = useCanvasStore(s => s.copyStatus);
-  const imageStatus    = useCanvasStore(s => s.imageStatus);
+  const strategyStatus   = useCanvasStore(s => s.strategyStatus);
+  const copyStatus       = useCanvasStore(s => s.copyStatus);
+  const imageStatus      = useCanvasStore(s => s.imageStatus);
+  const compositorStatus = useCanvasStore(s => s.compositorStatus);
 
   useEffect(() => {
     const statusColor = (status: string) =>
@@ -121,25 +144,25 @@ function useAnimatedEdges(edges: Edge[], setEdges: (updater: (eds: Edge[]) => Ed
       status === "error"   ? "#ef4444" :
       "#8b5cf6";
 
-    setEdges(eds => eds.map(e => ({
-      ...e,
-      animated: ["loading", "polling"].includes(
-        e.id === "e-client-strategy" ? strategyStatus :
-        e.id === "e-strategy-copy"   ? copyStatus     :
-        e.id === "e-copy-image"      ? imageStatus    :
-        e.id === "e-image-composed"  ? imageStatus    : "idle"
-      ),
-      style: {
-        stroke: statusColor(
-          e.id === "e-client-strategy" ? strategyStatus :
-          e.id === "e-strategy-copy"   ? copyStatus     :
-          e.id === "e-copy-image"      ? imageStatus    :
-          e.id === "e-image-composed"  ? imageStatus    : "idle"
-        ),
-        strokeWidth: 2,
-      },
-    })));
-  }, [strategyStatus, copyStatus, imageStatus, setEdges]);
+    setEdges(eds => eds.map(e => {
+      const edgeStatus =
+        e.id === "e-client-strategy"     ? strategyStatus   :
+        e.id === "e-strategy-copy"       ? copyStatus       :
+        e.id === "e-copy-creative"       ? copyStatus       :
+        e.id === "e-creative-compositor" ? imageStatus      :
+        e.id === "e-compositor-postfinal"? compositorStatus :
+        "idle";
+
+      return {
+        ...e,
+        animated: ["loading", "polling"].includes(edgeStatus),
+        style: {
+          stroke:      statusColor(edgeStatus),
+          strokeWidth: 2,
+        },
+      };
+    }));
+  }, [strategyStatus, copyStatus, imageStatus, compositorStatus, setEdges]);
 }
 
 // ── Main Canvas page ──────────────────────────────────────────────────────────
@@ -189,10 +212,12 @@ export default function CanvasPage() {
         {/* Minimap */}
         <MiniMap
           nodeColor={(n) =>
-            n.type === "client"   ? "#7c3aed" :
-            n.type === "strategy" ? "#2563eb" :
-            n.type === "copy"     ? "#059669" :
-            n.type === "image"    ? "#d97706" :
+            n.type === "client"     ? "#7c3aed" :
+            n.type === "strategy"   ? "#2563eb" :
+            n.type === "copy"       ? "#059669" :
+            n.type === "creative"   ? "#d97706" :
+            n.type === "compositor" ? "#0891b2" :
+            n.type === "postfinal"  ? "#16a34a" :
             "#6b7280"
           }
           className="bg-white border border-slate-200 rounded-xl shadow-sm"

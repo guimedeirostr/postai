@@ -2,7 +2,7 @@
  * lib/canvas-store.ts
  *
  * Zustand store para o Canvas de Geração de Posts.
- * Orquestra o pipeline completo: Cliente → Estratégia → Copy → Imagem → Post Final.
+ * Orquestra o pipeline completo: Cliente → Estratégia → Copy → Diretor Criativo → Compositor → Post Final.
  *
  * Cada etapa é independente — pode ser re-executada sem reiniciar as anteriores.
  */
@@ -60,18 +60,44 @@ export interface CanvasState {
   removeBgStatus:  StepStatus;
   removeBgError:   string | null;
 
+  // ── Creative Director ─────────────────────────────────────────────────────
+  visualPromptEdit: string;
+  referenceUrl:     string | null;
+  fontModalOpen:    boolean;
+  selectedFont:     { family: "montserrat-black" | "playfair-display" | "dancing-script" | "inter-medium"; color: string } | null;
+
+  // ── Compositor ────────────────────────────────────────────────────────────
+  textPosition:      "top" | "center" | "bottom-left" | "bottom-full";
+  logoPlacement:     "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-center" | "none";
+  footerVisible:     boolean;
+  compositorStatus:  StepStatus;
+  compositorError:   string | null;
+
   // ── Actions ───────────────────────────────────────────────────────────────
-  loadClients:     () => Promise<void>;
-  selectClient:    (id: string) => void;
-  setCampaignFocus:(focus: string) => void;
-  runStrategy:     () => Promise<void>;
-  runCopy:         () => Promise<void>;
-  runImage:        () => Promise<void>;
-  pollImage:       (taskId: string, postId: string) => Promise<void>;
-  approvePost:     () => Promise<void>;
-  rejectPost:      () => Promise<void>;
-  removeBackground:() => Promise<void>;
-  resetStep:       (step: "strategy" | "copy" | "image" | "all") => void;
+  loadClients:      () => Promise<void>;
+  selectClient:     (id: string) => void;
+  setCampaignFocus: (focus: string) => void;
+  runStrategy:      () => Promise<void>;
+  runCopy:          () => Promise<void>;
+  runImage:         () => Promise<void>;
+  pollImage:        (taskId: string, postId: string) => Promise<void>;
+  approvePost:      () => Promise<void>;
+  rejectPost:       () => Promise<void>;
+  removeBackground: () => Promise<void>;
+  resetStep:        (step: "strategy" | "copy" | "image" | "all") => void;
+
+  // ── Creative Director actions ──────────────────────────────────────────────
+  setVisualPromptEdit: (prompt: string) => void;
+  setReferenceUrl:     (url: string | null) => void;
+  openFontModal:       () => void;
+  closeFontModal:      () => void;
+  selectFont:          (font: { family: "montserrat-black" | "playfair-display" | "dancing-script" | "inter-medium"; color: string }) => void;
+
+  // ── Compositor actions ─────────────────────────────────────────────────────
+  setTextPosition:  (pos: "top" | "center" | "bottom-left" | "bottom-full") => void;
+  setLogoPlacement: (placement: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-center" | "none") => void;
+  setFooterVisible: (visible: boolean) => void;
+  composeManual:    () => Promise<void>;
 }
 
 const POLL_INTERVAL = 4000;
@@ -108,6 +134,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   removeBgStatus: "idle",
   removeBgError:  null,
 
+  // Creative Director defaults
+  visualPromptEdit: "",
+  referenceUrl:     null,
+  fontModalOpen:    false,
+  selectedFont:     null,
+
+  // Compositor defaults
+  textPosition:     "bottom-full",
+  logoPlacement:    "top-left",
+  footerVisible:    true,
+  compositorStatus: "idle",
+  compositorError:  null,
+
   // ── Load clients list ──────────────────────────────────────────────────────
   loadClients: async () => {
     if (get().clientsLoaded) return;
@@ -131,6 +170,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       copy: null,     copyStatus: "idle",     copyError: null,
       postId: null, taskId: null, imageUrl: null, imageStatus: "idle", imageError: null, qualityScore: null,
       composedUrl: null, approveStatus: "idle",
+      // Reset Creative Director + Compositor
+      visualPromptEdit: "", referenceUrl: null, fontModalOpen: false, selectedFont: null,
+      textPosition: "bottom-full", logoPlacement: "top-left", footerVisible: true,
+      compositorStatus: "idle", compositorError: null,
     });
   },
 
@@ -184,7 +227,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const data = await res.json() as CopyData & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erro no copy");
 
-      set({ copy: data, copyStatus: "done" });
+      set({
+        copy: data,
+        copyStatus: "done",
+        postId: data.post_id ?? get().postId,
+        // Sync visual_prompt to Creative Director editable field
+        visualPromptEdit: data.visual_prompt ?? "",
+      });
     } catch (e) {
       set({ copyStatus: "error", copyError: e instanceof Error ? e.message : "Erro desconhecido" });
     }
@@ -192,10 +241,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   // ── Image Generation ───────────────────────────────────────────────────────
   runImage: async () => {
-    const { selectedClientId, briefing, campaignFocus } = get();
+    const { selectedClientId, briefing, campaignFocus, visualPromptEdit } = get();
     if (!selectedClientId || !briefing) return;
 
-    set({ imageStatus: "loading", imageError: null, imageUrl: null, composedUrl: null, postId: null, taskId: null, qualityScore: null });
+    set({ imageStatus: "loading", imageError: null, imageUrl: null, composedUrl: null, postId: null, taskId: null, qualityScore: null, compositorStatus: "idle", compositorError: null });
 
     try {
       const res = await fetch("/api/posts/generate", {
@@ -204,6 +253,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         body:    JSON.stringify({
           client_id:      selectedClientId,
           campaign_focus: campaignFocus || undefined,
+          ...(visualPromptEdit ? { visual_prompt_override: visualPromptEdit } : {}),
         }),
       });
       const data = await res.json() as {
@@ -293,7 +343,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!postId) return;
     try {
       await fetch(`/api/posts/${postId}/reject`, { method: "POST" });
-      set({ approveStatus: "idle", imageUrl: null, composedUrl: null, imageStatus: "idle" });
+      set({ approveStatus: "idle", imageUrl: null, composedUrl: null, imageStatus: "idle", compositorStatus: "idle" });
     } catch { /* silent */ }
   },
 
@@ -325,16 +375,73 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         postId: null, taskId: null, imageUrl: null, imageStatus: "idle", imageError: null, qualityScore: null,
         composedUrl: null, approveStatus: "idle",
         transparentUrl: null, removeBgStatus: "idle", removeBgError: null,
+        // Reset Creative Director + Compositor
+        visualPromptEdit: "", referenceUrl: null, fontModalOpen: false, selectedFont: null,
+        textPosition: "bottom-full", logoPlacement: "top-left", footerVisible: true,
+        compositorStatus: "idle", compositorError: null,
       });
     } else if (step === "strategy") {
       set({ briefing: null, strategyStatus: "idle", strategyError: null });
     } else if (step === "copy") {
-      set({ copy: null, copyStatus: "idle", copyError: null });
+      set({ copy: null, copyStatus: "idle", copyError: null, visualPromptEdit: "" });
     } else if (step === "image") {
       set({
         postId: null, taskId: null, imageUrl: null, imageStatus: "idle", imageError: null,
         qualityScore: null, composedUrl: null, approveStatus: "idle",
         transparentUrl: null, removeBgStatus: "idle", removeBgError: null,
+        compositorStatus: "idle", compositorError: null,
+      });
+    }
+  },
+
+  // ── Creative Director actions ──────────────────────────────────────────────
+  setVisualPromptEdit: (prompt) => set({ visualPromptEdit: prompt }),
+  setReferenceUrl:     (url)    => set({ referenceUrl: url }),
+  openFontModal:       ()       => set({ fontModalOpen: true }),
+  closeFontModal:      ()       => set({ fontModalOpen: false }),
+  selectFont:          (font)   => set({ selectedFont: font, fontModalOpen: false }),
+
+  // ── Compositor actions ─────────────────────────────────────────────────────
+  setTextPosition:  (pos)       => set({ textPosition: pos }),
+  setLogoPlacement: (placement) => set({ logoPlacement: placement }),
+  setFooterVisible: (visible)   => set({ footerVisible: visible }),
+
+  composeManual: async () => {
+    const {
+      postId,
+      selectedFont,
+      textPosition,
+      logoPlacement,
+      footerVisible,
+    } = get();
+    if (!postId) return;
+
+    set({ compositorStatus: "loading", compositorError: null });
+
+    try {
+      const res = await fetch("/api/posts/compose", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          post_id:       postId,
+          font_family:   selectedFont?.family   ?? undefined,
+          font_color:    selectedFont?.color    ?? undefined,
+          text_position: textPosition,
+          logo_placement: logoPlacement,
+          footer_visible: footerVisible,
+        }),
+      });
+      const data = await res.json() as { composed_url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro ao compor post");
+
+      set({
+        composedUrl:      data.composed_url ?? null,
+        compositorStatus: "done",
+      });
+    } catch (e) {
+      set({
+        compositorStatus: "error",
+        compositorError: e instanceof Error ? e.message : "Erro desconhecido",
       });
     }
   },

@@ -4,12 +4,20 @@
  * Compõe o post final: AI image + overlay de marca (logo, headline, handle, gradiente).
  * Salva o resultado como `composed_url` no Firestore e retorna a URL pública.
  *
- * Body: { post_id: string }
+ * Body: {
+ *   post_id:        string;
+ *   image_url?:     string;       — override: usa esta imagem ao invés da do post
+ *   font_family?:   string;       — família tipográfica selecionada no Compositor
+ *   font_color?:    string;       — cor hex do texto (ex: "#FFFFFF")
+ *   text_position?: string;       — "top" | "center" | "bottom-left" | "bottom-full"
+ *   logo_placement?: string;      — "top-left" | "top-right" | "bottom-right" | "none" etc.
+ *   footer_visible?: boolean;     — exibe faixa com @handle no rodapé
+ * }
  *
  * Pode ser chamado:
  *  - Automaticamente pelo /api/posts/generate (providers síncronos: imagen4, fal)
  *  - Automaticamente pelo /api/posts/check-image (Freepik, quando polling completa)
- *  - Manualmente pelo frontend (botão "Compor Post")
+ *  - Manualmente pelo frontend (botão "Compor Post Final" no CompositorNode)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -21,18 +29,51 @@ import {
   resolveArtDirection,
   toComposeOverrides,
 } from "@/lib/art-direction-resolver";
-import type { BrandProfile, GeneratedPost, ReferenceDNA } from "@/types";
+import type { BrandProfile, GeneratedPost, LogoPlacement, ReferenceDNA } from "@/types";
 
 // Composição leva ~5-12s (fetch imagem + fetch logo + satori + sharp)
 export const maxDuration = 60;
+
+// ── text_position → compositionZone mapping ───────────────────────────────────
+
+type TextPosition = "top" | "center" | "bottom-left" | "bottom-full";
+type CompositionZone = "top" | "center" | "bottom" | "left" | "right";
+
+function textPositionToZone(pos: string | undefined): CompositionZone | undefined {
+  if (!pos) return undefined;
+  const map: Record<TextPosition, CompositionZone> = {
+    "top":          "top",
+    "center":       "center",
+    "bottom-left":  "bottom",
+    "bottom-full":  "bottom",
+  };
+  return map[pos as TextPosition] ?? undefined;
+}
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json() as { post_id: string; image_url?: string };
-    const { post_id } = body;
+    const body = await req.json() as {
+      post_id:         string;
+      image_url?:      string;
+      font_family?:    string;
+      font_color?:     string;
+      text_position?:  string;
+      logo_placement?: string;
+      footer_visible?: boolean;
+    };
+
+    const {
+      post_id,
+      font_family,
+      font_color,
+      text_position,
+      logo_placement,
+      footer_visible,
+    } = body;
+
     if (!post_id) {
       return NextResponse.json({ error: "post_id é obrigatório" }, { status: 400 });
     }
@@ -62,9 +103,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Se veio override, salva no post antes de compor
+    // Se veio override de imagem, salva no post antes de compor
     if (imageUrlOverride) {
       await postDoc.ref.update({ image_url: imageUrlOverride });
+    }
+
+    // ── Salvar overrides visuais no Firestore ─────────────────────────────────
+    // O art-direction-resolver vai usar esses campos na cascade quando presentes.
+    const visualOverrides: Record<string, unknown> = {};
+    if (font_family)               visualOverrides.headline_style_override = font_family;
+    if (logo_placement)            visualOverrides.logo_placement_override  = logo_placement;
+    if (text_position)             visualOverrides.text_position_override   = text_position;
+    if (footer_visible !== undefined) visualOverrides.footer_visible        = footer_visible;
+
+    if (Object.keys(visualOverrides).length > 0) {
+      await postDoc.ref.update(visualOverrides);
     }
 
     // ── Carregar dados do cliente ─────────────────────────────────────────────
@@ -82,17 +135,26 @@ export async function POST(req: NextRequest) {
     const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
     const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);
 
+    // ── Aplicar overrides manuais do Compositor (máxima prioridade) ───────────
+    const manualZone    = textPositionToZone(text_position);
+    const manualLogo    = logo_placement as LogoPlacement | undefined;
+    const manualHeadlineStyle = font_family ?? undefined;
+
     const composed_url = await composePost({
       imageUrl:             imageUrl,
       logoUrl:              client.logo_url,
       visualHeadline:       post.visual_headline ?? post.headline ?? client.name,
-      instagramHandle:      client.instagram_handle,
+      instagramHandle:      footer_visible === false ? undefined : client.instagram_handle,
       clientName:           client.name,
       primaryColor:         client.primary_color,
-      secondaryColor:       client.secondary_color,
+      secondaryColor:       font_color ?? client.secondary_color,
       format:               post.format ?? "feed",
       postId:               post_id,
+      // Manual overrides take priority, then fall back to DNA cascade
       ...toComposeOverrides(ad),
+      ...(manualZone         ? { compositionZone:  manualZone }         : {}),
+      ...(manualLogo         ? { logoPlacement:    manualLogo }         : {}),
+      ...(manualHeadlineStyle? { headlineStyle:    manualHeadlineStyle }: {}),
     });
 
     // ── Atualizar Firestore ───────────────────────────────────────────────────
