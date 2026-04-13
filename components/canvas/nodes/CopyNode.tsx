@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { FileText, RotateCcw, RefreshCw, Copy, Check, AlertCircle } from "lucide-react";
+import { FileText, RotateCcw, RefreshCw, Copy, Check, AlertCircle, Pencil } from "lucide-react";
 import BaseNode from "@/components/canvas/BaseNode";
 import { useCanvasStore } from "@/lib/canvas-store";
 import type { CopyData } from "@/lib/canvas-store";
@@ -109,16 +109,26 @@ function CopyClipboardButton({ text }: { text: string }) {
 function CopyDisplay({
   copy,
   onRegenerate,
+  onEditCaption,
 }: {
   copy: CopyData;
   onRegenerate: () => void;
+  onEditCaption: (caption: string) => void;
 }) {
+  const [editingCaption, setEditingCaption] = useState(false);
+  const [localCaption, setLocalCaption] = useState(copy.caption);
+
   const captionPreview =
-    copy.caption.length > 150
+    !editingCaption && copy.caption.length > 150
       ? copy.caption.slice(0, 150) + "..."
       : copy.caption;
 
   const frameworkKey = copy.framework_used.split("_")[0].toUpperCase();
+
+  function saveCaption() {
+    onEditCaption(localCaption);
+    setEditingCaption(false);
+  }
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -149,12 +159,52 @@ function CopyDisplay({
         )}
       </div>
 
-      {/* Caption preview */}
+      {/* Caption — editable */}
       <div className="flex flex-col gap-0.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          Caption
-        </span>
-        <p className="text-sm text-slate-600 leading-snug">{captionPreview}</p>
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Caption
+          </span>
+          {!editingCaption && (
+            <button
+              type="button"
+              onClick={() => { setLocalCaption(copy.caption); setEditingCaption(true); }}
+              className="nodrag nopan p-0.5 rounded text-slate-300 hover:text-violet-500 transition-colors"
+            >
+              <Pencil className="h-2.5 w-2.5" />
+            </button>
+          )}
+        </div>
+
+        {editingCaption ? (
+          <div className="flex flex-col gap-1">
+            <textarea
+              className="nodrag nopan w-full rounded border border-violet-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-500 resize-none leading-relaxed"
+              rows={5}
+              value={localCaption}
+              onChange={e => setLocalCaption(e.target.value)}
+              autoFocus
+            />
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={saveCaption}
+                className="nodrag nopan px-2 py-0.5 rounded bg-violet-600 text-white text-[10px] font-medium"
+              >
+                Salvar
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingCaption(false)}
+                className="nodrag nopan px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-medium"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-600 leading-snug">{captionPreview}</p>
+        )}
       </div>
 
       {/* Hashtags count */}
@@ -188,11 +238,12 @@ export type CopyNodeType = Node<{ label: string }, "copy">;
 // ── CopyNode ──────────────────────────────────────────────────────────────────
 
 export default function CopyNode({ selected }: NodeProps<CopyNodeType>) {
-  const copy       = useCanvasStore((s) => s.copy);
-  const copyStatus = useCanvasStore((s) => s.copyStatus);
-  const copyError  = useCanvasStore((s) => s.copyError);
-  const runCopy    = useCanvasStore((s) => s.runCopy);
-  const resetStep  = useCanvasStore((s) => s.resetStep);
+  const copy        = useCanvasStore((s) => s.copy);
+  const copyStatus  = useCanvasStore((s) => s.copyStatus);
+  const copyError   = useCanvasStore((s) => s.copyError);
+  const runCopy     = useCanvasStore((s) => s.runCopy);
+  const resetStep   = useCanvasStore((s) => s.resetStep);
+  const editCaption = useCanvasStore((s) => s.editCaption);
 
   function handleRegenerate() {
     resetStep("copy");
@@ -232,7 +283,11 @@ export default function CopyNode({ selected }: NodeProps<CopyNodeType>) {
         )}
 
         {copyStatus === "done" && copy && (
-          <CopyDisplay copy={copy} onRegenerate={handleRegenerate} />
+          <CopyDisplay
+            copy={copy}
+            onRegenerate={handleRegenerate}
+            onEditCaption={editCaption}
+          />
         )}
       </BaseNode>
 

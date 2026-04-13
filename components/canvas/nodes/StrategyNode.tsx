@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { Lightbulb, RefreshCw, RotateCcw, AlertCircle } from "lucide-react";
+import { Lightbulb, RefreshCw, RotateCcw, AlertCircle, Pencil } from "lucide-react";
 import BaseNode from "@/components/canvas/BaseNode";
 import { useCanvasStore } from "@/lib/canvas-store";
 import type { StepStatus } from "@/lib/canvas-store";
@@ -77,12 +78,96 @@ function ErrorState({
   );
 }
 
+// ── Editable field ────────────────────────────────────────────────────────────
+
+function EditableField({
+  label,
+  value,
+  multiline,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+  onSave: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(value);
+
+  function save() {
+    onSave(local);
+    setEditing(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          {label}
+        </span>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => { setLocal(value); setEditing(true); }}
+            className="nodrag nopan p-0.5 rounded text-slate-300 hover:text-violet-500 transition-colors"
+          >
+            <Pencil className="h-2.5 w-2.5" />
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="flex flex-col gap-1">
+          {multiline ? (
+            <textarea
+              className="nodrag nopan w-full rounded border border-violet-300 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-500 resize-none"
+              rows={2}
+              value={local}
+              onChange={e => setLocal(e.target.value)}
+              autoFocus
+            />
+          ) : (
+            <input
+              className="nodrag nopan w-full rounded border border-violet-300 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              value={local}
+              onChange={e => setLocal(e.target.value)}
+              autoFocus
+              onKeyDown={e => e.key === "Enter" && save()}
+            />
+          )}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={save}
+              className="nodrag nopan px-2 py-0.5 rounded bg-violet-600 text-white text-[10px] font-medium"
+            >
+              Salvar
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="nodrag nopan px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-medium"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <span className="text-sm text-slate-700 leading-snug">{value}</span>
+      )}
+    </div>
+  );
+}
+
+// ── BriefingDisplay ───────────────────────────────────────────────────────────
+
 function BriefingDisplay({
   briefing,
   onRegenerate,
+  onEditField,
 }: {
   briefing: StrategyBriefing;
   onRegenerate: () => void;
+  onEditField: (field: string, value: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -100,36 +185,28 @@ function BriefingDisplay({
         )}
       </div>
 
-      {/* Tema */}
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          Tema
-        </span>
-        <span className="text-sm font-medium text-slate-900 leading-snug">
-          {briefing.tema}
-        </span>
-      </div>
+      {/* Tema — editable */}
+      <EditableField
+        label="Tema"
+        value={briefing.tema}
+        onSave={v => onEditField("tema", v)}
+      />
 
-      {/* Objetivo */}
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          Objetivo
-        </span>
-        <span className="text-sm text-slate-600 leading-snug">
-          {briefing.objetivo}
-        </span>
-      </div>
+      {/* Objetivo — editable (multiline) */}
+      <EditableField
+        label="Objetivo"
+        value={briefing.objetivo}
+        multiline
+        onSave={v => onEditField("objetivo", v)}
+      />
 
-      {/* Público específico */}
+      {/* Público — editable */}
       {briefing.publico_especifico && (
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            Público
-          </span>
-          <span className="text-xs text-slate-500 leading-snug">
-            {briefing.publico_especifico}
-          </span>
-        </div>
+        <EditableField
+          label="Público"
+          value={briefing.publico_especifico}
+          onSave={v => onEditField("publico_especifico", v)}
+        />
       )}
 
       {/* Regenerate link */}
@@ -158,11 +235,12 @@ export type StrategyNodeType = Node<{ label: string }, "strategy">;
 // ── StrategyNode ──────────────────────────────────────────────────────────────
 
 export default function StrategyNode({ selected }: NodeProps<StrategyNodeType>) {
-  const briefing       = useCanvasStore((s) => s.briefing);
-  const strategyStatus = useCanvasStore((s) => s.strategyStatus) as StepStatus;
-  const strategyError  = useCanvasStore((s) => s.strategyError);
-  const runStrategy    = useCanvasStore((s) => s.runStrategy);
-  const resetStep      = useCanvasStore((s) => s.resetStep);
+  const briefing         = useCanvasStore((s) => s.briefing);
+  const strategyStatus   = useCanvasStore((s) => s.strategyStatus) as StepStatus;
+  const strategyError    = useCanvasStore((s) => s.strategyError);
+  const runStrategy      = useCanvasStore((s) => s.runStrategy);
+  const resetStep        = useCanvasStore((s) => s.resetStep);
+  const editBriefingField = useCanvasStore((s) => s.editBriefingField);
 
   function handleRegenerate() {
     resetStep("strategy");
@@ -198,7 +276,11 @@ export default function StrategyNode({ selected }: NodeProps<StrategyNodeType>) 
         )}
 
         {strategyStatus === "done" && briefing && (
-          <BriefingDisplay briefing={briefing} onRegenerate={handleRegenerate} />
+          <BriefingDisplay
+            briefing={briefing}
+            onRegenerate={handleRegenerate}
+            onEditField={editBriefingField}
+          />
         )}
       </BaseNode>
 

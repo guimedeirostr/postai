@@ -2,13 +2,54 @@
  * lib/canvas-store.ts
  *
  * Zustand store para o Canvas de Geração de Posts.
- * Orquestra o pipeline completo: Cliente → Estratégia → Copy → Diretor Criativo → Compositor → Post Final.
+ * Orquestra o pipeline completo: Cliente → Estratégia → Copy → Diretor Criativo → Diretor de Fotografia → Compositor → Post Final.
  *
  * Cada etapa é independente — pode ser re-executada sem reiniciar as anteriores.
  */
 
 import { create } from "zustand";
 import type { BrandProfile, StrategyBriefing } from "@/types";
+
+// ── Font pair definitions (shared with FontSelectorModal) ─────────────────────
+
+export type FontPairId = "modern" | "editorial" | "script" | "minimal";
+
+export interface FontPair {
+  id:          FontPairId;
+  label:       string;
+  descriptor:  string;
+  headline: { cssFamily: string; weight: number; googleId: string };
+  secondary:{ cssFamily: string; weight: number; googleId: string };
+  /** Keyword sent as font_family to compose API → resolved by typography.ts */
+  headlineStyleHint: string;
+}
+
+export const FONT_PAIRS: FontPair[] = [
+  {
+    id: "modern", label: "Bebas Neue + Heebo", descriptor: "Impacto Urbano",
+    headline:  { cssFamily: "Bebas Neue",        weight: 400, googleId: "Bebas+Neue:wght@400"             },
+    secondary: { cssFamily: "Heebo",             weight: 400, googleId: "Heebo:wght@400;500"              },
+    headlineStyleHint: "",        // default → Montserrat Black (closest to Bebas Neue)
+  },
+  {
+    id: "editorial", label: "Playfair + Raleway", descriptor: "Elegância Editorial",
+    headline:  { cssFamily: "Playfair Display",  weight: 700, googleId: "Playfair+Display:wght@700;900"   },
+    secondary: { cssFamily: "Raleway",           weight: 400, googleId: "Raleway:wght@400;500"            },
+    headlineStyleHint: "serif",   // → PlayfairDisplay
+  },
+  {
+    id: "script", label: "Caveat + Karla", descriptor: "Artesanal & Script",
+    headline:  { cssFamily: "Caveat",            weight: 700, googleId: "Caveat:wght@700"                 },
+    secondary: { cssFamily: "Karla",             weight: 400, googleId: "Karla:wght@400;500"              },
+    headlineStyleHint: "script",  // → DancingScript
+  },
+  {
+    id: "minimal", label: "Jakarta + Inter", descriptor: "Minimal & Clean",
+    headline:  { cssFamily: "Plus Jakarta Sans", weight: 700, googleId: "Plus+Jakarta+Sans:wght@700;800"  },
+    secondary: { cssFamily: "Inter",             weight: 400, googleId: "Inter:wght@400;500"              },
+    headlineStyleHint: "minimal", // → Inter Medium
+  },
+];
 
 export type StepStatus = "idle" | "loading" | "done" | "error" | "polling";
 
@@ -61,10 +102,10 @@ export interface CanvasState {
   removeBgError:   string | null;
 
   // ── Creative Director ─────────────────────────────────────────────────────
-  visualPromptEdit: string;
-  referenceUrl:     string | null;
-  fontModalOpen:    boolean;
-  selectedFont:     { family: "montserrat-black" | "playfair-display" | "dancing-script" | "inter-medium"; color: string } | null;
+  visualPromptEdit:  string;
+  referenceImageUrl: string | null;   // data URL (upload) or CDN URL (client bank)
+  fontModalOpen:     boolean;
+  selectedFont:      { pairId: FontPairId; color: string } | null;
 
   // ── Compositor ────────────────────────────────────────────────────────────
   textPosition:      "top" | "center" | "bottom-left" | "bottom-full";
@@ -72,6 +113,14 @@ export interface CanvasState {
   footerVisible:     boolean;
   compositorStatus:  StepStatus;
   compositorError:   string | null;
+
+  // ── Photo Director ────────────────────────────────────────────────────────
+  photoDirectorMode:   "ai" | "bank" | null;
+  photoDirectorStatus: StepStatus;
+  photoDirectorError:  string | null;
+  refinedVisualPrompt: string;
+  selectedAiProvider:  string;
+  aiPickerOpen:        boolean;
 
   // ── Actions ───────────────────────────────────────────────────────────────
   loadClients:      () => Promise<void>;
@@ -87,17 +136,31 @@ export interface CanvasState {
   resetStep:        (step: "strategy" | "copy" | "image" | "all") => void;
 
   // ── Creative Director actions ──────────────────────────────────────────────
-  setVisualPromptEdit: (prompt: string) => void;
-  setReferenceUrl:     (url: string | null) => void;
-  openFontModal:       () => void;
-  closeFontModal:      () => void;
-  selectFont:          (font: { family: "montserrat-black" | "playfair-display" | "dancing-script" | "inter-medium"; color: string }) => void;
+  setVisualPromptEdit:  (prompt: string) => void;
+  setReferenceImageUrl: (url: string | null) => void;
+  openFontModal:        () => void;
+  closeFontModal:       () => void;
+  selectFont:           (font: { pairId: FontPairId; color: string }) => void;
 
   // ── Compositor actions ─────────────────────────────────────────────────────
   setTextPosition:  (pos: "top" | "center" | "bottom-left" | "bottom-full") => void;
   setLogoPlacement: (placement: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-center" | "none") => void;
   setFooterVisible: (visible: boolean) => void;
   composeManual:    () => Promise<void>;
+
+  // ── Photo Director actions ─────────────────────────────────────────────────
+  setPhotoDirectorMode:  (mode: "ai" | "bank" | null) => void;
+  setRefinedVisualPrompt:(prompt: string) => void;
+  setSelectedAiProvider: (provider: string) => void;
+  openAiPicker:          () => void;
+  closeAiPicker:         () => void;
+  runRefinePrompt:       () => Promise<void>;
+  runImageWithProvider:  (provider: string) => Promise<void>;
+  usePhotoFromBank:      (imageUrl: string) => void;
+
+  // ── Strategy/Copy editing ──────────────────────────────────────────────────
+  editBriefingField: (field: string, value: string) => void;
+  editCaption:       (caption: string) => void;
 }
 
 const POLL_INTERVAL = 4000;
@@ -135,10 +198,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   removeBgError:  null,
 
   // Creative Director defaults
-  visualPromptEdit: "",
-  referenceUrl:     null,
-  fontModalOpen:    false,
-  selectedFont:     null,
+  visualPromptEdit:  "",
+  referenceImageUrl: null,
+  fontModalOpen:     false,
+  selectedFont:      null,
 
   // Compositor defaults
   textPosition:     "bottom-full",
@@ -146,6 +209,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   footerVisible:    true,
   compositorStatus: "idle",
   compositorError:  null,
+
+  // Photo Director defaults
+  photoDirectorMode:   null,
+  photoDirectorStatus: "idle",
+  photoDirectorError:  null,
+  refinedVisualPrompt: "",
+  selectedAiProvider:  "freepik",
+  aiPickerOpen:        false,
 
   // ── Load clients list ──────────────────────────────────────────────────────
   loadClients: async () => {
@@ -171,9 +242,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       postId: null, taskId: null, imageUrl: null, imageStatus: "idle", imageError: null, qualityScore: null,
       composedUrl: null, approveStatus: "idle",
       // Reset Creative Director + Compositor
-      visualPromptEdit: "", referenceUrl: null, fontModalOpen: false, selectedFont: null,
+      visualPromptEdit: "", referenceImageUrl: null, fontModalOpen: false, selectedFont: null,
       textPosition: "bottom-full", logoPlacement: "top-left", footerVisible: true,
       compositorStatus: "idle", compositorError: null,
+      // Reset Photo Director
+      photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
+      refinedVisualPrompt: "", aiPickerOpen: false,
     });
   },
 
@@ -376,9 +450,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         composedUrl: null, approveStatus: "idle",
         transparentUrl: null, removeBgStatus: "idle", removeBgError: null,
         // Reset Creative Director + Compositor
-        visualPromptEdit: "", referenceUrl: null, fontModalOpen: false, selectedFont: null,
+        visualPromptEdit: "", referenceImageUrl: null, fontModalOpen: false, selectedFont: null,
         textPosition: "bottom-full", logoPlacement: "top-left", footerVisible: true,
         compositorStatus: "idle", compositorError: null,
+        // Reset Photo Director
+        photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
+        refinedVisualPrompt: "", aiPickerOpen: false,
       });
     } else if (step === "strategy") {
       set({ briefing: null, strategyStatus: "idle", strategyError: null });
@@ -390,16 +467,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         qualityScore: null, composedUrl: null, approveStatus: "idle",
         transparentUrl: null, removeBgStatus: "idle", removeBgError: null,
         compositorStatus: "idle", compositorError: null,
+        // Reset Photo Director state too
+        photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
+        refinedVisualPrompt: "", aiPickerOpen: false,
       });
     }
   },
 
   // ── Creative Director actions ──────────────────────────────────────────────
-  setVisualPromptEdit: (prompt) => set({ visualPromptEdit: prompt }),
-  setReferenceUrl:     (url)    => set({ referenceUrl: url }),
-  openFontModal:       ()       => set({ fontModalOpen: true }),
-  closeFontModal:      ()       => set({ fontModalOpen: false }),
-  selectFont:          (font)   => set({ selectedFont: font, fontModalOpen: false }),
+  setVisualPromptEdit:  (prompt) => set({ visualPromptEdit: prompt }),
+  setReferenceImageUrl: (url)    => set({ referenceImageUrl: url }),
+  openFontModal:        ()       => set({ fontModalOpen: true }),
+  closeFontModal:       ()       => set({ fontModalOpen: false }),
+  selectFont:           (font)   => set({ selectedFont: font, fontModalOpen: false }),
 
   // ── Compositor actions ─────────────────────────────────────────────────────
   setTextPosition:  (pos)       => set({ textPosition: pos }),
@@ -423,10 +503,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          post_id:       postId,
-          font_family:   selectedFont?.family   ?? undefined,
-          font_color:    selectedFont?.color    ?? undefined,
-          text_position: textPosition,
+          post_id:        postId,
+          font_family:    selectedFont
+            ? (FONT_PAIRS.find(p => p.id === selectedFont.pairId)?.headlineStyleHint || undefined)
+            : undefined,
+          font_color:     selectedFont?.color ?? undefined,
+          text_position:  textPosition,
           logo_placement: logoPlacement,
           footer_visible: footerVisible,
         }),
@@ -444,5 +526,97 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         compositorError: e instanceof Error ? e.message : "Erro desconhecido",
       });
     }
+  },
+
+  // ── Photo Director actions ─────────────────────────────────────────────────
+  setPhotoDirectorMode:   (mode)     => set({ photoDirectorMode: mode }),
+  setRefinedVisualPrompt: (prompt)   => set({ refinedVisualPrompt: prompt }),
+  setSelectedAiProvider:  (provider) => set({ selectedAiProvider: provider }),
+  openAiPicker:           ()         => set({ aiPickerOpen: true }),
+  closeAiPicker:          ()         => set({ aiPickerOpen: false }),
+
+  runRefinePrompt: async () => {
+    const { selectedClientId, briefing, visualPromptEdit, campaignFocus } = get();
+    if (!selectedClientId) return;
+    set({ photoDirectorStatus: "loading", photoDirectorError: null, refinedVisualPrompt: "" });
+    try {
+      const res = await fetch("/api/posts/refine-visual-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: selectedClientId,
+          visual_prompt: visualPromptEdit || briefing?.tema || "",
+          campaign_focus: campaignFocus || undefined,
+          tema: briefing?.tema,
+          objetivo: briefing?.objetivo,
+        }),
+      });
+      const data = await res.json() as { refined_prompt?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro no diretor de fotografia");
+      set({ refinedVisualPrompt: data.refined_prompt ?? "", photoDirectorStatus: "done" });
+    } catch (e) {
+      set({ photoDirectorStatus: "error", photoDirectorError: e instanceof Error ? e.message : "Erro desconhecido" });
+    }
+  },
+
+  runImageWithProvider: async (provider: string) => {
+    const { postId, refinedVisualPrompt, visualPromptEdit } = get();
+    const promptOverride = refinedVisualPrompt || visualPromptEdit || undefined;
+
+    set({
+      imageStatus: "loading", imageError: null, imageUrl: null, composedUrl: null,
+      taskId: null, qualityScore: null, compositorStatus: "idle", compositorError: null,
+      aiPickerOpen: false,
+    });
+
+    // If no postId, fall back to full pipeline
+    if (!postId) {
+      await get().runImage();
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/posts/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          post_id: postId,
+          provider,
+          ...(promptOverride ? { visual_prompt_override: promptOverride } : {}),
+        }),
+      });
+      const data = await res.json() as { task_id?: string; image_url?: string; composed_url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar imagem");
+
+      set({ taskId: data.task_id ?? null, imageUrl: data.image_url ?? null, composedUrl: data.composed_url ?? null });
+
+      if (data.task_id && postId) {
+        set({ imageStatus: "polling" });
+        await get().pollImage(data.task_id, postId);
+      } else if (data.image_url || data.composed_url) {
+        set({ imageStatus: "done" });
+      } else {
+        set({ imageStatus: "done" });
+      }
+    } catch (e) {
+      set({ imageStatus: "error", imageError: e instanceof Error ? e.message : "Erro desconhecido" });
+    }
+  },
+
+  usePhotoFromBank: (imageUrl: string) => {
+    set({ imageUrl, imageStatus: "done", composedUrl: null, compositorStatus: "idle", compositorError: null });
+  },
+
+  // ── Strategy/Copy editing ──────────────────────────────────────────────────
+  editBriefingField: (field: string, value: string) => {
+    const briefing = get().briefing;
+    if (!briefing) return;
+    set({ briefing: { ...briefing, [field]: value } });
+  },
+
+  editCaption: (caption: string) => {
+    const copy = get().copy;
+    if (!copy) return;
+    set({ copy: { ...copy, caption } });
   },
 }));

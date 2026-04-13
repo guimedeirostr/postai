@@ -21,6 +21,7 @@ import ClientNode            from "@/components/canvas/nodes/ClientNode";
 import StrategyNode          from "@/components/canvas/nodes/StrategyNode";
 import CopyNode              from "@/components/canvas/nodes/CopyNode";
 import CreativeDirectorNode  from "@/components/canvas/nodes/CreativeDirectorNode";
+import PhotoDirectorNode     from "@/components/canvas/nodes/PhotoDirectorNode";
 import CompositorNode        from "@/components/canvas/nodes/CompositorNode";
 import PostFinalNode         from "@/components/canvas/nodes/PostFinalNode";
 import { useCanvasStore } from "@/lib/canvas-store";
@@ -28,25 +29,26 @@ import { Sparkles, RotateCcw } from "lucide-react";
 
 // ── Node type registry ────────────────────────────────────────────────────────
 const nodeTypes = {
-  client:     ClientNode,
-  strategy:   StrategyNode,
-  copy:       CopyNode,
-  creative:   CreativeDirectorNode,
-  compositor: CompositorNode,
-  postfinal:  PostFinalNode,
+  client:          ClientNode,
+  strategy:        StrategyNode,
+  copy:            CopyNode,
+  creative:        CreativeDirectorNode,
+  photodirector:   PhotoDirectorNode,
+  compositor:      CompositorNode,
+  postfinal:       PostFinalNode,
 } as const;
 
 // ── Initial layout — L-shaped pipeline ───────────────────────────────────────
 //
-//  Row 1 (top):    Client(40,180) → Strategy(380,60) → Copy(700,60)
+//  Row 1 (top):    Client(40,220) → Strategy(380,60) → Copy(730,60)
 //                                                              ↓
-//  Row 2 (bottom): PostFinal(1420,400) ← Compositor(1060,400) ← CreativeDirector(700,400)
+//  Row 2 (bottom): PostFinal(1920,440) ← Compositor(1530,440) ← PhotoDirector(1100,440) ← CreativeDir(730,440)
 //
 const INITIAL_NODES: Node[] = [
   {
     id:       "client-1",
     type:     "client",
-    position: { x: 40,   y: 180 },
+    position: { x: 40,   y: 220 },
     data:     { label: "Cliente" },
   },
   {
@@ -58,25 +60,31 @@ const INITIAL_NODES: Node[] = [
   {
     id:       "copy-1",
     type:     "copy",
-    position: { x: 700,  y: 60 },
+    position: { x: 730,  y: 60 },
     data:     { label: "Copy" },
   },
   {
     id:       "creative-1",
     type:     "creative",
-    position: { x: 700,  y: 400 },
+    position: { x: 730,  y: 440 },
     data:     { label: "Diretor Criativo" },
+  },
+  {
+    id:       "photodirector-1",
+    type:     "photodirector",
+    position: { x: 1100, y: 440 },
+    data:     { label: "Diretor de Fotografia" },
   },
   {
     id:       "compositor-1",
     type:     "compositor",
-    position: { x: 1060, y: 400 },
+    position: { x: 1530, y: 440 },
     data:     { label: "Compositor" },
   },
   {
     id:       "postfinal-1",
     type:     "postfinal",
-    position: { x: 1420, y: 400 },
+    position: { x: 1920, y: 440 },
     data:     { label: "Post Final" },
   },
 ];
@@ -110,8 +118,17 @@ const INITIAL_EDGES: Edge[] = [
     style:        { stroke: "#8b5cf6", strokeWidth: 2 },
   },
   {
-    id:           "e-creative-compositor",
+    id:           "e-creative-photodirector",
     source:       "creative-1",
+    sourceHandle: "out",
+    target:       "photodirector-1",
+    targetHandle: "in",
+    animated:     true,
+    style:        { stroke: "#8b5cf6", strokeWidth: 2 },
+  },
+  {
+    id:           "e-photodirector-compositor",
+    source:       "photodirector-1",
     sourceHandle: "out",
     target:       "compositor-1",
     targetHandle: "in",
@@ -131,10 +148,11 @@ const INITIAL_EDGES: Edge[] = [
 
 // ── Dynamic edge color based on pipeline status ───────────────────────────────
 function useAnimatedEdges(edges: Edge[], setEdges: (updater: (eds: Edge[]) => Edge[]) => void) {
-  const strategyStatus   = useCanvasStore(s => s.strategyStatus);
-  const copyStatus       = useCanvasStore(s => s.copyStatus);
-  const imageStatus      = useCanvasStore(s => s.imageStatus);
-  const compositorStatus = useCanvasStore(s => s.compositorStatus);
+  const strategyStatus      = useCanvasStore(s => s.strategyStatus);
+  const copyStatus          = useCanvasStore(s => s.copyStatus);
+  const imageStatus         = useCanvasStore(s => s.imageStatus);
+  const compositorStatus    = useCanvasStore(s => s.compositorStatus);
+  const photoDirectorStatus = useCanvasStore(s => s.photoDirectorStatus);
 
   useEffect(() => {
     const statusColor = (status: string) =>
@@ -146,11 +164,12 @@ function useAnimatedEdges(edges: Edge[], setEdges: (updater: (eds: Edge[]) => Ed
 
     setEdges(eds => eds.map(e => {
       const edgeStatus =
-        e.id === "e-client-strategy"     ? strategyStatus   :
-        e.id === "e-strategy-copy"       ? copyStatus       :
-        e.id === "e-copy-creative"       ? copyStatus       :
-        e.id === "e-creative-compositor" ? imageStatus      :
-        e.id === "e-compositor-postfinal"? compositorStatus :
+        e.id === "e-client-strategy"          ? strategyStatus   :
+        e.id === "e-strategy-copy"            ? copyStatus       :
+        e.id === "e-copy-creative"            ? copyStatus       :
+        e.id === "e-creative-photodirector"   ? (imageStatus !== "idle" ? imageStatus : photoDirectorStatus) :
+        e.id === "e-photodirector-compositor" ? imageStatus      :
+        e.id === "e-compositor-postfinal"     ? compositorStatus :
         "idle";
 
       return {
@@ -162,7 +181,7 @@ function useAnimatedEdges(edges: Edge[], setEdges: (updater: (eds: Edge[]) => Ed
         },
       };
     }));
-  }, [strategyStatus, copyStatus, imageStatus, compositorStatus, setEdges]);
+  }, [strategyStatus, copyStatus, imageStatus, compositorStatus, photoDirectorStatus, setEdges]);
 }
 
 // ── Main Canvas page ──────────────────────────────────────────────────────────
@@ -212,12 +231,13 @@ export default function CanvasPage() {
         {/* Minimap */}
         <MiniMap
           nodeColor={(n) =>
-            n.type === "client"     ? "#7c3aed" :
-            n.type === "strategy"   ? "#2563eb" :
-            n.type === "copy"       ? "#059669" :
-            n.type === "creative"   ? "#d97706" :
-            n.type === "compositor" ? "#0891b2" :
-            n.type === "postfinal"  ? "#16a34a" :
+            n.type === "client"        ? "#7c3aed" :
+            n.type === "strategy"      ? "#2563eb" :
+            n.type === "copy"          ? "#059669" :
+            n.type === "creative"      ? "#d97706" :
+            n.type === "photodirector" ? "#0ea5e9" :
+            n.type === "compositor"    ? "#0891b2" :
+            n.type === "postfinal"     ? "#16a34a" :
             "#6b7280"
           }
           className="bg-white border border-slate-200 rounded-xl shadow-sm"
