@@ -260,7 +260,7 @@ export async function POST(req: NextRequest) {
     if (social_network === "linkedin") {
       const liResponse = await anthropic.messages.create({
         model:      MODEL,
-        max_tokens: 4096,
+        max_tokens: 8192,
         system:     buildLinkedInCopyPrompt(
           client,
           format,
@@ -337,7 +337,7 @@ export async function POST(req: NextRequest) {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const response = await anthropic.messages.create({
         model:      MODEL,
-        max_tokens: 4096,
+        max_tokens: 8192,
         system:     systemPrompt,
         ...(useTools ? { tools: COPY_TOOLS as unknown as Anthropic.Tool[] } : {}),
         messages,

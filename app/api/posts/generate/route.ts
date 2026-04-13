@@ -368,7 +368,7 @@ export async function POST(req: NextRequest) {
 
     const copyRes = await anthropic.messages.create({
       model:      MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system:     buildCopyPrompt(
         client,
         briefing.formato_sugerido,
@@ -382,7 +382,16 @@ export async function POST(req: NextRequest) {
       messages:   [{ role: "user", content: copyUserContent }],
     });
 
-    const copyRaw = copyRes.content[0].type === "text" ? copyRes.content[0].text : "";
+    if (copyRes.stop_reason === "max_tokens") {
+      console.warn("[generate] Copy agent hit max_tokens — output may be truncated");
+    }
+
+    // Extract text from all content blocks (handles multiple blocks)
+    const copyRaw = (copyRes.content as Array<{ type: string; text?: string }>)
+      .filter(b => b.type === "text")
+      .map(b => b.text ?? "")
+      .join("");
+
     let copy: {
       visual_headline: string; headline: string; caption: string;
       hashtags: string[]; visual_prompt: string; layout_prompt: string;
@@ -391,6 +400,7 @@ export async function POST(req: NextRequest) {
     try {
       copy = parseJson(copyRaw);
     } catch {
+      console.error("[generate] Copy parse failed. stop_reason:", copyRes.stop_reason, "raw length:", copyRaw.length, "raw[:500]:", copyRaw.slice(0, 500));
       await postRef.update({ status: "failed", error: "Falha ao parsear copy" });
       return NextResponse.json({ error: "Falha ao parsear resposta do Agente de Copy", raw: copyRaw }, { status: 500 });
     }
