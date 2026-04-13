@@ -171,9 +171,10 @@ export interface CanvasState {
   usePhotoFromBank:      (imageUrl: string) => void;
 
   // ── Strategy/Copy editing ──────────────────────────────────────────────────
-  editBriefingField: (field: string, value: string) => void;
-  editCaption:       (caption: string) => void;
-  editHookType:      (hookType: string) => void;
+  editBriefingField:    (field: string, value: string) => void;
+  editCaption:          (caption: string) => void;
+  editHookType:         (hookType: string) => void;
+  editVisualHeadline:   (headline: string) => void;
 }
 
 const POLL_INTERVAL = 4000;
@@ -662,5 +663,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // Atualiza os dois: copy (display) e briefing (usado no próximo runCopy)
     if (copy)     set({ copy:     { ...copy,     hook_type: hookType } });
     if (briefing) set({ briefing: { ...briefing, hook_type: hookType } });
+  },
+
+  editVisualHeadline: (headline: string) => {
+    const copy = get().copy;
+    if (!copy) return;
+    // Limita a 6 palavras (regra do visual_headline)
+    const words   = headline.trim().split(/\s+/);
+    const clamped = words.length > 6 ? words.slice(0, 6).join(" ") : headline.trim();
+    set({ copy: { ...copy, visual_headline: clamped } });
   },
 }));

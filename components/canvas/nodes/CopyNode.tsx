@@ -118,21 +118,32 @@ function CopyDisplay({
   onRegenerate,
   onEditCaption,
   onEditHookType,
+  onEditVisualHeadline,
 }: {
   copy: CopyData;
   onRegenerate: () => void;
   onEditCaption: (caption: string) => void;
   onEditHookType: (hookType: string) => void;
+  onEditVisualHeadline: (headline: string) => void;
 }) {
-  const [editingCaption, setEditingCaption] = useState(false);
-  const [localCaption,   setLocalCaption]   = useState(copy.caption);
-  const [editingHook,    setEditingHook]     = useState(false);
-  const [localHook,      setLocalHook]       = useState(copy.hook_type ?? "");
-  const hookInputRef = useRef<HTMLInputElement>(null);
+  const [editingCaption,  setEditingCaption]  = useState(false);
+  const [localCaption,    setLocalCaption]    = useState(copy.caption);
+  const [editingHook,     setEditingHook]     = useState(false);
+  const [localHook,       setLocalHook]       = useState(copy.hook_type ?? "");
+  const [editingHeadline, setEditingHeadline] = useState(false);
+  const [localHeadline,   setLocalHeadline]   = useState(copy.visual_headline);
+  const hookInputRef     = useRef<HTMLInputElement>(null);
+  const headlineInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editingHook) hookInputRef.current?.focus();
   }, [editingHook]);
+
+  useEffect(() => {
+    if (editingHeadline) headlineInputRef.current?.focus();
+  }, [editingHeadline]);
+
+  const wordCount = localHeadline.trim().split(/\s+/).filter(Boolean).length;
 
   const captionPreview =
     !editingCaption && copy.caption.length > 150
@@ -151,20 +162,61 @@ function CopyDisplay({
     setEditingHook(false);
   }
 
+  function saveHeadline() {
+    if (localHeadline.trim()) onEditVisualHeadline(localHeadline);
+    setEditingHeadline(false);
+  }
+
   return (
     <div className="flex flex-col gap-2.5">
-      {/* Visual headline */}
-      <div className="flex items-start gap-1.5">
-        <p
-          className={[
-            "flex-1 text-base font-bold text-violet-700 leading-tight",
-            "line-clamp-2 break-words",
-          ].join(" ")}
-        >
-          {copy.visual_headline}
-        </p>
-        <CopyClipboardButton text={copy.visual_headline} />
-      </div>
+      {/* Visual headline — editable */}
+      {!editingHeadline ? (
+        <div className="group flex items-start gap-1.5">
+          <div className="flex-1 flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Headline da Arte
+            </span>
+            <p className="text-base font-bold text-violet-700 leading-tight line-clamp-2 break-words">
+              {copy.visual_headline}
+            </p>
+          </div>
+          <div className="flex items-center gap-0.5 mt-4">
+            <button
+              type="button"
+              onClick={() => { setLocalHeadline(copy.visual_headline); setEditingHeadline(true); }}
+              className="nodrag nopan p-1 rounded text-slate-300 hover:text-violet-500 transition-colors"
+              title="Editar texto da arte (máx 6 palavras)"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <CopyClipboardButton text={copy.visual_headline} />
+          </div>
+        </div>
+      ) : (
+        <div className="nodrag nopan flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Headline da Arte</span>
+            <span className={["text-[10px] font-medium", wordCount > 6 ? "text-red-500" : "text-slate-400"].join(" ")}>
+              {wordCount}/6 palavras
+            </span>
+          </div>
+          <input
+            ref={headlineInputRef}
+            type="text"
+            value={localHeadline}
+            onChange={e => setLocalHeadline(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") saveHeadline(); if (e.key === "Escape") setEditingHeadline(false); }}
+            className="w-full rounded border border-violet-300 bg-white px-2 py-1 text-sm font-bold text-violet-700 focus:outline-none focus:ring-1 focus:ring-violet-500"
+          />
+          {wordCount > 6 && (
+            <p className="text-[10px] text-amber-600">⚠ Máx 6 palavras — será cortado ao salvar</p>
+          )}
+          <div className="flex gap-1">
+            <button type="button" onClick={saveHeadline} className="px-2 py-0.5 rounded bg-violet-600 text-white text-[10px] font-medium">Salvar</button>
+            <button type="button" onClick={() => setEditingHeadline(false)} className="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-medium">Cancelar</button>
+          </div>
+        </div>
+      )}
 
       {/* Framework badge + Hook editable badge */}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -296,13 +348,14 @@ export type CopyNodeType = Node<{ label: string }, "copy">;
 // ── CopyNode ──────────────────────────────────────────────────────────────────
 
 export default function CopyNode({ selected }: NodeProps<CopyNodeType>) {
-  const copy          = useCanvasStore((s) => s.copy);
-  const copyStatus    = useCanvasStore((s) => s.copyStatus);
-  const copyError     = useCanvasStore((s) => s.copyError);
-  const runCopy       = useCanvasStore((s) => s.runCopy);
-  const resetStep     = useCanvasStore((s) => s.resetStep);
-  const editCaption   = useCanvasStore((s) => s.editCaption);
-  const editHookType  = useCanvasStore((s) => s.editHookType);
+  const copy               = useCanvasStore((s) => s.copy);
+  const copyStatus         = useCanvasStore((s) => s.copyStatus);
+  const copyError          = useCanvasStore((s) => s.copyError);
+  const runCopy            = useCanvasStore((s) => s.runCopy);
+  const resetStep          = useCanvasStore((s) => s.resetStep);
+  const editCaption        = useCanvasStore((s) => s.editCaption);
+  const editHookType       = useCanvasStore((s) => s.editHookType);
+  const editVisualHeadline = useCanvasStore((s) => s.editVisualHeadline);
 
   function handleRegenerate() {
     resetStep("copy");
@@ -347,6 +400,7 @@ export default function CopyNode({ selected }: NodeProps<CopyNodeType>) {
             onRegenerate={handleRegenerate}
             onEditCaption={editCaption}
             onEditHookType={editHookType}
+            onEditVisualHeadline={editVisualHeadline}
           />
         )}
       </BaseNode>
