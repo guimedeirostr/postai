@@ -262,6 +262,73 @@ export async function pollSeedreamEditTask(task_id: string): Promise<FreepikTask
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// BACKGROUND REMOVER
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BG_REMOVER_BASE = "https://api.freepik.com/v1/ai/bg-remover";
+
+/**
+ * Submits an image to Freepik's Background Remover.
+ * Accepts a public image URL (Freepik fetches it server-side).
+ */
+export async function createBgRemoverTask(imageUrl: string): Promise<FreepikTask> {
+  const res = await freepikFetch(BG_REMOVER_BASE, {
+    method: "POST",
+    body:   JSON.stringify({ image: imageUrl }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Freepik BG Remover error ${res.status}: ${JSON.stringify(err)}`);
+  }
+
+  const data    = await res.json();
+  const task_id = data.data?.task_id as string | undefined;
+  if (!task_id) throw new Error("task_id não retornado pelo Freepik BG Remover");
+
+  return { task_id };
+}
+
+/** Polls a background-removal task. Returns base64 PNG with transparency when done. */
+export async function pollBgRemoverTask(task_id: string): Promise<{ status: FreepikTaskStatus; result: string | null }> {
+  const res = await freepikFetch(`${BG_REMOVER_BASE}/${task_id}`, { method: "GET" });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Freepik BG Remover poll error ${res.status}: ${JSON.stringify(err)}`);
+  }
+
+  const data   = await res.json();
+  const status = (data.data?.status ?? "PENDING") as FreepikTaskStatus;
+
+  if (status === "COMPLETED") {
+    // May return URL or base64 depending on plan/response
+    const generated = data.data?.generated;
+    const result    = Array.isArray(generated) ? (generated[0] as string ?? null) : null;
+    return { status, result };
+  }
+
+  return { status, result: null };
+}
+
+/**
+ * Convenience wrapper: submit + poll until done, return result string (URL or base64).
+ * Timeout: ~45s (15 polls × 3s).
+ */
+export async function removeBgFreepik(imageUrl: string): Promise<string> {
+  const { task_id } = await createBgRemoverTask(imageUrl);
+
+  for (let i = 0; i < 15; i++) {
+    await sleep(3000);
+    const { status, result } = await pollBgRemoverTask(task_id);
+    if (status === "COMPLETED" && result) return result;
+    if (status === "FAILED") throw new Error("Freepik BG Remover: tarefa falhou");
+  }
+
+  throw new Error("Freepik BG Remover: timeout após 45s");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // IMAGE TO PROMPT
 // ═══════════════════════════════════════════════════════════════════════════
 

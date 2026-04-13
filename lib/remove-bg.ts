@@ -1,14 +1,14 @@
 /**
  * lib/remove-bg.ts
  *
- * Background removal via remove.bg API.
- * Returns PNG with alpha channel (transparent background) uploaded to R2.
+ * Background removal via Freepik's BG Remover API.
+ * Uses the FREEPIK_API_KEY already configured — sem nova API key necessária.
  *
- * API: https://www.remove.bg/api
- * Key: REMOVEBG_API_KEY env var
- * Free plan: 50 previews/month. Production: ~$0.10–0.25/image.
+ * Fluxo:
+ *   imageUrl → POST /v1/ai/bg-remover → task_id → polling → PNG transparente → R2
  */
 
+import { removeBgFreepik } from "@/lib/freepik";
 import { uploadToR2 } from "@/lib/r2";
 
 export class RemoveBgError extends Error {
@@ -19,8 +19,8 @@ export class RemoveBgError extends Error {
 }
 
 /**
- * Removes the background from an image URL, uploads the result PNG to R2.
- * Returns the public R2 URL of the transparent PNG.
+ * Removes the background from an image URL using Freepik's BG Remover.
+ * Uploads the resulting transparent PNG to R2 and returns its public URL.
  *
  * @param imageUrl - Public URL of the source image
  * @param r2Key    - Target key in R2 (e.g. "posts/{id}/transparent-{ts}.png")
@@ -29,31 +29,22 @@ export async function removeBackground(
   imageUrl: string,
   r2Key:    string,
 ): Promise<string> {
-  const apiKey = process.env.REMOVEBG_API_KEY;
-  if (!apiKey) throw new RemoveBgError("REMOVEBG_API_KEY não configurada");
-
-  const form = new FormData();
-  form.append("image_url", imageUrl);
-  form.append("size", "auto");    // auto = highest quality available on plan
-  form.append("format", "png");   // always PNG for alpha channel
-
-  const res = await fetch("https://api.remove.bg/v1.0/removebg", {
-    method:  "POST",
-    headers: { "X-Api-Key": apiKey },
-    body:    form,
+  // result is either a public URL or base64 PNG returned by Freepik
+  const result = await removeBgFreepik(imageUrl).catch((e: unknown) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new RemoveBgError(msg);
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let detail = text;
-    try {
-      const json = JSON.parse(text) as { errors?: Array<{ title: string }> };
-      detail = json.errors?.[0]?.title ?? text;
-    } catch { /* keep raw text */ }
-    throw new RemoveBgError(`remove.bg HTTP ${res.status}: ${detail}`, res.status);
+  // If Freepik returned a URL → download it, then upload to R2
+  if (result.startsWith("http")) {
+    const res = await fetch(result);
+    if (!res.ok) throw new RemoveBgError(`Falha ao baixar PNG transparente: HTTP ${res.status}`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    return uploadToR2(r2Key, buffer, "image/png");
   }
 
-  const buffer = Buffer.from(await res.arrayBuffer());
-  const url    = await uploadToR2(r2Key, buffer, "image/png");
-  return url;
+  // If Freepik returned base64 → strip data URI prefix if present
+  const b64 = result.includes(",") ? result.split(",")[1] : result;
+  const buffer = Buffer.from(b64, "base64");
+  return uploadToR2(r2Key, buffer, "image/png");
 }
