@@ -164,7 +164,7 @@ export default function CreativeDirectorNode({ selected }: NodeProps<CreativeDir
       <BaseNode
         title="Diretor Criativo"
         icon={<Wand2 />}
-        status="idle"
+        status={copyStatus === "done" && referenceImageUrl ? "done" : "idle"}
         selected={selected}
         width={280}
       >

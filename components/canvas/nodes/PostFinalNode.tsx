@@ -39,7 +39,7 @@ export default function PostFinalNode({ selected }: NodeProps<PostFinalNodeType>
     approveStatus === "error"        ? "error"   :
     compositorStatus === "loading"   ? "loading" :
     compositorStatus === "error"     ? "error"   :
-    hasImage                         ? "idle"    :
+    compositorStatus === "done"      ? "done"    :
     "idle";
 
   const captionPreview = copy?.caption

@@ -80,6 +80,7 @@ export type CompositorNodeType = Node<{ label: string }, "compositor">;
 export default function CompositorNode({ selected }: NodeProps<CompositorNodeType>) {
   // State subscriptions
   const client              = useCanvasStore((s) => s.client);
+  const postId              = useCanvasStore((s) => s.postId);
   const briefing            = useCanvasStore((s) => s.briefing);
   const copy                = useCanvasStore((s) => s.copy);
   const imageUrl            = useCanvasStore((s) => s.imageUrl);
@@ -125,6 +126,7 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
   const isComposing  = compositorStatus === "loading";
   const isRefining   = htmlRefinementStatus === "loading";
   const isImageReady = imageStatus === "done" && !!imageUrl;
+  const canCompose   = !!postId && !!imageUrl;
 
   // Composition source indicator
   const compositionSource = refinedHtml
@@ -432,8 +434,18 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
               )}
             </div>
 
-            {/* Error */}
-            {compositorStatus === "error" && compositorError && (
+            {/* Aviso proativo: copy não executado ainda */}
+            {!postId && (
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-600 flex-none mt-0.5" />
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  Execute o <strong>Copy</strong> primeiro para obter o post_id antes de compor.
+                </p>
+              </div>
+            )}
+
+            {/* Error de API (não o de pipeline incompleto) */}
+            {compositorStatus === "error" && compositorError && !!postId && (
               <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
                 <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-none mt-0.5" />
                 <p className="text-xs text-red-700 leading-relaxed">{compositorError}</p>
@@ -444,12 +456,12 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
             <button
               type="button"
               onClick={composeManual}
-              disabled={isComposing}
+              disabled={isComposing || !canCompose}
               className={[
                 "nodrag nopan w-full flex items-center justify-center gap-2",
                 "rounded-lg px-3 py-2.5 text-sm font-semibold text-white transition-colors duration-150",
-                isComposing
-                  ? "bg-emerald-300 cursor-not-allowed"
+                isComposing || !canCompose
+                  ? "bg-slate-300 cursor-not-allowed"
                   : refinedHtml
                   ? "bg-violet-600 hover:bg-violet-700 active:bg-violet-800"
                   : "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800",

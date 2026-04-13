@@ -260,7 +260,11 @@ export default function CanvasPage() {
         {/* Reset panel */}
         <Panel position="top-right">
           <button
-            onClick={() => resetAll("all")}
+            onClick={() => {
+              if (window.confirm("Reiniciar o pipeline vai apagar todo o progresso atual (estratégia, copy, imagem e composição). Continuar?")) {
+                resetAll("all");
+              }
+            }}
             className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors shadow-sm nodrag"
           >
             <RotateCcw className="w-3.5 h-3.5" />

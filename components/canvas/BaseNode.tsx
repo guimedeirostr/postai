@@ -117,7 +117,7 @@ export default function BaseNode({
         <span
           className={[
             "flex-none inline-flex items-center gap-1 px-2 py-0.5",
-            "rounded-full text-[10px] font-medium leading-none",
+            "rounded-full text-[10px] font-medium leading-none whitespace-nowrap",
             cfg.badgeColor,
           ].join(" ")}
         >
