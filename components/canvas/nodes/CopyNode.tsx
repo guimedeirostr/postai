@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { FileText, RotateCcw, RefreshCw, Copy, Check, AlertCircle, Pencil } from "lucide-react";
 import BaseNode from "@/components/canvas/BaseNode";
 import { useCanvasStore } from "@/lib/canvas-store";
 import type { CopyData } from "@/lib/canvas-store";
+
+// ── Hook type suggestions ──────────────────────────────────────────────────────
+
+const HOOK_SUGGESTIONS = [
+  "Dor", "Desejo", "Curiosidade", "Pergunta", "Número",
+  "Afirmação Ousada", "Relatable", "Ironia", "Escassez", "Contraste",
+];
 
 // ── Framework badge colors ─────────────────────────────────────────────────────
 
@@ -110,13 +117,22 @@ function CopyDisplay({
   copy,
   onRegenerate,
   onEditCaption,
+  onEditHookType,
 }: {
   copy: CopyData;
   onRegenerate: () => void;
   onEditCaption: (caption: string) => void;
+  onEditHookType: (hookType: string) => void;
 }) {
   const [editingCaption, setEditingCaption] = useState(false);
-  const [localCaption, setLocalCaption] = useState(copy.caption);
+  const [localCaption,   setLocalCaption]   = useState(copy.caption);
+  const [editingHook,    setEditingHook]     = useState(false);
+  const [localHook,      setLocalHook]       = useState(copy.hook_type ?? "");
+  const hookInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingHook) hookInputRef.current?.focus();
+  }, [editingHook]);
 
   const captionPreview =
     !editingCaption && copy.caption.length > 150
@@ -128,6 +144,11 @@ function CopyDisplay({
   function saveCaption() {
     onEditCaption(localCaption);
     setEditingCaption(false);
+  }
+
+  function saveHook() {
+    if (localHook.trim()) onEditHookType(localHook.trim());
+    setEditingHook(false);
   }
 
   return (
@@ -145,17 +166,54 @@ function CopyDisplay({
         <CopyClipboardButton text={copy.visual_headline} />
       </div>
 
-      {/* Framework + Hook badges */}
-      <div className="flex flex-wrap gap-1.5">
+      {/* Framework badge + Hook editable badge */}
+      <div className="flex flex-wrap items-center gap-1.5">
         <span
           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${frameworkClass(copy.framework_used)}`}
         >
           {frameworkKey}
         </span>
-        {copy.hook_type && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
-            Hook: {copy.hook_type}
-          </span>
+
+        {/* Hook — editable */}
+        {!editingHook ? (
+          <button
+            type="button"
+            onClick={() => { setLocalHook(copy.hook_type ?? ""); setEditingHook(true); }}
+            className="nodrag nopan group inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+            title="Clique para editar o hook type"
+          >
+            Hook: {copy.hook_type || "—"}
+            <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        ) : (
+          <div className="nodrag nopan flex flex-col gap-1 w-full mt-0.5">
+            <div className="flex items-center gap-1">
+              <input
+                ref={hookInputRef}
+                type="text"
+                value={localHook}
+                onChange={e => setLocalHook(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") saveHook(); if (e.key === "Escape") setEditingHook(false); }}
+                placeholder="ex: Dor, Curiosidade..."
+                className="flex-1 rounded border border-violet-300 bg-white px-2 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-500 min-w-0"
+              />
+              <button type="button" onClick={saveHook}       className="px-1.5 py-0.5 rounded bg-violet-600 text-white text-[10px] font-medium">OK</button>
+              <button type="button" onClick={() => setEditingHook(false)} className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-medium">✕</button>
+            </div>
+            {/* Quick suggestions */}
+            <div className="flex flex-wrap gap-1">
+              {HOOK_SUGGESTIONS.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { onEditHookType(s); setEditingHook(false); }}
+                  className="nodrag nopan px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] hover:bg-violet-100 hover:text-violet-700 transition-colors"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -238,12 +296,13 @@ export type CopyNodeType = Node<{ label: string }, "copy">;
 // ── CopyNode ──────────────────────────────────────────────────────────────────
 
 export default function CopyNode({ selected }: NodeProps<CopyNodeType>) {
-  const copy        = useCanvasStore((s) => s.copy);
-  const copyStatus  = useCanvasStore((s) => s.copyStatus);
-  const copyError   = useCanvasStore((s) => s.copyError);
-  const runCopy     = useCanvasStore((s) => s.runCopy);
-  const resetStep   = useCanvasStore((s) => s.resetStep);
-  const editCaption = useCanvasStore((s) => s.editCaption);
+  const copy          = useCanvasStore((s) => s.copy);
+  const copyStatus    = useCanvasStore((s) => s.copyStatus);
+  const copyError     = useCanvasStore((s) => s.copyError);
+  const runCopy       = useCanvasStore((s) => s.runCopy);
+  const resetStep     = useCanvasStore((s) => s.resetStep);
+  const editCaption   = useCanvasStore((s) => s.editCaption);
+  const editHookType  = useCanvasStore((s) => s.editHookType);
 
   function handleRegenerate() {
     resetStep("copy");
@@ -287,6 +346,7 @@ export default function CopyNode({ selected }: NodeProps<CopyNodeType>) {
             copy={copy}
             onRegenerate={handleRegenerate}
             onEditCaption={editCaption}
+            onEditHookType={editHookType}
           />
         )}
       </BaseNode>

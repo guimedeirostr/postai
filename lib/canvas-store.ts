@@ -173,6 +173,7 @@ export interface CanvasState {
   // ── Strategy/Copy editing ──────────────────────────────────────────────────
   editBriefingField: (field: string, value: string) => void;
   editCaption:       (caption: string) => void;
+  editHookType:      (hookType: string) => void;
 }
 
 const POLL_INTERVAL = 4000;
@@ -653,5 +654,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const copy = get().copy;
     if (!copy) return;
     set({ copy: { ...copy, caption } });
+  },
+
+  editHookType: (hookType: string) => {
+    const copy     = get().copy;
+    const briefing = get().briefing;
+    // Atualiza os dois: copy (display) e briefing (usado no próximo runCopy)
+    if (copy)     set({ copy:     { ...copy,     hook_type: hookType } });
+    if (briefing) set({ briefing: { ...briefing, hook_type: hookType } });
   },
 }));
