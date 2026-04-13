@@ -111,6 +111,12 @@ export interface CanvasState {
   textPosition:      "top" | "center" | "bottom-left" | "bottom-full";
   logoPlacement:     "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-center" | "none";
   footerVisible:     boolean;
+  footerOverlay:     boolean;
+  gradientOverlay:   boolean;
+  textBgOverlay:     boolean;
+  logoOverlay:       boolean;
+  headlineColor:     string;
+  accentColor:       string;
   compositorStatus:  StepStatus;
   compositorError:   string | null;
 
@@ -146,6 +152,12 @@ export interface CanvasState {
   setTextPosition:  (pos: "top" | "center" | "bottom-left" | "bottom-full") => void;
   setLogoPlacement: (placement: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "bottom-center" | "none") => void;
   setFooterVisible: (visible: boolean) => void;
+  setFooterOverlay:  (v: boolean) => void;
+  setGradientOverlay:(v: boolean) => void;
+  setTextBgOverlay:  (v: boolean) => void;
+  setLogoOverlay:    (v: boolean) => void;
+  setHeadlineColor:  (c: string) => void;
+  setAccentColor:    (c: string) => void;
   composeManual:    () => Promise<void>;
 
   // ── Photo Director actions ─────────────────────────────────────────────────
@@ -207,6 +219,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   textPosition:     "bottom-full",
   logoPlacement:    "top-left",
   footerVisible:    true,
+  footerOverlay:    false,
+  gradientOverlay:  true,
+  textBgOverlay:    false,
+  logoOverlay:      true,
+  headlineColor:    "#FFFFFF",
+  accentColor:      "#8b5cf6",
   compositorStatus: "idle",
   compositorError:  null,
 
@@ -244,6 +262,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       // Reset Creative Director + Compositor
       visualPromptEdit: "", referenceImageUrl: null, fontModalOpen: false, selectedFont: null,
       textPosition: "bottom-full", logoPlacement: "top-left", footerVisible: true,
+      footerOverlay: false, gradientOverlay: true, textBgOverlay: false, logoOverlay: true,
+      headlineColor: "#FFFFFF", accentColor: "#8b5cf6",
       compositorStatus: "idle", compositorError: null,
       // Reset Photo Director
       photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
@@ -452,6 +472,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         // Reset Creative Director + Compositor
         visualPromptEdit: "", referenceImageUrl: null, fontModalOpen: false, selectedFont: null,
         textPosition: "bottom-full", logoPlacement: "top-left", footerVisible: true,
+        footerOverlay: false, gradientOverlay: true, textBgOverlay: false, logoOverlay: true,
+        headlineColor: "#FFFFFF", accentColor: "#8b5cf6",
         compositorStatus: "idle", compositorError: null,
         // Reset Photo Director
         photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
@@ -482,17 +504,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   selectFont:           (font)   => set({ selectedFont: font, fontModalOpen: false }),
 
   // ── Compositor actions ─────────────────────────────────────────────────────
-  setTextPosition:  (pos)       => set({ textPosition: pos }),
-  setLogoPlacement: (placement) => set({ logoPlacement: placement }),
-  setFooterVisible: (visible)   => set({ footerVisible: visible }),
+  setTextPosition:   (pos)       => set({ textPosition: pos }),
+  setLogoPlacement:  (placement) => set({ logoPlacement: placement }),
+  setFooterVisible:  (visible)   => set({ footerVisible: visible }),
+  setFooterOverlay:  (v)         => set({ footerOverlay: v }),
+  setGradientOverlay:(v)         => set({ gradientOverlay: v }),
+  setTextBgOverlay:  (v)         => set({ textBgOverlay: v }),
+  setLogoOverlay:    (v)         => set({ logoOverlay: v }),
+  setHeadlineColor:  (c)         => set({ headlineColor: c }),
+  setAccentColor:    (c)         => set({ accentColor: c }),
 
   composeManual: async () => {
     const {
-      postId,
+      postId, imageUrl,
       selectedFont,
-      textPosition,
-      logoPlacement,
-      footerVisible,
+      textPosition, logoPlacement, footerVisible,
+      footerOverlay, gradientOverlay, textBgOverlay, logoOverlay,
+      headlineColor, accentColor,
     } = get();
     if (!postId) return;
 
@@ -503,14 +531,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          post_id:        postId,
-          font_family:    selectedFont
+          post_id:          postId,
+          image_url:        imageUrl ?? undefined,
+          font_family:      selectedFont
             ? (FONT_PAIRS.find(p => p.id === selectedFont.pairId)?.headlineStyleHint || undefined)
             : undefined,
-          font_color:     selectedFont?.color ?? undefined,
-          text_position:  textPosition,
-          logo_placement: logoPlacement,
-          footer_visible: footerVisible,
+          font_color:       selectedFont?.color ?? undefined,
+          text_position:    textPosition,
+          logo_placement:   logoPlacement,
+          footer_visible:   footerVisible,
+          footer_overlay:   footerOverlay,
+          gradient_overlay: gradientOverlay,
+          text_bg_overlay:  textBgOverlay,
+          logo_overlay:     logoOverlay,
+          headline_color:   headlineColor !== "#FFFFFF" ? headlineColor : undefined,
+          accent_color:     accentColor,
         }),
       });
       const data = await res.json() as { composed_url?: string; error?: string };

@@ -66,6 +66,18 @@ export interface ComposeOptions {
   colorMood?:           string;
   /** LayerStack gerado pelo Art Direction Engine — quando presente, controla o output visual */
   layer_stack?:         LayerStack;
+  /** Cor da headline linha 1 (padrão: branco) */
+  headlineColor?:       string;
+  /** Cor da headline linha 2 / acento (padrão: secondaryColor) */
+  accentColor?:         string;
+  /** Exibe gradiente de marca (padrão: true) */
+  gradientOverlay?:     boolean;
+  /** Adiciona caixa semi-transparente atrás do texto (padrão: false) */
+  textBgOverlay?:       boolean;
+  /** Exibe badge de fundo atrás do logo (padrão: true) */
+  logoOverlay?:         boolean;
+  /** Footer como overlay semi-transparente em vez de sólido (padrão: false) */
+  footerOverlay?:       boolean;
 }
 
 // ── Font cache (persiste entre invocações warm no Lambda) ────────────────────
@@ -523,8 +535,8 @@ function buildOverlayElement(
 
         {/* ── Headline (tipografia resolvida via DNA) ───────────────────── */}
         <div style={textStyle}>
-          {headlineSpan(line1, "white", fontSize, typo)}
-          {hasTwoLines && headlineSpan(line2, secondary, fontSize, typo)}
+          {headlineSpan(line1, opts.headlineColor ?? "white", fontSize, typo)}
+          {hasTwoLines && headlineSpan(line2, opts.accentColor ?? secondary, fontSize, typo)}
         </div>
 
         {/* ── Etiquetas de marca flutuantes (sem barra sólida) ──────────── */}
@@ -646,13 +658,27 @@ function buildOverlayElement(
     textContainerStyle = { position: "absolute", bottom: STRIP_H + 48 + textH, left: 50, right: 50, display: "flex", flexDirection: "column" };
   }
 
+  const hl1Color   = opts.headlineColor  ?? "white";
+  const hl2Color   = opts.accentColor    ?? secondary;
+  const showGrad   = opts.gradientOverlay !== false;
+  const showLogoBg = opts.logoOverlay     !== false;
+  const footerBg   = opts.footerOverlay
+    ? hexToRgba(primary, 0.55)
+    : primary;
+  const footerBorder = opts.footerOverlay ? "none" : `3px solid ${secondary}`;
+
+  // Text bg overlay: semi-transparent box behind headline
+  const textBgStyle: React.CSSProperties | undefined = opts.textBgOverlay
+    ? { backgroundColor: "rgba(0,0,0,0.45)", borderRadius: 8, padding: "8px 12px", display: "inline-flex", flexDirection: "column" }
+    : undefined;
+
   return (
     <div style={{ width: W, height: H, display: "flex", position: "relative", overflow: "hidden" }}>
 
       {/* ── Gradiente de marca ────────────────────────────────────────── */}
-      <div style={gradientStyle} />
+      {showGrad && <div style={gradientStyle} />}
 
-      {/* ── Faixa inferior sólida ─────────────────────────────────────── */}
+      {/* ── Faixa inferior sólida (ou semi-transparente) ──────────────── */}
       <div
         style={{
           position:        "absolute",
@@ -660,8 +686,8 @@ function buildOverlayElement(
           left:            0,
           right:           0,
           height:          STRIP_H,
-          backgroundColor: primary,
-          borderTop:       `3px solid ${secondary}`,
+          backgroundColor: footerBg,
+          borderTop:       footerBorder,
           display:         "flex",
           alignItems:      "center",
           justifyContent:  "space-between",
@@ -672,7 +698,7 @@ function buildOverlayElement(
           {opts.clientName.toUpperCase()}
         </span>
         {handle && (
-          <span style={{ color: secondary, fontSize: 28, fontFamily: "Inter", fontWeight: 700, letterSpacing: 0.5 }}>
+          <span style={{ color: hl2Color, fontSize: 28, fontFamily: "Inter", fontWeight: 700, letterSpacing: 0.5 }}>
             @{handle}
           </span>
         )}
@@ -680,12 +706,21 @@ function buildOverlayElement(
 
       {/* ── Headline (tipografia resolvida via DNA) ───────────────────── */}
       <div style={textContainerStyle}>
-        {headlineSpan(line1, "white", fontSize, typo)}
-        {hasTwoLines && headlineSpan(line2, secondary, fontSize, typo)}
+        {textBgStyle ? (
+          <div style={textBgStyle}>
+            {headlineSpan(line1, hl1Color, fontSize, typo)}
+            {hasTwoLines && headlineSpan(line2, hl2Color, fontSize, typo)}
+          </div>
+        ) : (
+          <>
+            {headlineSpan(line1, hl1Color, fontSize, typo)}
+            {hasTwoLines && headlineSpan(line2, hl2Color, fontSize, typo)}
+          </>
+        )}
       </div>
 
       {/* ── Badge de fundo para o logo (posição driven por DNA) ───────── */}
-      {(() => {
+      {showLogoBg && (() => {
         const badgeStyle = computeBadgeStyle({
           placement, canvasW: W, canvasH: H,
           stripH: STRIP_H,

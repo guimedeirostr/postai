@@ -178,12 +178,16 @@ function BriefingDisplay({
         >
           {briefing.pilar}
         </span>
-        {briefing.hook_type && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
-            Hook: {briefing.hook_type}
-          </span>
-        )}
       </div>
+
+      {/* Hook type — editable */}
+      {briefing.hook_type !== undefined && (
+        <EditableField
+          label="Hook Type"
+          value={briefing.hook_type}
+          onSave={v => onEditField("hook_type", v)}
+        />
+      )}
 
       {/* Tema — editable */}
       <EditableField

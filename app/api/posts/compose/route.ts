@@ -56,13 +56,19 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json() as {
-      post_id:         string;
-      image_url?:      string;
-      font_family?:    string;
-      font_color?:     string;
-      text_position?:  string;
-      logo_placement?: string;
-      footer_visible?: boolean;
+      post_id:          string;
+      image_url?:       string;
+      font_family?:     string;
+      font_color?:      string;
+      text_position?:   string;
+      logo_placement?:  string;
+      footer_visible?:  boolean;
+      footer_overlay?:  boolean;
+      gradient_overlay?:boolean;
+      text_bg_overlay?: boolean;
+      logo_overlay?:    boolean;
+      headline_color?:  string;
+      accent_color?:    string;
     };
 
     const {
@@ -72,6 +78,12 @@ export async function POST(req: NextRequest) {
       text_position,
       logo_placement,
       footer_visible,
+      footer_overlay,
+      gradient_overlay,
+      text_bg_overlay,
+      logo_overlay,
+      headline_color,
+      accent_color,
     } = body;
 
     if (!post_id) {
@@ -150,6 +162,13 @@ export async function POST(req: NextRequest) {
       secondaryColor:       font_color ?? client.secondary_color,
       format:               post.format ?? "feed",
       postId:               post_id,
+      // New overlay controls
+      ...(headline_color  ? { headlineColor:    headline_color }   : {}),
+      ...(accent_color    ? { accentColor:      accent_color }     : {}),
+      ...(gradient_overlay !== undefined ? { gradientOverlay: gradient_overlay } : {}),
+      ...(text_bg_overlay !== undefined  ? { textBgOverlay:   text_bg_overlay }  : {}),
+      ...(logo_overlay    !== undefined  ? { logoOverlay:     logo_overlay }     : {}),
+      ...(footer_overlay  !== undefined  ? { footerOverlay:   footer_overlay }   : {}),
       // Manual overrides take priority, then fall back to DNA cascade
       ...toComposeOverrides(ad),
       ...(manualZone         ? { compositionZone:  manualZone }         : {}),
