@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { Layers, AlertCircle } from "lucide-react";
+import { Layers, AlertCircle, Type } from "lucide-react";
 import BaseNode from "@/components/canvas/BaseNode";
-import { useCanvasStore } from "@/lib/canvas-store";
+import FontSelectorModal from "@/components/canvas/FontSelectorModal";
+import { useCanvasStore, FONT_PAIRS } from "@/lib/canvas-store";
 
 // ── Text position option ───────────────────────────────────────────────────────
 
@@ -82,10 +83,16 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
   const logoPlacement   = useCanvasStore((s) => s.logoPlacement);
   const footerVisible   = useCanvasStore((s) => s.footerVisible);
 
+  const selectedFont     = useCanvasStore((s) => s.selectedFont);
+  const fontModalOpen    = useCanvasStore((s) => s.fontModalOpen);
+
   const setTextPosition  = useCanvasStore((s) => s.setTextPosition);
   const setLogoPlacement = useCanvasStore((s) => s.setLogoPlacement);
   const setFooterVisible = useCanvasStore((s) => s.setFooterVisible);
+  const openFontModal    = useCanvasStore((s) => s.openFontModal);
   const composeManual    = useCanvasStore((s) => s.composeManual);
+
+  const activePair = selectedFont ? FONT_PAIRS.find(p => p.id === selectedFont.pairId) : null;
 
   const isComposing = compositorStatus === "loading";
   const isImageReady = imageStatus === "done" && !!imageUrl;
@@ -173,6 +180,40 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Font pair picker */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Tipografia
+              </label>
+              <button
+                type="button"
+                onClick={openFontModal}
+                disabled={isComposing}
+                className={[
+                  "nodrag nopan",
+                  "flex items-center gap-2 w-full rounded-lg border px-3 py-2 text-xs font-medium",
+                  "transition-colors duration-150",
+                  isComposing
+                    ? "border-slate-200 text-slate-300 cursor-not-allowed bg-slate-50"
+                    : "border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700 hover:bg-violet-50",
+                ].join(" ")}
+              >
+                <Type className="h-3.5 w-3.5 flex-none" />
+                {activePair ? (
+                  <span className="flex items-center gap-1.5 flex-1">
+                    <span
+                      className="inline-block w-3 h-3 rounded-full border border-slate-200 flex-none"
+                      style={{ backgroundColor: selectedFont?.color ?? "#fff" }}
+                    />
+                    <span className="font-semibold">{activePair.headline.cssFamily}</span>
+                    <span className="text-slate-400">+ {activePair.secondary.cssFamily}</span>
+                  </span>
+                ) : (
+                  <span className="flex-1 text-left">Escolher Par de Fontes</span>
+                )}
+              </button>
             </div>
 
             {/* Text position picker */}
@@ -301,6 +342,14 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
         id="out"
         className="!bg-violet-600 !w-3 !h-3 !border-2 !border-white"
       />
+
+      {/* Font pair modal — portal to escape ReactFlow stacking context */}
+      {fontModalOpen && copy && (
+        <FontSelectorModal
+          headline={copy.visual_headline}
+          onClose={() => useCanvasStore.getState().closeFontModal()}
+        />
+      )}
     </>
   );
 }

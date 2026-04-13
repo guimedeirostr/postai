@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   LayoutDashboard, Users, ImageIcon, Settings,
-  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow,
+  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow, Layers,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -16,6 +16,7 @@ const navItems = [
   { href: "/",          label: "Dashboard",     icon: LayoutDashboard },
   { href: "/clients",   label: "Clientes",      icon: Users },
   { href: "/posts",     label: "Posts Gerados", icon: ImageIcon },
+  { href: "/variants",  label: "Variantes",     icon: Layers },
   { href: "/carousels", label: "Carrosseis",    icon: GalleryHorizontal },
   { href: "/canvas",    label: "Canvas IA",     icon: Workflow },
   { href: "/settings",  label: "Configurações", icon: Settings },

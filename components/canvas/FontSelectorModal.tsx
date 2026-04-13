@@ -3,69 +3,25 @@
 import { createPortal } from "react-dom";
 import { useState } from "react";
 import { X, Check } from "lucide-react";
-import { useCanvasStore } from "@/lib/canvas-store";
+import { useCanvasStore, FONT_PAIRS, type FontPairId } from "@/lib/canvas-store";
 
-// ── Google Fonts loader ───────────────────────────────────────────────────────
+// ── Google Fonts — loads all 8 fonts (4 headline + 4 secondary) ───────────────
 
 const GOOGLE_FONTS_URL =
-  "https://fonts.googleapis.com/css2?family=Montserrat:wght@900&family=Playfair+Display:wght@700&family=Dancing+Script:wght@700&family=Inter:wght@500&display=swap";
-
-// ── Font options ──────────────────────────────────────────────────────────────
-
-type FontFamily = "montserrat-black" | "playfair-display" | "dancing-script" | "inter-medium";
-
-interface FontOption {
-  family:     FontFamily;
-  label:      string;
-  descriptor: string;
-  cssFamily:  string;
-  weight:     string | number;
-}
-
-const FONT_OPTIONS: FontOption[] = [
-  {
-    family:     "montserrat-black",
-    label:      "MONTSERRAT BLACK",
-    descriptor: "Moderno & Bold",
-    cssFamily:  "Montserrat",
-    weight:     900,
-  },
-  {
-    family:     "playfair-display",
-    label:      "Playfair Display",
-    descriptor: "Editorial & Elegante",
-    cssFamily:  "Playfair Display",
-    weight:     700,
-  },
-  {
-    family:     "dancing-script",
-    label:      "Dancing Script",
-    descriptor: "Artesanal & Script",
-    cssFamily:  "Dancing Script",
-    weight:     700,
-  },
-  {
-    family:     "inter-medium",
-    label:      "Inter Medium",
-    descriptor: "Minimal & Clean",
-    cssFamily:  "Inter",
-    weight:     500,
-  },
-];
+  "https://fonts.googleapis.com/css2?" +
+  FONT_PAIRS.map(p => `family=${p.headline.googleId}&family=${p.secondary.googleId}`).join("&") +
+  "&display=swap";
 
 // ── Color presets ─────────────────────────────────────────────────────────────
 
-interface ColorPreset {
-  hex:   string;
-  label: string;
-}
+interface ColorPreset { hex: string; label: string }
 
-function buildColorPresets(primaryColor?: string | null, secondaryColor?: string | null): ColorPreset[] {
+function buildColorPresets(primary?: string | null, secondary?: string | null): ColorPreset[] {
   return [
     { hex: "#FFFFFF", label: "Branco" },
     { hex: "#000000", label: "Preto" },
-    ...(primaryColor   ? [{ hex: primaryColor,   label: "Primária" }]   : []),
-    ...(secondaryColor ? [{ hex: secondaryColor, label: "Secundária" }] : []),
+    ...(primary   ? [{ hex: primary,   label: "Primária" }]   : []),
+    ...(secondary ? [{ hex: secondary, label: "Secundária" }] : []),
   ];
 }
 
@@ -79,57 +35,50 @@ interface FontSelectorModalProps {
 // ── FontSelectorModal ─────────────────────────────────────────────────────────
 
 export default function FontSelectorModal({ headline, onClose }: FontSelectorModalProps) {
-  const client       = useCanvasStore((s) => s.client);
-  const selectedFont = useCanvasStore((s) => s.selectedFont);
-  const selectFont   = useCanvasStore((s) => s.selectFont);
+  const client       = useCanvasStore(s => s.client);
+  const selectedFont = useCanvasStore(s => s.selectedFont);
+  const selectFont   = useCanvasStore(s => s.selectFont);
 
   const colorPresets = buildColorPresets(client?.primary_color, client?.secondary_color);
 
-  // Local selections (committed on Confirmar)
-  const [localFamily, setLocalFamily] = useState<FontFamily>(
-    selectedFont?.family ?? "montserrat-black"
-  );
-  const [localColor, setLocalColor] = useState<string>(
-    selectedFont?.color ?? "#FFFFFF"
-  );
-  const [customHex, setCustomHex] = useState<string>("");
+  const [localPairId, setLocalPairId] = useState<FontPairId>(selectedFont?.pairId ?? "modern");
+  const [localColor,  setLocalColor]  = useState<string>(selectedFont?.color ?? "#FFFFFF");
+  const [customHex,   setCustomHex]   = useState<string>("");
 
   function handleConfirm() {
-    selectFont({ family: localFamily, color: localColor });
-  }
-
-  function handleColorPreset(hex: string) {
-    setLocalColor(hex);
+    selectFont({ pairId: localPairId, color: localColor });
+    onClose();
   }
 
   function handleCustomHex(val: string) {
     setCustomHex(val);
-    // Accept 3 or 6-char hex codes
     if (/^#[0-9A-Fa-f]{6}$/.test(val) || /^#[0-9A-Fa-f]{3}$/.test(val)) {
       setLocalColor(val);
     }
   }
 
-  const activeFont = FONT_OPTIONS.find(f => f.family === localFamily)!;
+  const activePair = FONT_PAIRS.find(p => p.id === localPairId)!;
 
   const modal = (
     <>
-      {/* Google Fonts link */}
       {/* eslint-disable-next-line @next/next/no-page-custom-font */}
       <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
 
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
-        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Escolher Fonte</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Selecione o estilo tipográfico do headline</p>
+              <h2 className="text-base font-bold text-slate-900">Tipografia</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Escolha um par de fontes — headline + texto secundário
+              </p>
             </div>
             <button
               type="button"
@@ -142,17 +91,18 @@ export default function FontSelectorModal({ headline, onClose }: FontSelectorMod
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-5">
-            {/* Font cards */}
+
+            {/* Font pair cards */}
             <div className="grid grid-cols-2 gap-3">
-              {FONT_OPTIONS.map((opt) => {
-                const isSelected = localFamily === opt.family;
+              {FONT_PAIRS.map(pair => {
+                const isSelected = localPairId === pair.id;
                 return (
                   <button
-                    key={opt.family}
+                    key={pair.id}
                     type="button"
-                    onClick={() => setLocalFamily(opt.family)}
+                    onClick={() => setLocalPairId(pair.id)}
                     className={[
-                      "relative flex flex-col items-center gap-1.5 rounded-xl border-2 px-3 py-4",
+                      "relative flex flex-col items-start gap-2 rounded-xl border-2 px-3 pt-3 pb-2.5",
                       "transition-all duration-150 cursor-pointer text-left",
                       isSelected
                         ? "border-violet-500 bg-violet-50 ring-2 ring-violet-500 ring-offset-1"
@@ -166,42 +116,63 @@ export default function FontSelectorModal({ headline, onClose }: FontSelectorMod
                       </span>
                     )}
 
-                    {/* Preview text */}
+                    {/* Headline font preview */}
                     <p
-                      className="text-xl text-slate-900 text-center leading-tight break-words w-full"
+                      className="text-lg text-slate-900 leading-tight break-words w-full pr-6"
                       style={{
-                        fontFamily: `"${opt.cssFamily}", sans-serif`,
-                        fontWeight: opt.weight,
+                        fontFamily: `"${pair.headline.cssFamily}", sans-serif`,
+                        fontWeight: pair.headline.weight,
                       }}
                     >
-                      {headline}
+                      {headline.length > 20 ? headline.slice(0, 20) + "…" : headline}
                     </p>
 
-                    {/* Font name */}
-                    <p className="text-[11px] font-semibold text-slate-700 text-center">
-                      {opt.label}
+                    {/* Secondary font preview */}
+                    <p
+                      className="text-[11px] text-slate-500 leading-snug"
+                      style={{
+                        fontFamily: `"${pair.secondary.cssFamily}", sans-serif`,
+                        fontWeight: pair.secondary.weight,
+                      }}
+                    >
+                      Subtítulo · Legenda
                     </p>
 
-                    {/* Descriptor */}
-                    <p className="text-[10px] text-slate-400 text-center">
-                      {opt.descriptor}
-                    </p>
+                    {/* Labels */}
+                    <div className="mt-0.5">
+                      <p className="text-[10px] font-bold text-slate-700 uppercase tracking-wide">
+                        {pair.headline.cssFamily}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        + {pair.secondary.cssFamily} · {pair.descriptor}
+                      </p>
+                    </div>
                   </button>
                 );
               })}
             </div>
 
             {/* Live preview */}
-            <div className="rounded-xl bg-slate-900 px-4 py-5 flex items-center justify-center min-h-[64px]">
+            <div className="rounded-xl bg-slate-900 px-4 py-5 flex flex-col items-center justify-center gap-1 min-h-[80px]">
               <p
                 className="text-center text-xl leading-tight break-words"
                 style={{
-                  fontFamily: `"${activeFont.cssFamily}", sans-serif`,
-                  fontWeight: activeFont.weight,
+                  fontFamily: `"${activePair.headline.cssFamily}", sans-serif`,
+                  fontWeight: activePair.headline.weight,
                   color:      localColor,
                 }}
               >
                 {headline}
+              </p>
+              <p
+                className="text-center text-xs opacity-60"
+                style={{
+                  fontFamily: `"${activePair.secondary.cssFamily}", sans-serif`,
+                  fontWeight: activePair.secondary.weight,
+                  color:      localColor,
+                }}
+              >
+                Subtítulo ou handle @marca
               </p>
             </div>
 
@@ -211,14 +182,14 @@ export default function FontSelectorModal({ headline, onClose }: FontSelectorMod
                 Cor do Texto
               </label>
               <div className="flex items-center gap-2 flex-wrap">
-                {colorPresets.map((preset) => {
+                {colorPresets.map(preset => {
                   const isSelected = localColor === preset.hex;
                   return (
                     <button
                       key={preset.hex}
                       type="button"
                       title={preset.label}
-                      onClick={() => handleColorPreset(preset.hex)}
+                      onClick={() => setLocalColor(preset.hex)}
                       className={[
                         "w-8 h-8 rounded-full border-2 transition-all duration-150 flex-none",
                         "focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-1",
@@ -232,7 +203,7 @@ export default function FontSelectorModal({ headline, onClose }: FontSelectorMod
                   );
                 })}
 
-                {/* Custom hex input */}
+                {/* Custom hex */}
                 <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
                   <div
                     className="w-6 h-6 rounded-full border border-slate-300 flex-none"
@@ -243,12 +214,8 @@ export default function FontSelectorModal({ headline, onClose }: FontSelectorMod
                     maxLength={7}
                     placeholder="#FFFFFF"
                     value={customHex}
-                    onChange={(e) => handleCustomHex(e.target.value)}
-                    className={[
-                      "flex-1 rounded-lg border border-slate-200 bg-white",
-                      "px-2 py-1 text-xs text-slate-700 placeholder-slate-400",
-                      "focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent",
-                    ].join(" ")}
+                    onChange={e => handleCustomHex(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   />
                 </div>
               </div>
@@ -269,7 +236,7 @@ export default function FontSelectorModal({ headline, onClose }: FontSelectorMod
               onClick={handleConfirm}
               className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
             >
-              Confirmar Fonte
+              Confirmar Tipografia
             </button>
           </div>
         </div>
@@ -277,7 +244,6 @@ export default function FontSelectorModal({ headline, onClose }: FontSelectorMod
     </>
   );
 
-  // Render into body portal to escape the ReactFlow node stacking context
   if (typeof document === "undefined") return null;
   return createPortal(modal, document.body);
 }
