@@ -117,8 +117,13 @@ export interface CanvasState {
   logoOverlay:       boolean;
   headlineColor:     string;
   accentColor:       string;
-  compositorStatus:  StepStatus;
-  compositorError:   string | null;
+  compositorStatus:    StepStatus;
+  compositorError:     string | null;
+
+  // ── HTML Refinement (Fase 3) ───────────────────────────────────────────────
+  refinedHtml:            string | null;
+  htmlRefinementStatus:   StepStatus;
+  htmlRefinementError:    string | null;
 
   // ── Photo Director ────────────────────────────────────────────────────────
   photoDirectorMode:   "ai" | "bank" | null;
@@ -159,6 +164,8 @@ export interface CanvasState {
   setHeadlineColor:  (c: string) => void;
   setAccentColor:    (c: string) => void;
   composeManual:    () => Promise<void>;
+  runHtmlRefinement:(currentHtml: string) => Promise<void>;
+  clearRefinedHtml: () => void;
 
   // ── Photo Director actions ─────────────────────────────────────────────────
   setPhotoDirectorMode:  (mode: "ai" | "bank" | null) => void;
@@ -227,8 +234,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   logoOverlay:      true,
   headlineColor:    "#FFFFFF",
   accentColor:      "#8b5cf6",
-  compositorStatus: "idle",
-  compositorError:  null,
+  compositorStatus:     "idle",
+  compositorError:      null,
+  refinedHtml:          null,
+  htmlRefinementStatus: "idle",
+  htmlRefinementError:  null,
 
   // Photo Director defaults
   photoDirectorMode:   null,
@@ -267,6 +277,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       footerOverlay: false, gradientOverlay: true, textBgOverlay: false, logoOverlay: true,
       headlineColor: "#FFFFFF", accentColor: "#8b5cf6",
       compositorStatus: "idle", compositorError: null,
+      refinedHtml: null, htmlRefinementStatus: "idle", htmlRefinementError: null,
       // Reset Photo Director
       photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
       refinedVisualPrompt: "", aiPickerOpen: false,
@@ -477,6 +488,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         footerOverlay: false, gradientOverlay: true, textBgOverlay: false, logoOverlay: true,
         headlineColor: "#FFFFFF", accentColor: "#8b5cf6",
         compositorStatus: "idle", compositorError: null,
+        refinedHtml: null, htmlRefinementStatus: "idle", htmlRefinementError: null,
         // Reset Photo Director
         photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
         refinedVisualPrompt: "", aiPickerOpen: false,
@@ -491,6 +503,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         qualityScore: null, composedUrl: null, approveStatus: "idle",
         transparentUrl: null, removeBgStatus: "idle", removeBgError: null,
         compositorStatus: "idle", compositorError: null,
+        refinedHtml: null, htmlRefinementStatus: "idle", htmlRefinementError: null,
         // Reset Photo Director state too
         photoDirectorMode: null, photoDirectorStatus: "idle", photoDirectorError: null,
         refinedVisualPrompt: "", aiPickerOpen: false,
@@ -550,6 +563,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         body: JSON.stringify({
           post_id:          postId,
           image_url:        imageUrl ?? undefined,
+          html_override:    get().refinedHtml ?? undefined,
           font_family:      selectedFont
             ? (FONT_PAIRS.find(p => p.id === selectedFont.pairId)?.headlineStyleHint || undefined)
             : undefined,
@@ -687,5 +701,38 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const words   = headline.trim().split(/\s+/);
     const clamped = words.length > 6 ? words.slice(0, 6).join(" ") : headline.trim();
     set({ copy: { ...copy, visual_headline: clamped } });
+  },
+
+  // ── HTML Refinement ────────────────────────────────────────────────────────
+  clearRefinedHtml: () => set({ refinedHtml: null, htmlRefinementStatus: "idle", htmlRefinementError: null }),
+
+  runHtmlRefinement: async (currentHtml: string) => {
+    const { postId, referenceImageUrl } = get();
+    if (!postId || !currentHtml) {
+      set({ htmlRefinementStatus: "error", htmlRefinementError: "Gere a imagem e o copy antes de refinar." });
+      return;
+    }
+
+    set({ htmlRefinementStatus: "loading", htmlRefinementError: null, refinedHtml: null });
+
+    try {
+      const res = await fetch("/api/posts/refine-html", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          post_id:              postId,
+          current_html:         currentHtml,
+          reference_image_url:  referenceImageUrl ?? undefined,
+        }),
+      });
+      const data = await res.json() as { refined_html?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro ao refinar HTML");
+      set({ refinedHtml: data.refined_html ?? null, htmlRefinementStatus: "done" });
+    } catch (e) {
+      set({
+        htmlRefinementStatus: "error",
+        htmlRefinementError: e instanceof Error ? e.message : "Erro ao refinar",
+      });
+    }
   },
 }));

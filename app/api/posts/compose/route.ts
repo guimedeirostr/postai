@@ -29,7 +29,10 @@ import {
   resolveArtDirection,
   toComposeOverrides,
 } from "@/lib/art-direction-resolver";
-import type { BrandProfile, GeneratedPost, LogoPlacement, ReferenceDNA } from "@/types";
+import { buildGenericTemplate } from "@/lib/prompts/generic-template";
+import { renderHtml, isRendererEnabled } from "@/lib/chromium-renderer";
+import { uploadToR2 } from "@/lib/r2";
+import type { BrandProfile, GeneratedPost, LogoPlacement, ReferenceDNA, LayerStack } from "@/types";
 
 // Composição leva ~5-12s (fetch imagem + fetch logo + satori + sharp)
 export const maxDuration = 60;
@@ -69,6 +72,7 @@ export async function POST(req: NextRequest) {
       logo_overlay?:    boolean;
       headline_color?:  string;
       accent_color?:    string;
+      html_override?:   string;
     };
 
     const {
@@ -84,6 +88,7 @@ export async function POST(req: NextRequest) {
       logo_overlay,
       headline_color,
       accent_color,
+      html_override,
     } = body;
 
     if (!post_id) {
@@ -143,6 +148,58 @@ export async function POST(req: NextRequest) {
     // ── Marcar como "composing" ───────────────────────────────────────────────
     await postDoc.ref.update({ status: "composing" });
 
+    // ── PATH CHROME: HTML renderer (qualidade agência, fontes reais) ──────────
+    // Prioridade 1: html_override (HTML refinado pela IA diretamente)
+    // Prioridade 2: buildGenericTemplate + Chromium renderer (quando RENDERER_URL set)
+    if (html_override || isRendererEnabled()) {
+      try {
+        let htmlToRender: string;
+
+        if (html_override) {
+          htmlToRender = html_override;
+        } else {
+          const postAny     = post as unknown as Record<string, unknown>;
+          const strategy    = postAny.strategy as { tema?: string; pilar?: string } | undefined;
+          const captionLines = (post.caption ?? "").split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
+          htmlToRender = buildGenericTemplate({
+            photoUrl:              imageUrl,
+            headline:              post.visual_headline ?? post.headline ?? "",
+            preHeadline:           strategy?.tema ?? strategy?.pilar ?? "",
+            captionFirstLine:      captionLines[0] ?? "",
+            logoUrl:               client.logo_url ?? "",
+            brandColor:            client.primary_color,
+            secondaryColor:        font_color ?? client.secondary_color,
+            brandName:             client.name,
+            instagramHandle:       client.instagram_handle ?? "",
+            format:                (post.format ?? "feed") as "feed" | "stories" | "reels_cover",
+            layer_stack:           (postAny.layer_stack ?? undefined) as LayerStack | undefined,
+            headlineColor:         headline_color,
+            accentColor:           accent_color,
+            gradientOverlay:       gradient_overlay,
+            textBgOverlay:         text_bg_overlay,
+            textPosition:          text_position,
+            fontStyleHint:         font_family,
+            logoOverlay:           logo_overlay,
+            logoPlacementOverride: logo_placement,
+            footerVisible:         footer_visible,
+            footerOverlay:         footer_overlay,
+          });
+        }
+
+        const format      = (post.format ?? "feed") as "feed" | "stories" | "reels_cover";
+        const jpegBuffer  = await renderHtml(htmlToRender, format);
+        const key         = `posts/${post_id}/composed.jpg`;
+        const composed_url = await uploadToR2(key, jpegBuffer, "image/jpeg");
+
+        await postDoc.ref.update({ composed_url, status: "ready" });
+        return NextResponse.json({ composed_url, post_id, ok: true, renderer: "chrome" });
+      } catch (chromeErr) {
+        console.warn("[compose] Chrome renderer falhou, usando Satori fallback:", chromeErr);
+        // Falls through to Satori path below
+      }
+    }
+
+    // ── PATH SATORI: fallback quando Chrome não disponível ou falhou ──────────
     // ── Resolver direção de arte (cascade: art_direction → ref_dna → brand_dna) ─
     const dna = await loadDnaSources(post as GeneratedPost & { reference_dna?: ReferenceDNA });
     const ad  = resolveArtDirection(post, dna.refDna, dna.brandDna);

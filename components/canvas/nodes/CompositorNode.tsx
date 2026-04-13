@@ -1,38 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useState } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { Layers, AlertCircle, Type, Palette, Image as ImageIcon } from "lucide-react";
+import { Layers, AlertCircle, Type, Palette, Sparkles, CheckCircle2, XCircle } from "lucide-react";
 import BaseNode from "@/components/canvas/BaseNode";
 import FontSelectorModal from "@/components/canvas/FontSelectorModal";
+import HTMLPostPreview from "@/components/canvas/HTMLPostPreview";
+import { buildGenericTemplate } from "@/lib/prompts/generic-template";
 import { useCanvasStore, FONT_PAIRS } from "@/lib/canvas-store";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type TextPosition = "top" | "center" | "bottom-left" | "bottom-full";
 
-interface TextPosOption {
-  value:   TextPosition;
-  label:   string;
-  bandCls: string;
-}
-
-const TEXT_POS_OPTIONS: TextPosOption[] = [
-  { value: "top",         label: "Topo",       bandCls: "top-0 left-0 right-0 h-1/3"           },
-  { value: "center",      label: "Centro",     bandCls: "inset-y-1/3 left-0 right-0"            },
-  { value: "bottom-left", label: "Inf. Esq.",  bandCls: "bottom-0 left-0 w-1/2 h-1/3"          },
-  { value: "bottom-full", label: "Inf. Total", bandCls: "bottom-0 left-0 right-0 h-1/3"        },
+const TEXT_POS_OPTIONS = [
+  { value: "top"         as TextPosition, label: "Topo",       bandCls: "top-0 left-0 right-0 h-1/3"           },
+  { value: "center"      as TextPosition, label: "Centro",     bandCls: "inset-y-1/3 left-0 right-0"            },
+  { value: "bottom-left" as TextPosition, label: "Inf. Esq.",  bandCls: "bottom-0 left-0 w-1/2 h-1/3"          },
+  { value: "bottom-full" as TextPosition, label: "Inf. Total", bandCls: "bottom-0 left-0 right-0 h-1/3"        },
 ];
 
-type LogoPlacementOption = "top-left" | "top-right" | "bottom-right" | "none";
-
-const LOGO_POS_OPTIONS: { value: LogoPlacementOption; label: string }[] = [
+const LOGO_POS_OPTIONS = [
   { value: "top-left",    label: "Sup. Esq." },
   { value: "top-right",   label: "Sup. Dir." },
   { value: "bottom-right",label: "Inf. Dir." },
   { value: "none",        label: "Nenhum"    },
-];
+] as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -46,7 +39,7 @@ function AnimatedDots() {
 }
 
 function ShimmerBox() {
-  return <div className="w-full rounded-lg bg-slate-200 animate-pulse" style={{ height: 160 }} />;
+  return <div className="w-full rounded-lg bg-slate-200 animate-pulse" style={{ height: 180 }} />;
 }
 
 function IdlePlaceholder() {
@@ -56,8 +49,6 @@ function IdlePlaceholder() {
     </p>
   );
 }
-
-// ── Toggle row helper ─────────────────────────────────────────────────────────
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -71,12 +62,10 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
           checked ? "bg-violet-600" : "bg-slate-200",
         ].join(" ")}
       >
-        <span
-          className={[
-            "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200",
-            checked ? "translate-x-4" : "translate-x-0.5",
-          ].join(" ")}
-        />
+        <span className={[
+          "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200",
+          checked ? "translate-x-4" : "translate-x-0.5",
+        ].join(" ")} />
       </button>
     </label>
   );
@@ -89,45 +78,59 @@ export type CompositorNodeType = Node<{ label: string }, "compositor">;
 // ── CompositorNode ────────────────────────────────────────────────────────────
 
 export default function CompositorNode({ selected }: NodeProps<CompositorNodeType>) {
-  const imageUrl         = useCanvasStore((s) => s.imageUrl);
-  const imageStatus      = useCanvasStore((s) => s.imageStatus);
-  const composedUrl      = useCanvasStore((s) => s.composedUrl);
-  const compositorStatus = useCanvasStore((s) => s.compositorStatus);
-  const compositorError  = useCanvasStore((s) => s.compositorError);
-  const copy             = useCanvasStore((s) => s.copy);
-  const referenceImageUrl= useCanvasStore((s) => s.referenceImageUrl);
+  // State subscriptions
+  const client              = useCanvasStore((s) => s.client);
+  const briefing            = useCanvasStore((s) => s.briefing);
+  const copy                = useCanvasStore((s) => s.copy);
+  const imageUrl            = useCanvasStore((s) => s.imageUrl);
+  const imageStatus         = useCanvasStore((s) => s.imageStatus);
+  const compositorStatus    = useCanvasStore((s) => s.compositorStatus);
+  const compositorError     = useCanvasStore((s) => s.compositorError);
+  const referenceImageUrl   = useCanvasStore((s) => s.referenceImageUrl);
 
   // Compositor controls
-  const textPosition     = useCanvasStore((s) => s.textPosition);
-  const logoPlacement    = useCanvasStore((s) => s.logoPlacement);
-  const footerVisible    = useCanvasStore((s) => s.footerVisible);
-  const footerOverlay    = useCanvasStore((s) => s.footerOverlay);
-  const gradientOverlay  = useCanvasStore((s) => s.gradientOverlay);
-  const textBgOverlay    = useCanvasStore((s) => s.textBgOverlay);
-  const logoOverlay      = useCanvasStore((s) => s.logoOverlay);
-  const headlineColor    = useCanvasStore((s) => s.headlineColor);
-  const accentColor      = useCanvasStore((s) => s.accentColor);
-  const selectedFont     = useCanvasStore((s) => s.selectedFont);
-  const fontModalOpen    = useCanvasStore((s) => s.fontModalOpen);
+  const textPosition        = useCanvasStore((s) => s.textPosition);
+  const logoPlacement       = useCanvasStore((s) => s.logoPlacement);
+  const footerVisible       = useCanvasStore((s) => s.footerVisible);
+  const footerOverlay       = useCanvasStore((s) => s.footerOverlay);
+  const gradientOverlay     = useCanvasStore((s) => s.gradientOverlay);
+  const textBgOverlay       = useCanvasStore((s) => s.textBgOverlay);
+  const logoOverlay         = useCanvasStore((s) => s.logoOverlay);
+  const headlineColor       = useCanvasStore((s) => s.headlineColor);
+  const accentColor         = useCanvasStore((s) => s.accentColor);
+  const selectedFont        = useCanvasStore((s) => s.selectedFont);
+  const fontModalOpen       = useCanvasStore((s) => s.fontModalOpen);
 
-  const setTextPosition    = useCanvasStore((s) => s.setTextPosition);
-  const setLogoPlacement   = useCanvasStore((s) => s.setLogoPlacement);
-  const setFooterVisible   = useCanvasStore((s) => s.setFooterVisible);
-  const setFooterOverlay   = useCanvasStore((s) => s.setFooterOverlay);
-  const setGradientOverlay = useCanvasStore((s) => s.setGradientOverlay);
-  const setTextBgOverlay   = useCanvasStore((s) => s.setTextBgOverlay);
-  const setLogoOverlay     = useCanvasStore((s) => s.setLogoOverlay);
-  const setHeadlineColor   = useCanvasStore((s) => s.setHeadlineColor);
-  const setAccentColor     = useCanvasStore((s) => s.setAccentColor);
-  const openFontModal      = useCanvasStore((s) => s.openFontModal);
-  const composeManual      = useCanvasStore((s) => s.composeManual);
+  // HTML Refinement state
+  const refinedHtml            = useCanvasStore((s) => s.refinedHtml);
+  const htmlRefinementStatus   = useCanvasStore((s) => s.htmlRefinementStatus);
+  const htmlRefinementError    = useCanvasStore((s) => s.htmlRefinementError);
 
-  const activePair = selectedFont ? FONT_PAIRS.find(p => p.id === selectedFont.pairId) : null;
+  // Actions
+  const setTextPosition     = useCanvasStore((s) => s.setTextPosition);
+  const setLogoPlacement    = useCanvasStore((s) => s.setLogoPlacement);
+  const setFooterVisible    = useCanvasStore((s) => s.setFooterVisible);
+  const setFooterOverlay    = useCanvasStore((s) => s.setFooterOverlay);
+  const setGradientOverlay  = useCanvasStore((s) => s.setGradientOverlay);
+  const setTextBgOverlay    = useCanvasStore((s) => s.setTextBgOverlay);
+  const setLogoOverlay      = useCanvasStore((s) => s.setLogoOverlay);
+  const setHeadlineColor    = useCanvasStore((s) => s.setHeadlineColor);
+  const setAccentColor      = useCanvasStore((s) => s.setAccentColor);
+  const openFontModal       = useCanvasStore((s) => s.openFontModal);
+  const composeManual       = useCanvasStore((s) => s.composeManual);
+  const runHtmlRefinement   = useCanvasStore((s) => s.runHtmlRefinement);
+  const clearRefinedHtml    = useCanvasStore((s) => s.clearRefinedHtml);
+
+  const activePair   = selectedFont ? FONT_PAIRS.find(p => p.id === selectedFont.pairId) : null;
+  const fontHint     = activePair ? (FONT_PAIRS.find(p => p.id === selectedFont!.pairId)?.headlineStyleHint ?? "") : "";
   const isComposing  = compositorStatus === "loading";
+  const isRefining   = htmlRefinementStatus === "loading";
   const isImageReady = imageStatus === "done" && !!imageUrl;
 
   // Composition source indicator
-  const compositionSource = referenceImageUrl ? "Referência" : imageStatus === "done" ? "IA" : null;
+  const compositionSource = refinedHtml
+    ? "IA Refinado"
+    : referenceImageUrl ? "Referência" : imageStatus === "done" ? "IA" : null;
 
   const nodeStatus =
     compositorStatus === "done"    ? "done"    :
@@ -138,14 +141,32 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
     imageStatus === "error"        ? "error"   :
     "idle";
 
-  function getOverlayCss(pos: TextPosition): string {
-    switch (pos) {
-      case "top":         return "top-0 left-0 right-0 pb-1 pt-1 px-1 items-start";
-      case "center":      return "top-1/2 left-0 right-0 -translate-y-1/2 px-1 items-center";
-      case "bottom-left": return "bottom-0 left-0 w-1/2 pt-1 pb-1 px-1 items-end";
-      case "bottom-full": return "bottom-0 left-0 right-0 pt-1 pb-1 px-1 items-end";
-    }
-  }
+  // ── Current HTML for refine button ─────────────────────────────────────────
+  const currentHtml = useMemo(() => {
+    if (!imageUrl || !copy) return "";
+    return buildGenericTemplate({
+      photoUrl:              imageUrl,
+      headline:              copy.visual_headline ?? "",
+      preHeadline:           briefing?.tema ?? "",
+      captionFirstLine:      copy.caption?.split(/\n/)[0] ?? "",
+      logoUrl:               client?.logo_url ?? "",
+      brandColor:            client?.primary_color ?? "#6d28d9",
+      secondaryColor:        client?.secondary_color ?? "#8b5cf6",
+      brandName:             client?.name ?? "",
+      instagramHandle:       client?.instagram_handle ?? "",
+      format:                "feed",
+      headlineColor,
+      accentColor,
+      gradientOverlay,
+      textBgOverlay,
+      textPosition,
+      fontStyleHint:         fontHint,
+      logoOverlay,
+      logoPlacementOverride: logoPlacement,
+      footerVisible,
+      footerOverlay,
+    });
+  }, [imageUrl, copy, briefing, client, headlineColor, accentColor, gradientOverlay, textBgOverlay, textPosition, fontHint, logoOverlay, logoPlacement, footerVisible, footerOverlay]);
 
   return (
     <>
@@ -184,28 +205,104 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
         {isImageReady && (
           <div className="flex flex-col gap-3">
 
-            {/* Source + preview */}
-            <div className="relative rounded-lg overflow-hidden" style={{ height: 160 }}>
-              <img src={imageUrl} alt="Imagem" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-              {copy?.visual_headline && (
-                <div className={["absolute flex", getOverlayCss(textPosition)].join(" ")}>
-                  <p
-                    className="text-[11px] font-bold drop-shadow leading-tight"
-                    style={{ color: headlineColor, textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
-                  >
-                    {copy.visual_headline}
-                  </p>
-                </div>
-              )}
+            {/* ── Live HTML Preview ── */}
+            <div className="relative rounded-lg overflow-hidden border border-slate-200">
+              <HTMLPostPreview
+                imageUrl={imageUrl}
+                headline={copy?.visual_headline ?? ""}
+                brandName={client?.name ?? ""}
+                instagramHandle={client?.instagram_handle}
+                brandColor={client?.primary_color ?? "#6d28d9"}
+                secondaryColor={client?.secondary_color ?? "#8b5cf6"}
+                logoUrl={client?.logo_url}
+                preHeadline={briefing?.tema}
+                captionFirstLine={copy?.caption?.split(/\n/)[0]}
+                headlineColor={headlineColor}
+                accentColor={accentColor}
+                gradientOverlay={gradientOverlay}
+                textBgOverlay={textBgOverlay}
+                textPosition={textPosition}
+                fontStyleHint={fontHint}
+                logoOverlay={logoOverlay}
+                logoPlacement={logoPlacement}
+                footerVisible={footerVisible}
+                footerOverlay={footerOverlay}
+                previewWidth={348}
+              />
+
+              {/* Source badge */}
               {compositionSource && (
                 <div className="absolute top-2 right-2">
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/50 text-white flex items-center gap-1">
-                    <ImageIcon className="w-2.5 h-2.5" />
+                  <span className={[
+                    "text-[10px] font-semibold px-2 py-0.5 rounded-full text-white flex items-center gap-1",
+                    refinedHtml ? "bg-violet-600/80" : "bg-black/50",
+                  ].join(" ")}>
+                    {refinedHtml && <Sparkles className="w-2.5 h-2.5" />}
                     {compositionSource}
                   </span>
                 </div>
               )}
+            </div>
+
+            {/* ── Refinar com IA ── */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Refinar Layout com IA
+                </label>
+                {refinedHtml && (
+                  <button
+                    type="button"
+                    onClick={clearRefinedHtml}
+                    className="nodrag nopan text-[10px] text-slate-400 hover:text-red-500 transition-colors flex items-center gap-0.5"
+                  >
+                    <XCircle className="w-3 h-3" />
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {htmlRefinementStatus === "error" && htmlRefinementError && (
+                <p className="text-[10px] text-red-600 leading-snug">{htmlRefinementError}</p>
+              )}
+
+              {refinedHtml && htmlRefinementStatus === "done" && (
+                <div className="flex items-center gap-1.5 rounded-lg bg-violet-50 border border-violet-200 px-2 py-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-violet-600 flex-none" />
+                  <p className="text-[11px] text-violet-700 font-medium">HTML refinado pronto — será usado ao compor</p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => runHtmlRefinement(currentHtml)}
+                disabled={isRefining || isComposing || !currentHtml}
+                className={[
+                  "nodrag nopan w-full flex items-center justify-center gap-2",
+                  "rounded-lg border px-3 py-2 text-xs font-semibold transition-colors duration-150",
+                  isRefining
+                    ? "border-violet-200 bg-violet-50 text-violet-400 cursor-not-allowed"
+                    : refinedHtml
+                    ? "border-violet-300 bg-violet-100 text-violet-700 hover:bg-violet-200"
+                    : "border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-400",
+                ].join(" ")}
+              >
+                {isRefining ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Refinando com Claude<AnimatedDots />
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {refinedHtml ? "Refinar Novamente" : "✨ Refinar Layout com IA"}
+                  </>
+                )}
+              </button>
             </div>
 
             {/* ── Tipografia ── */}
@@ -251,24 +348,14 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
                   <span className="text-[10px] text-slate-500">Texto</span>
                   <div className="relative w-8 h-8 rounded-lg border-2 border-slate-200 overflow-hidden shadow-sm hover:border-violet-400 transition-colors">
                     <div className="absolute inset-0 rounded" style={{ backgroundColor: headlineColor }} />
-                    <input
-                      type="color"
-                      value={headlineColor}
-                      onChange={e => setHeadlineColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                    />
+                    <input type="color" value={headlineColor} onChange={e => setHeadlineColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
                   </div>
                 </label>
                 <label className="nodrag nopan flex flex-col items-center gap-1 cursor-pointer">
                   <span className="text-[10px] text-slate-500">Acento</span>
                   <div className="relative w-8 h-8 rounded-lg border-2 border-slate-200 overflow-hidden shadow-sm hover:border-violet-400 transition-colors">
                     <div className="absolute inset-0 rounded" style={{ backgroundColor: accentColor }} />
-                    <input
-                      type="color"
-                      value={accentColor}
-                      onChange={e => setAccentColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                    />
+                    <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
                   </div>
                 </label>
                 <div className="flex-1 flex flex-col gap-1">
@@ -310,9 +397,7 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
 
             {/* ── Logo ── */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Logo
-              </label>
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Logo</label>
               <div className="flex gap-1.5 flex-wrap">
                 {LOGO_POS_OPTIONS.map((opt) => {
                   const storeVal = opt.value as typeof logoPlacement;
@@ -339,9 +424,7 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
 
             {/* ── Rodapé ── */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Rodapé
-              </label>
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Rodapé</label>
               <ToggleRow label="Exibir rodapé com handle" checked={footerVisible} onChange={setFooterVisible} />
               {footerVisible && (
                 <ToggleRow label="Rodapé semi-transparente" checked={footerOverlay} onChange={setFooterOverlay} />
@@ -356,7 +439,7 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
               </div>
             )}
 
-            {/* Compose button */}
+            {/* ── Compose button ── */}
             <button
               type="button"
               onClick={composeManual}
@@ -366,6 +449,8 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
                 "rounded-lg px-3 py-2.5 text-sm font-semibold text-white transition-colors duration-150",
                 isComposing
                   ? "bg-emerald-300 cursor-not-allowed"
+                  : refinedHtml
+                  ? "bg-violet-600 hover:bg-violet-700 active:bg-violet-800"
                   : "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800",
               ].join(" ")}
             >
@@ -376,6 +461,11 @@ export default function CompositorNode({ selected }: NodeProps<CompositorNodeTyp
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                   Compondo...
+                </>
+              ) : refinedHtml ? (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Compor com IA Refinada
                 </>
               ) : (
                 "Compor Post Final"
