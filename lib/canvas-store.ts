@@ -524,7 +524,22 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       footerOverlay, gradientOverlay, textBgOverlay, logoOverlay,
       headlineColor, accentColor,
     } = get();
-    if (!postId) return;
+
+    if (!postId) {
+      set({
+        compositorStatus: "error",
+        compositorError: "Pipeline incompleto — execute o Copy antes de compor. (postId ausente)",
+      });
+      return;
+    }
+
+    if (!imageUrl) {
+      set({
+        compositorStatus: "error",
+        compositorError: "Nenhuma imagem selecionada. Gere uma imagem ou escolha do Banco do Cliente.",
+      });
+      return;
+    }
 
     set({ compositorStatus: "loading", compositorError: null });
 
