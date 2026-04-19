@@ -1,10 +1,24 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "../styles/tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* PostAI semantic tokens — use bg-pi-bg, text-pi-text, border-pi-border, etc. */
+  --color-pi-bg:            var(--pi-bg);
+  --color-pi-surface:       var(--pi-surface);
+  --color-pi-surface-muted: var(--pi-surface-muted);
+  --color-pi-border:        var(--pi-border);
+  --color-pi-text:          var(--pi-text);
+  --color-pi-text-muted:    var(--pi-text-muted);
+  --color-pi-accent:        var(--pi-accent);
+  --color-pi-accent-hover:  var(--pi-accent-hover);
+  --color-pi-success:       var(--pi-success);
+  --color-pi-warning:       var(--pi-warning);
+  --color-pi-danger:        var(--pi-danger);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);

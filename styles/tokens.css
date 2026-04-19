@@ -1,0 +1,37 @@
+/* PostAI semantic design tokens
+ * --pi-* prefix avoids conflicts with shadcn's --border / --accent vars.
+ * Route-based dark mode uses [data-theme='dark'] on <html>, set by ThemeProvider.
+ */
+
+:root {
+  --pi-bg:            #FFFFFF;
+  --pi-surface:       #F7F8FA;
+  --pi-surface-muted: #F0F2F5;
+  --pi-border:        #E4E7EC;
+  --pi-text:          #0F172A;
+  --pi-text-muted:    #64748B;
+  --pi-accent:        #7C3AED;
+  --pi-accent-hover:  #6D28D9;
+  --pi-success:       #10B981;
+  --pi-warning:       #F59E0B;
+  --pi-danger:        #EF4444;
+}
+
+[data-theme='dark'] {
+  --pi-bg:            #0B0D12;
+  --pi-surface:       #141821;
+  --pi-surface-muted: #1C222D;
+  --pi-border:        #252B38;
+  --pi-text:          #F1F5F9;
+  --pi-text-muted:    #94A3B8;
+  --pi-accent:        #A78BFA;
+  --pi-accent-hover:  #8B5CF6;
+  --pi-success:       #34D399;
+  --pi-warning:       #FBBF24;
+  --pi-danger:        #F87171;
+}
+
+/* 240 ms transition when navigating between light ↔ dark routes */
+body {
+  transition: background-color 240ms ease, color 240ms ease;
+}

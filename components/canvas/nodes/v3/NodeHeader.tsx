@@ -6,13 +6,13 @@ import { cn } from '@/lib/utils';
 import type { PhaseId, PhaseStatus } from '@/types';
 
 const STATUS_BADGE: Record<PhaseStatus, { txt: string; cls: string }> = {
-  idle:    { txt: 'Aguardando',    cls: 'bg-slate-700 text-slate-300' },
+  idle:    { txt: 'Aguardando',    cls: 'bg-pi-surface-muted text-pi-text-muted' },
   queued:  { txt: 'Na fila',       cls: 'bg-blue-900 text-blue-200' },
   running: { txt: 'Rodando…',      cls: 'bg-violet-700 text-white animate-pulse' },
   done:    { txt: 'Pronto',        cls: 'bg-emerald-700 text-white' },
   stale:   { txt: 'Desatualizado', cls: 'bg-amber-700 text-amber-100' },
   error:   { txt: 'Erro',          cls: 'bg-red-800 text-red-100' },
-  skipped: { txt: 'Pulado',        cls: 'bg-slate-800 text-slate-400' },
+  skipped: { txt: 'Pulado',        cls: 'bg-pi-surface-muted text-pi-text-muted/60' },
 };
 
 interface NodeHeaderProps {
@@ -43,7 +43,7 @@ export function NodeHeader({
   }, [menuOpen]);
 
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+    <div className="flex items-center justify-between gap-2 border-b border-pi-border/30 px-3 py-2">
       {/* Left: icon + label + badge */}
       <div className="flex items-center gap-2 min-w-0">
         <div
@@ -52,7 +52,7 @@ export function NodeHeader({
         >
           {icon}
         </div>
-        <span className="text-xs font-semibold text-slate-200 truncate">{label}</span>
+        <span className="text-xs font-semibold text-pi-text truncate">{label}</span>
         <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full flex-none', badge.cls)}>
           {badge.txt}
         </span>
@@ -73,31 +73,31 @@ export function NodeHeader({
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(v => !v)}
-            className="p-1 rounded hover:bg-white/10 transition-colors text-slate-400"
+            className="p-1 rounded hover:bg-pi-surface-muted transition-colors text-pi-text-muted"
             title="Mais opções"
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-44 bg-slate-900 border border-slate-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+            <div className="absolute right-0 top-full mt-1 w-44 bg-pi-surface border border-pi-border rounded-xl shadow-xl z-50 overflow-hidden">
               <div className="p-1">
                 <button
                   onClick={() => { onRunToHere(); setMenuOpen(false); }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+                  className="w-full text-left px-3 py-1.5 text-xs text-pi-text hover:bg-pi-surface-muted rounded-lg transition-colors"
                 >
                   ⏩ Rodar até aqui
                 </button>
                 <button
                   onClick={() => { onRegenerate(); setMenuOpen(false); }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+                  className="w-full text-left px-3 py-1.5 text-xs text-pi-text hover:bg-pi-surface-muted rounded-lg transition-colors"
                 >
                   ↻ Regenerar
                 </button>
-                <div className="border-t border-slate-800 my-1" />
+                <div className="border-t border-pi-border my-1" />
                 <button
                   onClick={() => { onReset(); setMenuOpen(false); }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                  className="w-full text-left px-3 py-1.5 text-xs text-pi-danger hover:bg-pi-surface-muted rounded-lg transition-colors"
                 >
                   ✕ Resetar fase
                 </button>

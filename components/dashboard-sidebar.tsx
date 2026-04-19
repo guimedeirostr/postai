@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { DARK_ROUTES } from "@/components/ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -31,6 +32,7 @@ export function DashboardSidebar({ userEmail, userName }: Props) {
   const pathname  = usePathname();
   const router    = useRouter();
   const [loading, setLoading] = useState(false);
+  const nextIsDark = DARK_ROUTES.some(rx => rx.test(pathname));
 
   async function handleSignOut() {
     setLoading(true);
@@ -41,7 +43,10 @@ export function DashboardSidebar({ userEmail, userName }: Props) {
   const initials = userName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <aside className="w-60 bg-white border-r border-slate-100 flex flex-col h-full shadow-sm">
+    <aside className={cn(
+      "w-60 bg-white border-r border-slate-100 flex flex-col h-full shadow-sm transition-shadow",
+      nextIsDark && "shadow-lg shadow-slate-900/10",
+    )}>
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-5 py-5 border-b border-slate-100">
         <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center">

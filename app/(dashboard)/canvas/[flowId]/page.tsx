@@ -116,7 +116,7 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
   return (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
-      <div className="flex border-b border-slate-800">
+      <div className="flex border-b border-pi-border">
         {([
           { id: "agent",   label: "Agente",    icon: <Zap className="w-3.5 h-3.5" /> },
           { id: "brand",   label: "Brand Kit",  icon: <Palette className="w-3.5 h-3.5" /> },
@@ -128,8 +128,8 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
             className={cn(
               "flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors",
               tab === t.id
-                ? "text-violet-400 border-b-2 border-violet-500 -mb-px"
-                : "text-slate-500 hover:text-slate-400",
+                ? "text-pi-accent border-b-2 border-pi-accent -mb-px"
+                : "text-pi-text-muted hover:text-pi-text",
             )}
           >
             {t.icon}
@@ -142,25 +142,25 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {tab === "agent" && (
           <div className="space-y-3">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-pi-text-muted">
               O Diretor executa fase a fase. Cada aprovação ensina o modelo.
             </p>
 
             {/* Phase progress checklist */}
-            <div className="bg-slate-800/60 rounded-xl p-3 space-y-2">
-              <p className="text-xs font-medium text-slate-300 mb-1">Fases</p>
+            <div className="bg-pi-surface-muted/60 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-medium text-pi-text mb-1">Fases</p>
               {PHASE_INFO.map(({ id, label, color }) => (
                 <div key={id} className="flex items-center gap-2">
                   <div className={cn("w-2 h-2 rounded-full flex-none", statusDot[phases[id].status])} />
-                  <span className="text-xs text-slate-400 flex-1">{label}</span>
-                  <span className="text-[10px] text-slate-600 capitalize">{phases[id].status}</span>
+                  <span className="text-xs text-pi-text-muted flex-1">{label}</span>
+                  <span className="text-[10px] text-pi-text-muted/60 capitalize">{phases[id].status}</span>
                 </div>
               ))}
             </div>
 
             {/* Keyboard shortcuts */}
-            <div className="bg-slate-800/60 rounded-xl p-3">
-              <p className="text-xs font-medium text-slate-300 mb-1.5">Atalhos</p>
+            <div className="bg-pi-surface-muted/60 rounded-xl p-3">
+              <p className="text-xs font-medium text-pi-text mb-1.5">Atalhos</p>
               <div className="space-y-1">
                 {[
                   { key: "R",       desc: "Rodar nó selecionado" },
@@ -172,8 +172,8 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
                   { key: "Esc",     desc: "Cancelar run" },
                 ].map(({ key, desc }) => (
                   <div key={key} className="flex justify-between text-xs gap-2">
-                    <kbd className="bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono text-[10px]">{key}</kbd>
-                    <span className="text-slate-500 text-right">{desc}</span>
+                    <kbd className="bg-pi-surface text-pi-text rounded px-1.5 py-0.5 font-mono text-[10px]">{key}</kbd>
+                    <span className="text-pi-text-muted text-right">{desc}</span>
                   </div>
                 ))}
               </div>
@@ -183,28 +183,28 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
 
         {tab === "brand" && (
           <div className="space-y-3">
-            <p className="text-xs text-slate-500">Brand Kit do cliente selecionado.</p>
+            <p className="text-xs text-pi-text-muted">Brand Kit do cliente selecionado.</p>
             {clientId ? (
               <a
                 href={`/clients/${clientId}/brand`}
-                className="flex items-center justify-between bg-slate-800/60 hover:bg-slate-700/60 rounded-xl p-3 transition-colors"
+                className="flex items-center justify-between bg-pi-surface-muted/60 hover:bg-pi-surface-muted rounded-xl p-3 transition-colors"
               >
                 <div className="flex items-center gap-2.5">
-                  <Palette className="w-4 h-4 text-violet-400" />
-                  <span className="text-xs text-slate-300">Abrir Brand Kit</span>
+                  <Palette className="w-4 h-4 text-pi-accent" />
+                  <span className="text-xs text-pi-text">Abrir Brand Kit</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                <ChevronRight className="w-3.5 h-3.5 text-pi-text-muted" />
               </a>
             ) : (
-              <p className="text-xs text-slate-600 text-center py-4">Nenhum cliente associado</p>
+              <p className="text-xs text-pi-text-muted/60 text-center py-4">Nenhum cliente associado</p>
             )}
           </div>
         )}
 
         {tab === "history" && (
           <div className="space-y-2">
-            <p className="text-xs text-slate-500">Versões salvas automaticamente.</p>
-            <div className="text-xs text-slate-600 text-center py-6">
+            <p className="text-xs text-pi-text-muted">Versões salvas automaticamente.</p>
+            <div className="text-xs text-pi-text-muted/60 text-center py-6">
               Histórico disponível em breve
             </div>
           </div>
@@ -251,48 +251,48 @@ function ExecuteDropdown({ clientId, onRunAll, onCheckpoint, onStep }: {
       </div>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-64 bg-slate-900 border border-slate-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-1 w-64 bg-pi-surface border border-pi-border rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="p-1">
             <button
               onClick={() => { onStep(); setOpen(false); setMode("step"); }}
-              className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors text-left"
+              className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-pi-surface-muted transition-colors text-left"
             >
-              <Play className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-none" />
+              <Play className="w-3.5 h-3.5 text-pi-text-muted mt-0.5 flex-none" />
               <div>
-                <p className="text-xs font-medium text-slate-200">Rodar próxima fase</p>
-                <p className="text-[10px] text-slate-500">Modo step — revisão entre cada fase</p>
+                <p className="text-xs font-medium text-pi-text">Rodar próxima fase</p>
+                <p className="text-[10px] text-pi-text-muted">Modo step — revisão entre cada fase</p>
               </div>
             </button>
 
-            <div className="border-t border-slate-800 my-1" />
+            <div className="border-t border-pi-border my-1" />
 
             {CHECKPOINT_OPTIONS.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => { setCheckpointAt(opt.value); setMode("checkpoint"); onCheckpoint(opt.value); setOpen(false); }}
                 className={cn(
-                  "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors text-left",
-                  mode === "checkpoint" && checkpointAt === opt.value && "bg-slate-800",
+                  "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-pi-surface-muted transition-colors text-left",
+                  mode === "checkpoint" && checkpointAt === opt.value && "bg-pi-surface-muted",
                 )}
               >
-                <span className="text-slate-400 text-xs mt-0.5 flex-none">⏸</span>
+                <span className="text-pi-text-muted text-xs mt-0.5 flex-none">⏸</span>
                 <div>
-                  <p className="text-xs font-medium text-slate-200">{opt.label}</p>
-                  {opt.value === "prompt" && <p className="text-[10px] text-slate-500">Recomendado — revise antes de gastar créditos</p>}
+                  <p className="text-xs font-medium text-pi-text">{opt.label}</p>
+                  {opt.value === "prompt" && <p className="text-[10px] text-pi-text-muted">Recomendado — revise antes de gastar créditos</p>}
                 </div>
               </button>
             ))}
 
-            <div className="border-t border-slate-800 my-1" />
+            <div className="border-t border-pi-border my-1" />
 
             <button
               onClick={() => { onRunAll(); setOpen(false); setMode("run-all"); }}
-              className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors text-left"
+              className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-pi-surface-muted transition-colors text-left"
             >
               <Zap className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-none" />
               <div>
                 <p className="text-xs font-medium text-amber-300">Rodar tudo sem parar</p>
-                <p className="text-[10px] text-slate-500">Expert — sem pausas, sem aprovações</p>
+                <p className="text-[10px] text-pi-text-muted">Expert — sem pausas, sem aprovações</p>
               </div>
             </button>
           </div>
@@ -485,11 +485,11 @@ function CanvasInner({ flowId }: { flowId: string }) {
   }, [autosave, clientId, nodes]);
 
   return (
-    <div className="flex h-full w-full bg-slate-950">
+    <div className="flex h-full w-full bg-pi-bg">
       {/* Onboarding overlay */}
       {showOnboarding && (
         <div
-          className="absolute inset-0 z-40 flex items-center justify-center backdrop-blur-sm bg-slate-950/60"
+          className="absolute inset-0 z-40 flex items-center justify-center backdrop-blur-sm bg-pi-bg/60"
           onClick={() => setShowOnboarding(false)}
         >
           <div onClick={e => e.stopPropagation()}>
@@ -516,17 +516,17 @@ function CanvasInner({ flowId }: { flowId: string }) {
           proOptions={{ hideAttribution: true }}
           panOnScroll
           selectionOnDrag
-          className="bg-slate-950"
+          className="bg-pi-bg"
         >
           <Background
             variant={BackgroundVariant.Dots}
             gap={24}
             size={1}
-            color="#1e293b"
+            color="var(--pi-border)"
           />
 
           <Controls
-            className="!bg-slate-900 !border-slate-700/60 !rounded-xl !overflow-hidden !shadow-lg"
+            className="!bg-pi-surface !border-pi-border/60 !rounded-xl !overflow-hidden !shadow-lg"
             showInteractive={false}
           />
 
@@ -548,7 +548,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
 
           {/* Top-left branding + client picker */}
           <Panel position="top-left">
-            <div className="flex items-center gap-3 bg-slate-900/90 backdrop-blur-sm border border-slate-700/60 rounded-2xl px-4 py-2.5 shadow-lg">
+            <div className="flex items-center gap-3 bg-pi-surface/90 backdrop-blur-sm border border-pi-border/60 rounded-2xl px-4 py-2.5 shadow-lg">
               <div className="w-7 h-7 rounded-lg bg-violet-500/20 flex items-center justify-center">
                 <Sparkles className="w-3.5 h-3.5 text-violet-400" />
               </div>
@@ -591,7 +591,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSideOpen(v => !v)}
-                className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-sm border border-slate-700/60 rounded-xl px-3 py-2 text-xs font-medium text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors shadow-lg"
+                className="flex items-center gap-1.5 bg-pi-surface/90 backdrop-blur-sm border border-pi-border/60 rounded-xl px-3 py-2 text-xs font-medium text-pi-text-muted hover:text-pi-text hover:border-pi-border transition-colors shadow-lg"
               >
                 {sideOpen ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
                 Painel
@@ -599,7 +599,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
 
               <button
                 onClick={() => autosave()}
-                className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-sm border border-pink-500/30 rounded-xl px-3 py-2 text-xs font-medium text-pink-400 hover:border-pink-400/60 hover:text-pink-300 transition-colors shadow-lg"
+                className="flex items-center gap-1.5 bg-pi-surface/90 backdrop-blur-sm border border-pink-500/30 rounded-xl px-3 py-2 text-xs font-medium text-pink-400 hover:border-pink-400/60 hover:text-pink-300 transition-colors shadow-lg"
               >
                 <Save className="w-3.5 h-3.5" />
                 Salvar
@@ -618,7 +618,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
 
       {/* Side panel */}
       {sideOpen && (
-        <div className="w-64 flex-none bg-slate-900/95 border-l border-slate-800 backdrop-blur-sm">
+        <div className="w-64 flex-none bg-pi-surface/95 border-l border-pi-border backdrop-blur-sm">
           <SidePanel
             tab={sideTab}
             setTab={setSideTab}

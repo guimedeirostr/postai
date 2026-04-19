@@ -17,7 +17,7 @@ export default async function DashboardLayout({
   const name  = headerStore.get("x-user-name")  ?? "Agência";
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-pi-bg">
       <DashboardSidebar userEmail={email} userName={name} />
       <main className="flex-1 overflow-auto">
         {children}
