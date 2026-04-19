@@ -2,12 +2,13 @@
 
 import { NodeProps, useReactFlow } from "@xyflow/react";
 import { FileText } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import BaseNodeV3 from "./BaseNodeV3";
 import { InlineRunButton } from "./InlineRunButton";
 import { ClientPicker } from "@/components/canvas/ClientPicker";
 import { useCanvasStore, canRun } from "@/lib/canvas/store";
 import { hashInput } from "@/lib/canvas/staleness";
+import { FORMATS, type FormatKey } from "@/types";
 
 interface BriefingData {
   clientId?: string;
@@ -18,9 +19,10 @@ interface BriefingData {
 export default function BriefingNode({ id, data, selected }: NodeProps) {
   const d = data as BriefingData;
   const { updateNodeData } = useReactFlow();
-  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, markStaleDownstream, approve } = useCanvasStore();
+  const { phases, clientId: storeClientId, clientContext, setStatus, setOutput, setInputHash, markStaleDownstream, approve } = useCanvasStore();
   const phaseStatus = phases.briefing.status;
   const effectiveClientId = storeClientId ?? d.clientId;
+  const [linkedInWarning, setLinkedInWarning] = useState(false);
 
   useEffect(() => {
     const h = hashInput({ clientId: effectiveClientId, objetivo: d.objetivo, formato: d.formato });
@@ -81,15 +83,41 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
         <div className="space-y-1">
           <label className="text-xs text-slate-400">Formato</label>
           <select
-            value={d.formato ?? "feed"}
-            onChange={e => updateNodeData(id, { formato: e.target.value })}
+            value={d.formato ?? "ig_feed"}
+            onChange={e => {
+              const key = e.target.value as FormatKey;
+              updateNodeData(id, { formato: key });
+              const spec = FORMATS[key];
+              if (spec?.platform === 'linkedin' && !clientContext?.brandKit) {
+                setLinkedInWarning(true);
+                setTimeout(() => setLinkedInWarning(false), 4000);
+              } else {
+                setLinkedInWarning(false);
+              }
+            }}
             className="w-full bg-slate-800/60 border border-slate-600/50 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-400/50"
           >
-            <option value="feed">Feed</option>
-            <option value="carousel">Carrossel</option>
-            <option value="story">Stories</option>
-            <option value="reels-cover">Capa de Reels</option>
+            <optgroup label="Instagram">
+              <option value="ig_feed">Feed (1:1)</option>
+              <option value="ig_carousel">Carrossel (1:1)</option>
+              <option value="ig_stories">Stories (9:16)</option>
+              <option value="ig_reels_cover">Capa de Reels (9:16)</option>
+            </optgroup>
+            <optgroup label="LinkedIn">
+              <option value="li_post_square">Post Quadrado (1:1)</option>
+              <option value="li_post_horizontal">Post Horizontal (1.91:1)</option>
+              <option value="li_carousel_pdf">Carrossel PDF (4:5)</option>
+              <option value="li_article">Artigo (1.91:1)</option>
+            </optgroup>
           </select>
+          {linkedInWarning && (
+            <p className="text-[10px] text-amber-400 mt-1">
+              Este cliente não tem LinkedIn cadastrado.{" "}
+              {effectiveClientId && (
+                <a href={`/clients`} className="underline">Adicionar agora</a>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="flex justify-end pt-1">

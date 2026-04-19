@@ -8,6 +8,17 @@ async function getClientOrFail(id: string, agencyId: string) {
   return doc;
 }
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const doc = await getClientOrFail(id, user.uid);
+  if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  return NextResponse.json({ client: { id: doc.id, ...doc.data() } });
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,7 +31,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const allowed = [
     "name", "logo_url", "primary_color", "secondary_color",
     "segment", "target_audience", "tone_of_voice",
-    "instagram_handle", "bio", "keywords", "avoid_words",
+    "instagram_handle", "linkedin_handle", "social_networks",
+    "bio", "keywords", "avoid_words",
   ];
   const update: Record<string, unknown> = {};
   for (const key of allowed) {

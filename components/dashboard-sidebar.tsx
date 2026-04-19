@@ -9,14 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   LayoutDashboard, Users, ImageIcon, Settings,
-  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow, Layers,
+  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow, Layers, Palette,
 } from "lucide-react";
 import { useState } from "react";
 
 const navItems = [
-  { href: "/",          label: "Dashboard",     icon: LayoutDashboard },
-  { href: "/clients",   label: "Clientes",      icon: Users },
-  { href: "/posts",     label: "Posts Gerados", icon: ImageIcon },
+  { href: "/",            label: "Dashboard",     icon: LayoutDashboard },
+  { href: "/clients",     label: "Clientes",      icon: Users },
+  { href: "/brand-kits",  label: "Brand Kits",    icon: Palette },
+  { href: "/posts",       label: "Posts Gerados", icon: ImageIcon },
   { href: "/variants",  label: "Variantes",     icon: Layers },
   { href: "/carousels", label: "Carrosseis",    icon: GalleryHorizontal },
   { href: "/canvas/new", label: "Canvas IA",     icon: Workflow },

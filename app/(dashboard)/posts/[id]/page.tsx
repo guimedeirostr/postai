@@ -9,6 +9,7 @@ import {
   ArrowLeft, CheckCircle2, Circle, Loader2, XCircle,
   Brain, Palette, Zap, Eye, ScanSearch, ImageIcon,
 } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import type { GeneratedPost } from "@/types";
 
@@ -120,7 +121,20 @@ export default function PostTimelinePage({ params }: { params: Promise<{ id: str
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900 leading-snug">{post.headline ?? "Post"}</h1>
-            <p className="text-sm text-slate-400 mt-1">{post.client_name} · {formatDate(post.created_at)}</p>
+            <div className="flex items-center flex-wrap gap-2 mt-1">
+              <span className="text-sm text-slate-400">{post.client_name} · {formatDate(post.created_at)}</span>
+              {post.client_id && (
+                <>
+                  <span className="text-slate-200">·</span>
+                  <a href={`/clients/${post.client_id}/brand`} className="text-xs text-violet-600 hover:underline flex items-center gap-1">
+                    <Palette className="w-3 h-3" /> Brand Kit
+                  </a>
+                  <a href={`/clients/${post.client_id}/memory`} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                    <Brain className="w-3 h-3" /> Memória
+                  </a>
+                </>
+              )}
+            </div>
           </div>
           {(post.composed_url ?? post.image_url) && (
             <div className="w-16 h-16 rounded-xl overflow-hidden border flex-none">

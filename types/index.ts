@@ -838,3 +838,37 @@ export interface Recipe {
   description?: string;
   thumbnail?:   string;
 }
+
+// ── Canvas V3 Format System ────────────────────────────────────────────────────
+
+export type FormatKey =
+  | 'ig_feed'
+  | 'ig_carousel'
+  | 'ig_stories'
+  | 'ig_reels_cover'
+  | 'li_post_square'
+  | 'li_post_horizontal'
+  | 'li_carousel_pdf'
+  | 'li_article';
+
+export interface FormatSpec {
+  key: FormatKey;
+  platform: 'instagram' | 'linkedin';
+  label: string;
+  aspectRatio: '1:1' | '4:5' | '9:16' | '1.91:1';
+  maxSlides?: number;
+  copyStyle: 'ig-casual' | 'ig-storytelling' | 'li-professional' | 'li-thought-leadership';
+  ctaStyle: 'link-in-bio' | 'direct-link' | 'comment' | 'dm';
+  charLimit?: number;
+}
+
+export const FORMATS: Record<FormatKey, FormatSpec> = {
+  ig_feed:            { key: 'ig_feed',            platform: 'instagram', label: 'Feed',            aspectRatio: '1:1',    copyStyle: 'ig-casual',           ctaStyle: 'link-in-bio',  charLimit: 2200 },
+  ig_carousel:        { key: 'ig_carousel',        platform: 'instagram', label: 'Carrossel',       aspectRatio: '1:1',    maxSlides: 10, copyStyle: 'ig-storytelling', ctaStyle: 'link-in-bio',  charLimit: 2200 },
+  ig_stories:         { key: 'ig_stories',         platform: 'instagram', label: 'Stories',         aspectRatio: '9:16',   copyStyle: 'ig-casual',           ctaStyle: 'dm' },
+  ig_reels_cover:     { key: 'ig_reels_cover',     platform: 'instagram', label: 'Capa de Reels',   aspectRatio: '9:16',   copyStyle: 'ig-casual',           ctaStyle: 'link-in-bio' },
+  li_post_square:     { key: 'li_post_square',     platform: 'linkedin',  label: 'Post Quadrado',   aspectRatio: '1:1',    copyStyle: 'li-professional',     ctaStyle: 'direct-link',  charLimit: 3000 },
+  li_post_horizontal: { key: 'li_post_horizontal', platform: 'linkedin',  label: 'Post Horizontal', aspectRatio: '1.91:1', copyStyle: 'li-professional',     ctaStyle: 'direct-link',  charLimit: 3000 },
+  li_carousel_pdf:    { key: 'li_carousel_pdf',    platform: 'linkedin',  label: 'Carrossel PDF',   aspectRatio: '4:5',    maxSlides: 12, copyStyle: 'li-thought-leadership', ctaStyle: 'comment', charLimit: 3000 },
+  li_article:         { key: 'li_article',         platform: 'linkedin',  label: 'Artigo',          aspectRatio: '1.91:1', copyStyle: 'li-thought-leadership', ctaStyle: 'direct-link' },
+};

@@ -187,11 +187,13 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
             {clientId ? (
               <a
                 href={`/clients/${clientId}/brand`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center justify-between bg-pi-surface-muted/60 hover:bg-pi-surface-muted rounded-xl p-3 transition-colors"
               >
                 <div className="flex items-center gap-2.5">
                   <Palette className="w-4 h-4 text-pi-accent" />
-                  <span className="text-xs text-pi-text">Abrir Brand Kit</span>
+                  <span className="text-xs text-pi-text">↗ Abrir Brand Kit completo</span>
                 </div>
                 <ChevronRight className="w-3.5 h-3.5 text-pi-text-muted" />
               </a>

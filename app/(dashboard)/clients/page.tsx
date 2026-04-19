@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch, GalleryHorizontal, RotateCcw } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch, GalleryHorizontal, RotateCcw, Palette, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientFormModal } from "@/components/client-form-modal";
@@ -215,7 +215,15 @@ export default function ClientsPage() {
                 )}
 
                 {/* Actions */}
-                <div className="flex gap-2 mt-4">
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <a href={`/clients/${client.id}/brand`}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-violet-200 text-violet-700 hover:bg-violet-50 transition-colors">
+                    <Palette className="w-3.5 h-3.5" /> Brand Kit
+                  </a>
+                  <a href={`/clients/${client.id}/memory`}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50 transition-colors">
+                    <Brain className="w-3.5 h-3.5" /> Memória
+                  </a>
                   <Button size="sm" variant="outline"
                     onClick={() => setViewPhotos(client)}
                     className="text-slate-600 border-slate-200 hover:bg-slate-50">
@@ -234,7 +242,7 @@ export default function ClientsPage() {
                   </Button>
                   <Button size="sm" variant="outline"
                     onClick={() => setCarouseling(client)}
-                    className="flex-1 text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-50">
+                    className="text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-50">
                     <GalleryHorizontal className="w-3.5 h-3.5 mr-1.5" /> Carrossel
                   </Button>
                 </div>
