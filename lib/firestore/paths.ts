@@ -28,4 +28,10 @@ export const paths = {
 
   recipes:    () => `recipes`,
   recipe:     (r: string) => `recipes/${r}`,
+
+  // Prompt Compiler V3
+  compiledPrompt:  (u: string, c: string, p: string, s: string) =>
+    `users/${u}/clients/${c}/posts/${p}/slides/${s}/compiledPrompt/current`,
+  promptOutcomes:  (u: string, c: string) => `users/${u}/clients/${c}/promptOutcomes`,
+  promptOutcome:   (u: string, c: string, o: string) => `users/${u}/clients/${c}/promptOutcomes/${o}`,
 };

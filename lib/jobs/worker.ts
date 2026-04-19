@@ -1,11 +1,14 @@
 // lib/jobs/worker.ts
-// Processa um GenerationJob: resolve @slugs, chama modelo de imagem, salva Asset.
+// Processa um GenerationJob: usa o Prompt Compiler V3 para montar o finalText,
+// resolve @slugs, chama modelo de imagem (FAL.ai), salva Asset em Firestore.
 
 import { adminDb } from "@/lib/firebase-admin";
 import { paths } from "@/lib/firestore/paths";
 import { FieldValue } from "firebase-admin/firestore";
 import { resolveSlugRefs, succeedJob, failJob } from "./queue";
-import type { GenerationJob } from "@/types";
+import { compilePrompt } from "@/lib/ai/compiler";
+import { getBrandKit } from "@/lib/firestore/queries";
+import type { GenerationJob, SlideBriefing, PlanoDePost } from "@/types";
 
 const MAX_ATTEMPTS = 2;
 
@@ -112,24 +115,58 @@ export async function processJob(
   job:      GenerationJob,
 ): Promise<void> {
   const attempts = (job.attempts ?? 0) + 1;
+  const j = job as GenerationJob & {
+    postId?:   string;
+    slideId?:  string;
+    format?:   string;
+    slide?:    SlideBriefing;
+    plan?:     PlanoDePost;
+    useCompiler?: boolean;
+  };
 
   try {
-    // 1. Resolve @slug references in the prompt
-    const { resolvedPrompt, refs } = await resolveSlugRefs(uid, clientId, job.prompt);
-    const allRefs = [...(job.refs ?? []), ...refs];
+    let finalPrompt: string;
+    let allRefs:     string[];
+    let modelTarget: string = job.model;
 
-    // 2. Call image model
-    const format   = (job as GenerationJob & { format?: string }).format ?? "feed";
-    const imageUrl = await callFal(job.model, resolvedPrompt, allRefs, format);
+    if (j.useCompiler && j.slide && j.plan && j.postId && j.slideId) {
+      // ── Caminho com Prompt Compiler V3 ───────────────────────────────────────
+      const brandKit = await getBrandKit(uid, clientId);
+      const compiled = await compilePrompt({
+        uid,
+        clientId,
+        postId:   j.postId,
+        slideId:  j.slideId,
+        slide:    j.slide,
+        plan:     j.plan,
+        brandKit,
+        format:   j.format ?? "feed",
+      });
 
-    // 3. Save asset in Firestore
-    const assetId = await createGeneratedAsset(uid, clientId, imageUrl, resolvedPrompt, job.model);
+      finalPrompt = compiled.finalText;
+      allRefs     = compiled.refsResolved.map(r => r.url);
+      modelTarget = compiled.modelTarget;
+    } else {
+      // ── Caminho legado: resolve @slugs manualmente ────────────────────────────
+      const { resolvedPrompt, refs } = await resolveSlugRefs(uid, clientId, job.prompt);
+      finalPrompt = resolvedPrompt;
+      allRefs     = [...(job.refs ?? []), ...refs];
+    }
 
-    // 4. Mark job succeeded
+    // Mapeia modelTarget → FAL model string
+    const falModelMap: Record<string, string> = {
+      "flux-1.1-pro": "flux-pro",
+      "ideogram-3":   "ideogram-3",
+      "nano-banana":  "flux-pro",  // fallback enquanto Nano Banana não está integrado
+      "flux-pro":     "flux-pro",
+      "flux-schnell": "flux-schnell",
+    };
+    const format   = j.format ?? "feed";
+    const imageUrl = await callFal(falModelMap[modelTarget] ?? "flux-pro", finalPrompt, allRefs, format);
+
+    const assetId = await createGeneratedAsset(uid, clientId, imageUrl, finalPrompt, modelTarget);
     await succeedJob(uid, clientId, job.id, { assetId, url: imageUrl });
 
-    // 5. Update slide if applicable
-    const j = job as GenerationJob & { postId?: string; slideId?: string };
     if (j.postId && j.slideId) {
       await adminDb
         .doc(paths.slides(uid, clientId, j.postId) + `/${j.slideId}`)
@@ -140,7 +177,6 @@ export async function processJob(
     if (attempts >= MAX_ATTEMPTS) {
       await failJob(uid, clientId, job.id, message, attempts);
     } else {
-      // Re-queue for retry
       await adminDb.doc(paths.job(uid, clientId, job.id)).update({
         status:    "queued",
         error:     message,

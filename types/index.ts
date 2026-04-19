@@ -555,12 +555,15 @@ export interface RejectedPattern {
 }
 
 export interface ClientMemory {
-  toneExamples: string[];
+  toneExamples:     string[];
   rejectedPatterns: RejectedPattern[];
-  personas: { name: string; description: string }[];
-  productCatalog: { name: string; description: string }[];
-  stats: { approved: number; rejected: number; avgCriticScore: number };
-  updatedAt: Timestamp;
+  personas:         { name: string; description: string }[];
+  productCatalog:   { name: string; description: string }[];
+  stats:            { approved: number; rejected: number; avgCriticScore: number };
+  // Prompt Compiler ML
+  slotWeights?:     Partial<Record<PromptSlotKey, SlotWeightEntry>>;
+  customModels?:    { promptWriter?: string };
+  updatedAt:        Timestamp;
 }
 
 // ── Plan ──────────────────────────────────────────────────────────────────────
@@ -661,4 +664,69 @@ export interface GenerationJob {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   attempts: number;
+}
+
+// ── PROMPT COMPILER V3 ────────────────────────────────────────────────────────
+
+export type PromptSlotKey =
+  | "FORMATO" | "ESTETICA_MAE" | "REF_ESTILO" | "IMAGEM_PRINCIPAL"
+  | "ATMOSFERA" | "COMPOSICAO" | "PALETA" | "HIERARQUIA_TIPO"
+  | "TEXTO_LITERAL" | "ELEMENTOS_GRAFICOS" | "ACABAMENTO";
+
+export const PROMPT_SLOT_ORDER: PromptSlotKey[] = [
+  "FORMATO", "ESTETICA_MAE", "REF_ESTILO", "IMAGEM_PRINCIPAL",
+  "ATMOSFERA", "COMPOSICAO", "PALETA", "HIERARQUIA_TIPO",
+  "TEXTO_LITERAL", "ELEMENTOS_GRAFICOS", "ACABAMENTO",
+];
+
+export interface PromptSlot {
+  key: PromptSlotKey;
+  required: boolean;
+  value: string;
+  confidence?: number;
+  source: "brandkit" | "plan" | "recipe" | "ml" | "user";
+}
+
+export interface CompiledPromptV3 {
+  postId: string;
+  slideId: string;
+  slots: PromptSlot[];
+  finalText: string;
+  modelTarget: "flux-1.1-pro" | "ideogram-3" | "nano-banana";
+  refsResolved: { slug: string; url: string }[];
+  version: number;
+  compiledAt: Timestamp;
+}
+
+export interface PromptOutcome {
+  id: string;
+  compiledPromptId: string;
+  clientId: string;
+  slideId: string;
+  slotsSnapshot: PromptSlot[];
+  criticScore: number;
+  humanDecision: "approved" | "rejected" | "regenerated";
+  humanReason?: string;
+  brandFitScore?: number;
+  toneFitScore?: number;
+  at: Timestamp;
+}
+
+export interface SlotWeightEntry {
+  approvals:  number;
+  rejections: number;
+  total:      number;
+}
+
+// ── Recipe (template de fluxo) ────────────────────────────────────────────────
+
+export interface Recipe {
+  id:           string;
+  name:         string;
+  format:       string;
+  slidesCount:  number;
+  slotDefaults: Partial<Record<PromptSlotKey, string>>;
+  slotHints:    Partial<Record<PromptSlotKey, string>>;
+  description?: string;
+  thumbnail?:   string;
 }
