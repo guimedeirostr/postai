@@ -31,7 +31,9 @@ export type ImageProvider =
   | "library_direct"
   | "ideogram"
   | "ideogram_text"
-  | "ideogram_img2img";
+  | "ideogram_img2img"
+  | "mystic2"
+  | "mystic";
 
 export interface CompiledPrompt {
   /** Prompt positivo completo — sempre em inglês */
