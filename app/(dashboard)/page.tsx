@@ -1,7 +1,11 @@
+"use client";
+
 export const dynamic = "force-dynamic";
 
-import { Sparkles, Users, ImageIcon, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, Users, ImageIcon, TrendingUp, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import CreatePostModal from "@/components/dashboard/CreatePostModal";
 
 const stats = [
   { label: "Clientes",        value: "0", icon: Users,      color: "text-violet-600", bg: "bg-violet-50" },
@@ -10,11 +14,22 @@ const stats = [
 ];
 
 export default function DashboardPage() {
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 mt-1">Bem-vindo ao PostAI — seu designer de posts com IA</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1">Bem-vindo ao PostAI — seu designer de posts com IA</p>
+        </div>
+        <button
+          onClick={() => setModalOpen(true)}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          Criar Post
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
@@ -38,12 +53,21 @@ export default function DashboardPage() {
           <div className="w-14 h-14 rounded-2xl bg-violet-100 flex items-center justify-center mb-4">
             <Sparkles className="w-7 h-7 text-violet-600" />
           </div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-2">Comece cadastrando um cliente</h2>
-          <p className="text-slate-500 text-sm max-w-sm">
-            Adicione o perfil de marca do seu cliente e a IA vai gerar posts no estilo exato da marca dele.
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">Comece criando um post</h2>
+          <p className="text-slate-500 text-sm max-w-sm mb-5">
+            O Diretor Criativo IA planeja, monta o canvas e direciona a geração de cada slide.
           </p>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Criar Post com IA
+          </button>
         </CardContent>
       </Card>
+
+      <CreatePostModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );
 }
