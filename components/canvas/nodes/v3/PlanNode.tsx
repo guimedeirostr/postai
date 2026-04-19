@@ -1,9 +1,11 @@
 "use client";
 
 import { NodeProps, useReactFlow } from "@xyflow/react";
-import { Brain, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { Brain, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import BaseNodeV3 from "./BaseNodeV3";
+import { useCanvasStore, canRun } from "@/lib/canvas/store";
+import { hashInput } from "@/lib/canvas/staleness";
 import type { PlanoDePost } from "@/types";
 
 interface PlanData {
@@ -20,30 +22,52 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
   const d = data as PlanData;
   const { updateNodeData } = useReactFlow();
   const [expanded, setExpanded] = useState(false);
+  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const phaseStatus = phases.plano.status;
+  const isRunnable = canRun(phases, 'plano');
 
-  async function generate() {
+  async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
     if (!d.clientId || !d.objetivo) return;
-    updateNodeData(id, { status: "loading" });
+    const input = { clientId: d.clientId, objetivo: d.objetivo, formato: d.formato ?? 'feed' };
+    const h = hashInput(input);
+    setStatus('plano', 'running');
+    setInputHash('plano', h);
+
     try {
-      const res = await fetch("/api/director/plan", {
+      const res = await fetch("/api/canvas/phase/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId:   d.clientId,
-          objetivo:   d.objetivo,
-          formato:    d.formato ?? "feed",
-          clientName: d.clientName,
-          postId:     d.postId,
-        }),
+        body: JSON.stringify({ clientId: d.clientId, phaseId: 'plano', input, triggeredBy, runId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao gerar plano");
-      updateNodeData(id, { plan: json.plan, status: "done" });
+      const plan = json.output?.plan ?? json.plan;
+      updateNodeData(id, { plan, status: "done" });
+      setOutput('plano', { plan });
+      markStaleDownstream('plano');
       setExpanded(true);
     } catch (err) {
-      updateNodeData(id, { status: "error" });
+      setStatus('plano', 'error');
       console.error(err);
     }
+  }
+
+  async function runToHere() {
+    // Run briefing first if needed
+    if (phases.briefing.status === 'idle') {
+      useCanvasStore.getState().setStatus('briefing', 'done');
+    }
+    await run('run-to-here');
+  }
+
+  async function handleApprove() {
+    if (!d.clientId || !phases.plano.output) return;
+    approve('plano');
+    await fetch("/api/canvas/phase/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phaseId: 'plano', clientId: d.clientId, runId }),
+    }).catch(() => null);
   }
 
   return (
@@ -51,9 +75,15 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
       label="Plano"
       icon={<Brain className="w-3.5 h-3.5" />}
       accentColor="#a78bfa"
-      status={d.status === "loading" ? "loading" : d.plan ? "done" : "idle"}
       selected={selected}
       width={320}
+      phaseId="plano"
+      phaseStatus={phaseStatus}
+      canRun={isRunnable}
+      onRun={() => run('step')}
+      onRunToHere={runToHere}
+      onRegenerate={() => run('regenerate')}
+      onApprove={handleApprove}
     >
       {!d.plan ? (
         <div className="space-y-2">
@@ -62,19 +92,9 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
               Conecte um BriefingNode com clientId e objetivo preenchidos
             </p>
           ) : (
-            <>
-              <p className="text-xs text-slate-400 text-center">
-                {d.status === "loading" ? "IA planejando…" : "Pronto para planejar"}
-              </p>
-              <button
-                onClick={generate}
-                disabled={d.status === "loading"}
-                className="w-full flex items-center justify-center gap-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 rounded-lg py-1.5 text-xs font-medium text-violet-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Brain className="w-3.5 h-3.5" />
-                Gerar Plano
-              </button>
-            </>
+            <p className="text-xs text-slate-400 text-center py-2">
+              {phaseStatus === "running" ? "IA planejando…" : "Use ▶ para gerar o plano"}
+            </p>
           )}
         </div>
       ) : (
@@ -87,23 +107,13 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
             ))}
           </div>
 
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => setExpanded(v => !v)}
-              className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300"
-            >
-              {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              {d.plan.slidesBriefing?.length ?? 0} slides
-            </button>
-            <button
-              onClick={generate}
-              disabled={d.status === "loading"}
-              className="flex items-center gap-1 text-xs text-slate-500 hover:text-violet-400 transition-colors disabled:opacity-40"
-              title="Regenerar plano"
-            >
-              <RefreshCw className="w-3 h-3" />
-            </button>
-          </div>
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300"
+          >
+            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {d.plan.slidesBriefing?.length ?? 0} slides
+          </button>
 
           {expanded && (
             <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">

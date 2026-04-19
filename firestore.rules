@@ -9,6 +9,14 @@ service cloud.firestore {
       match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
+
+      // Canvas Execution Modes — canvasRuns + phaseRuns
+      match /clients/{cid}/canvasRuns/{runId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+        match /phaseRuns/{phaseRunId} {
+          allow read, write: if request.auth != null && request.auth.uid == uid;
+        }
+      }
     }
 
     // ── Receitas globais (read-only para todos autenticados) ──────────────────

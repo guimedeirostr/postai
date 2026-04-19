@@ -716,12 +716,86 @@ export interface PromptOutcome {
   brandFitScore?: number;
   toneFitScore?: number;
   at: Timestamp;
+  // V3 phase-granular ML fields
+  phaseId?: PhaseId;
+  runId?: string;
+  phaseRunId?: string;
+  slotsUsed?: Record<string, string>;
+  approved?: boolean;
+  editedByUser?: boolean;
+  regenerationCount?: number;
+  timeToApproveMs?: number;
+  outputPreview?: string;
+  createdAt?: number;
 }
 
 export interface SlotWeightEntry {
   approvals:  number;
   rejections: number;
   total:      number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// V3 — Canvas Execution Modes (POSTAI_V3_EXECUTION_MODES.md)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type PhaseId =
+  | 'briefing'
+  | 'plano'
+  | 'prompt'
+  | 'copy'
+  | 'critico'
+  | 'output'
+  | 'memoria';
+
+export type PhaseStatus =
+  | 'idle'      // nunca rodou neste canvas
+  | 'queued'    // está na fila de um run-all
+  | 'running'   // em execução
+  | 'done'      // rodou e está fresco
+  | 'stale'     // rodou, mas um upstream mudou após isso
+  | 'error'     // última execução falhou
+  | 'skipped';  // usuário pulou em run-all
+
+export interface PhaseRun {
+  id: string;
+  phaseId: PhaseId;
+  status: PhaseStatus;
+  inputHash: string;
+  input: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  errorMessage?: string;
+  startedAt: number;
+  finishedAt?: number;
+  latencyMs?: number;
+  modelUsed?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  costUsd?: number;
+  triggeredBy: 'step' | 'run-to-here' | 'run-all' | 'regenerate';
+  approvedByUser?: boolean;
+  editedByUser?: boolean;
+  editDiff?: Record<string, unknown>;
+}
+
+export interface BriefingInput {
+  clientId: string;
+  objetivo: string;
+  formato: string;
+}
+
+export interface CanvasRun {
+  id: string;
+  clientId: string;
+  postId?: string;
+  briefingSnapshot: BriefingInput;
+  mode: 'step' | 'checkpoint' | 'run-all';
+  checkpointAt?: PhaseId;
+  startedAt: number;
+  finishedAt?: number;
+  finalStatus: 'draft' | 'approved' | 'rejected' | 'abandoned';
+  totalCostUsd?: number;
+  createdBy: string;
 }
 
 // ── Recipe (template de fluxo) ────────────────────────────────────────────────

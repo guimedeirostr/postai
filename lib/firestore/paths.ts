@@ -34,4 +34,10 @@ export const paths = {
     `users/${u}/clients/${c}/posts/${p}/slides/${s}/compiledPrompt/current`,
   promptOutcomes:  (u: string, c: string) => `users/${u}/clients/${c}/promptOutcomes`,
   promptOutcome:   (u: string, c: string, o: string) => `users/${u}/clients/${c}/promptOutcomes/${o}`,
+
+  // Canvas Execution Modes V3
+  canvasRuns:   (u: string, c: string) => `users/${u}/clients/${c}/canvasRuns`,
+  canvasRun:    (u: string, c: string, r: string) => `users/${u}/clients/${c}/canvasRuns/${r}`,
+  phaseRuns:    (u: string, c: string, r: string) => `users/${u}/clients/${c}/canvasRuns/${r}/phaseRuns`,
+  phaseRun:     (u: string, c: string, r: string, p: string) => `users/${u}/clients/${c}/canvasRuns/${r}/phaseRuns/${p}`,
 };

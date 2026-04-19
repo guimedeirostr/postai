@@ -3,30 +3,72 @@
 import { NodeProps } from "@xyflow/react";
 import { Download, ExternalLink } from "lucide-react";
 import BaseNodeV3 from "./BaseNodeV3";
+import { useCanvasStore, canRun } from "@/lib/canvas/store";
+import { hashInput } from "@/lib/canvas/staleness";
 
 interface OutputData {
   imageUrl?: string;
   postId?: string;
   status?: string;
+  clientId?: string;
 }
 
 export default function OutputNode({ data, selected }: NodeProps) {
   const d = data as OutputData;
+  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const phaseStatus = phases.output.status;
+  const isRunnable = canRun(phases, 'output');
   const hasOutput = !!d.imageUrl;
+
+  async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
+    const input = { imageUrl: d.imageUrl, clientId: d.clientId };
+    const h = hashInput(input);
+    setStatus('output', 'running');
+    setInputHash('output', h);
+
+    try {
+      const res = await fetch("/api/canvas/phase/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: d.clientId, phaseId: 'output', input, triggeredBy, runId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro no output");
+      setOutput('output', json.output ?? {});
+      markStaleDownstream('output');
+    } catch {
+      setStatus('output', 'error');
+    }
+  }
+
+  async function handleApprove() {
+    approve('output');
+    await fetch("/api/canvas/phase/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phaseId: 'output', clientId: d.clientId, runId, postId: d.postId }),
+    }).catch(() => null);
+  }
 
   return (
     <BaseNodeV3
       label="Output"
       icon={<Download className="w-3.5 h-3.5" />}
       accentColor="#22d3ee"
-      status={d.status === "loading" ? "loading" : hasOutput ? "done" : "idle"}
       selected={selected}
       hasOutput={false}
       width={220}
+      phaseId="output"
+      phaseStatus={phaseStatus}
+      canRun={isRunnable}
+      onRun={() => run('step')}
+      onRunToHere={() => run('run-to-here')}
+      onRegenerate={() => run('regenerate')}
+      onApprove={handleApprove}
     >
       {!hasOutput ? (
         <p className="text-xs text-slate-500 text-center py-4">
-          {d.status === "loading" ? "Compondo…" : "Aguardando pipeline"}
+          {phaseStatus === "running" ? "Compondo…" : "Use ▶ após o Crítico"}
         </p>
       ) : (
         <div className="space-y-2.5">

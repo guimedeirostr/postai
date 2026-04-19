@@ -1,8 +1,10 @@
 "use client";
 
 import { NodeProps, useReactFlow } from "@xyflow/react";
-import { ShieldCheck, Star, RefreshCw } from "lucide-react";
+import { ShieldCheck, Star } from "lucide-react";
 import BaseNodeV3 from "./BaseNodeV3";
+import { useCanvasStore, canRun } from "@/lib/canvas/store";
+import { hashInput } from "@/lib/canvas/staleness";
 
 interface CriticData {
   score?: number;
@@ -18,6 +20,9 @@ interface CriticData {
 export default function CriticNode({ id, data, selected }: NodeProps) {
   const d = data as CriticData;
   const { updateNodeData } = useReactFlow();
+  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const phaseStatus = phases.critico.status;
+  const isRunnable = canRun(phases, 'critico');
   const hasResult = d.score !== undefined;
 
   const scoreColor =
@@ -26,27 +31,37 @@ export default function CriticNode({ id, data, selected }: NodeProps) {
     d.score >= 6  ? "#f59e0b" :
     "#f87171";
 
-  async function evaluate() {
+  async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
     if (!d.imageUrl || !d.brief) return;
-    updateNodeData(id, { status: "loading" });
+    const input = { imageUrl: d.imageUrl, brief: d.brief, clientId: d.clientId };
+    const h = hashInput(input);
+    setStatus('critico', 'running');
+    setInputHash('critico', h);
+
     try {
-      const res = await fetch("/api/generate/critic", {
-        method:  "POST",
+      const res = await fetch("/api/canvas/phase/run", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          imageUrl:  d.imageUrl,
-          brief:     d.brief,
-          clientId:  d.clientId,
-          postId:    d.postId,
-          slideId:   d.slideId,
-        }),
+        body: JSON.stringify({ clientId: d.clientId, phaseId: 'critico', input, triggeredBy, runId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro na crítica");
-      updateNodeData(id, { score: json.score, notes: json.notes, status: "done" });
+      const out = json.output ?? {};
+      updateNodeData(id, { score: out.score, notes: out.notes });
+      setOutput('critico', out);
+      markStaleDownstream('critico');
     } catch {
-      updateNodeData(id, { status: "error" });
+      setStatus('critico', 'error');
     }
+  }
+
+  async function handleApprove() {
+    approve('critico');
+    await fetch("/api/canvas/phase/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phaseId: 'critico', clientId: d.clientId, runId }),
+    }).catch(() => null);
   }
 
   return (
@@ -54,42 +69,27 @@ export default function CriticNode({ id, data, selected }: NodeProps) {
       label="Crítico"
       icon={<ShieldCheck className="w-3.5 h-3.5" />}
       accentColor="#fb923c"
-      status={d.status === "loading" ? "loading" : hasResult ? "done" : "idle"}
       selected={selected}
       width={240}
+      phaseId="critico"
+      phaseStatus={phaseStatus}
+      canRun={isRunnable}
+      onRun={() => run('step')}
+      onRunToHere={() => run('run-to-here')}
+      onRegenerate={() => run('regenerate')}
+      onApprove={handleApprove}
     >
       {!hasResult ? (
-        <div className="space-y-2">
-          <p className="text-xs text-slate-500 text-center py-1">
-            {d.status === "loading" ? "Avaliando com GPT-4o…" : "Aguardando imagem gerada"}
-          </p>
-          {d.imageUrl && d.brief && d.status !== "loading" && (
-            <button
-              onClick={evaluate}
-              className="w-full flex items-center justify-center gap-1.5 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-lg py-1.5 text-xs font-medium text-orange-400 transition-colors"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Avaliar Imagem
-            </button>
-          )}
-        </div>
+        <p className="text-xs text-slate-500 text-center py-1">
+          {phaseStatus === "running" ? "Avaliando…" : "Use ▶ para avaliar"}
+        </p>
       ) : (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Star className="w-4 h-4" style={{ color: scoreColor }} />
-              <span className="text-lg font-bold" style={{ color: scoreColor }}>
-                {d.score}/10
-              </span>
-            </div>
-            <button
-              onClick={evaluate}
-              disabled={!d.imageUrl || !d.brief || d.status === "loading"}
-              className="text-slate-500 hover:text-orange-400 transition-colors disabled:opacity-30"
-              title="Re-avaliar"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
+          <div className="flex items-center gap-2">
+            <Star className="w-4 h-4" style={{ color: scoreColor }} />
+            <span className="text-lg font-bold" style={{ color: scoreColor }}>
+              {d.score}/10
+            </span>
           </div>
 
           {d.notes && (

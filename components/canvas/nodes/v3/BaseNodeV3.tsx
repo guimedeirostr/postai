@@ -3,6 +3,8 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NodeHeader } from "./NodeHeader";
+import type { PhaseId, PhaseStatus } from "@/types";
 
 export type NodeStatus = "idle" | "loading" | "done" | "error";
 
@@ -16,6 +18,14 @@ interface BaseNodeV3Props {
   hasOutput?: boolean;
   width?: number;
   selected?: NodeProps["selected"];
+  // Phase state machine props (V3 execution modes)
+  phaseId?: PhaseId;
+  phaseStatus?: PhaseStatus;
+  canRun?: boolean;
+  onRun?: () => void;
+  onRunToHere?: () => void;
+  onRegenerate?: () => void;
+  onApprove?: () => void;
 }
 
 export default function BaseNodeV3({
@@ -23,13 +33,20 @@ export default function BaseNodeV3({
   accentColor = "#a855f7",
   hasInput = true, hasOutput = true,
   width = 280, selected,
+  phaseId, phaseStatus, canRun = false,
+  onRun, onRunToHere, onRegenerate, onApprove,
 }: BaseNodeV3Props) {
+  const usePhaseHeader = phaseId !== undefined && phaseStatus !== undefined;
+
   return (
     <div
       className={cn(
         "relative rounded-2xl border shadow-lg backdrop-blur-sm transition-all duration-200",
         "bg-slate-900/90 border-slate-700/60",
         selected && "ring-2 ring-violet-500/60",
+        phaseStatus === 'stale' && "border-amber-500/40",
+        phaseStatus === 'error' && "border-red-500/40",
+        phaseStatus === 'done' && "border-emerald-500/30",
       )}
       style={{ width, boxShadow: selected ? `0 0 0 2px ${accentColor}40` : undefined }}
     >
@@ -38,19 +55,34 @@ export default function BaseNodeV3({
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
       </div>
 
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-700/50">
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-none"
-          style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
-        >
-          {icon}
+      {/* Header — phase-aware or legacy */}
+      {usePhaseHeader ? (
+        <NodeHeader
+          phaseId={phaseId}
+          status={phaseStatus}
+          canRun={canRun}
+          onRun={onRun ?? (() => {})}
+          onRunToHere={onRunToHere ?? (() => {})}
+          onRegenerate={onRegenerate ?? (() => {})}
+          onApprove={onApprove ?? (() => {})}
+          label={label}
+          icon={icon}
+          accentColor={accentColor}
+        />
+      ) : (
+        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-700/50">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center flex-none"
+            style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+          >
+            {icon}
+          </div>
+          <span className="text-sm font-semibold text-slate-200 flex-1 truncate">{label}</span>
+          {status === "loading" && <Loader2 className="w-4 h-4 text-violet-400 animate-spin flex-none" />}
+          {status === "done"    && <CheckCircle2 className="w-4 h-4 text-green-400 flex-none" />}
+          {status === "error"   && <XCircle className="w-4 h-4 text-red-400 flex-none" />}
         </div>
-        <span className="text-sm font-semibold text-slate-200 flex-1 truncate">{label}</span>
-        {status === "loading" && <Loader2 className="w-4 h-4 text-violet-400 animate-spin flex-none" />}
-        {status === "done"    && <CheckCircle2 className="w-4 h-4 text-green-400 flex-none" />}
-        {status === "error"   && <XCircle className="w-4 h-4 text-red-400 flex-none" />}
-      </div>
+      )}
 
       {/* Body */}
       <div className="p-4 space-y-3">{children}</div>

@@ -20,9 +20,8 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import {
-  Sparkles, Save, Loader2, Play,
-  LayoutTemplate, Palette, History,
-  ChevronRight, ChevronLeft, Zap,
+  Sparkles, Save, Loader2, Play, ChevronDown,
+  Palette, History, ChevronRight, ChevronLeft, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +34,8 @@ import ReferenceNode   from "@/components/canvas/nodes/v3/ReferenceNode";
 import CriticNode      from "@/components/canvas/nodes/v3/CriticNode";
 import OutputNode      from "@/components/canvas/nodes/v3/OutputNode";
 import ClientMemoryNode from "@/components/canvas/nodes/v3/ClientMemoryNode";
+import { useCanvasStore, type CanvasPhases } from "@/lib/canvas/store";
+import type { PhaseId } from "@/types";
 
 // ── Node / edge type registries ───────────────────────────────────────────────
 const nodeTypes = {
@@ -73,23 +74,52 @@ const DEFAULT_EDGES: Edge[] = [
   { id: "e7", source: "critic-1",    target: "output-1",  type: "glow", animated: false },
 ];
 
+// ── Checkpoint options ────────────────────────────────────────────────────────
+const CHECKPOINT_OPTIONS: { value: PhaseId; label: string }[] = [
+  { value: "plano",   label: "Pausar no Plano" },
+  { value: "prompt",  label: "Pausar no Prompt (recomendado)" },
+  { value: "critico", label: "Pausar no Crítico" },
+  { value: "output",  label: "Pausar no Output" },
+];
+
 // ── Side panel tabs ───────────────────────────────────────────────────────────
 type SideTab = "agent" | "brand" | "history";
 
-function SidePanel({ tab, setTab, clientId, flowId }: {
+function SidePanel({ tab, setTab, clientId, flowId, phases }: {
   tab: SideTab;
   setTab: (t: SideTab) => void;
   clientId: string | null;
   flowId: string;
+  phases: CanvasPhases;
 }) {
+  const PHASE_INFO: { id: PhaseId; label: string; color: string }[] = [
+    { id: "briefing", label: "Briefing",  color: "#60a5fa" },
+    { id: "plano",    label: "Plano",     color: "#a78bfa" },
+    { id: "prompt",   label: "Prompt",    color: "#f59e0b" },
+    { id: "copy",     label: "Copy",      color: "#34d399" },
+    { id: "critico",  label: "Crítica",   color: "#fb923c" },
+    { id: "output",   label: "Output",    color: "#22d3ee" },
+    { id: "memoria",  label: "Memória",   color: "#818cf8" },
+  ];
+
+  const statusDot: Record<string, string> = {
+    idle: "bg-slate-600",
+    queued: "bg-blue-500 animate-pulse",
+    running: "bg-violet-500 animate-pulse",
+    done: "bg-emerald-500",
+    stale: "bg-amber-500",
+    error: "bg-red-500",
+    skipped: "bg-slate-700",
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
       <div className="flex border-b border-slate-800">
         {([
-          { id: "agent",   label: "Agente",   icon: <Zap className="w-3.5 h-3.5" /> },
-          { id: "brand",   label: "Brand Kit", icon: <Palette className="w-3.5 h-3.5" /> },
-          { id: "history", label: "Histórico", icon: <History className="w-3.5 h-3.5" /> },
+          { id: "agent",   label: "Agente",    icon: <Zap className="w-3.5 h-3.5" /> },
+          { id: "brand",   label: "Brand Kit",  icon: <Palette className="w-3.5 h-3.5" /> },
+          { id: "history", label: "Histórico",  icon: <History className="w-3.5 h-3.5" /> },
         ] as { id: SideTab; label: string; icon: React.ReactNode }[]).map(t => (
           <button
             key={t.id}
@@ -112,39 +142,37 @@ function SidePanel({ tab, setTab, clientId, flowId }: {
         {tab === "agent" && (
           <div className="space-y-3">
             <p className="text-xs text-slate-500">
-              O Agente orquestra o pipeline. Clique em <strong className="text-slate-300">Gerar Todos</strong> para rodar todas as fases em sequência.
+              O Diretor executa fase a fase. Cada aprovação ensina o modelo.
             </p>
+
+            {/* Phase progress checklist */}
             <div className="bg-slate-800/60 rounded-xl p-3 space-y-2">
-              <p className="text-xs font-medium text-slate-300">Fases</p>
-              {[
-                { phase: "Briefing",  color: "#60a5fa" },
-                { phase: "Plano",     color: "#a78bfa" },
-                { phase: "Prompt",    color: "#f59e0b" },
-                { phase: "Copy",      color: "#34d399" },
-                { phase: "Crítica",   color: "#fb923c" },
-                { phase: "Output",    color: "#22d3ee" },
-              ].map(({ phase, color }) => (
-                <div key={phase} className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                  <span className="text-xs text-slate-400">{phase}</span>
+              <p className="text-xs font-medium text-slate-300 mb-1">Fases</p>
+              {PHASE_INFO.map(({ id, label, color }) => (
+                <div key={id} className="flex items-center gap-2">
+                  <div className={cn("w-2 h-2 rounded-full flex-none", statusDot[phases[id].status])} />
+                  <span className="text-xs text-slate-400 flex-1">{label}</span>
+                  <span className="text-[10px] text-slate-600 capitalize">{phases[id].status}</span>
                 </div>
               ))}
             </div>
+
+            {/* Keyboard shortcuts */}
             <div className="bg-slate-800/60 rounded-xl p-3">
               <p className="text-xs font-medium text-slate-300 mb-1.5">Atalhos</p>
               <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <kbd className="bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono">G</kbd>
-                  <span className="text-slate-500">Gerar todos</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <kbd className="bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono">S</kbd>
-                  <span className="text-slate-500">Salvar</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <kbd className="bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono">Space</kbd>
-                  <span className="text-slate-500">Pan livre</span>
-                </div>
+                {[
+                  { key: "G",       desc: "Executar (modo selecionado)" },
+                  { key: "Shift+G", desc: "Run All silencioso" },
+                  { key: "S",       desc: "Salvar" },
+                  { key: "Esc",     desc: "Cancelar run" },
+                  { key: "Space",   desc: "Pan livre" },
+                ].map(({ key, desc }) => (
+                  <div key={key} className="flex justify-between text-xs gap-2">
+                    <kbd className="bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono text-[10px]">{key}</kbd>
+                    <span className="text-slate-500 text-right">{desc}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -183,6 +211,94 @@ function SidePanel({ tab, setTab, clientId, flowId }: {
   );
 }
 
+// ── Execution dropdown ────────────────────────────────────────────────────────
+function ExecuteDropdown({ clientId, onRunAll, onCheckpoint, onStep }: {
+  clientId: string | null;
+  onRunAll: () => void;
+  onCheckpoint: (at: PhaseId) => void;
+  onStep: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { mode, setMode, checkpointAt, setCheckpointAt } = useCanvasStore();
+
+  return (
+    <div className="relative">
+      <div className="flex">
+        {/* Main execute button */}
+        <button
+          onClick={() => {
+            if (mode === "run-all") onRunAll();
+            else if (mode === "checkpoint") onCheckpoint(checkpointAt ?? "prompt");
+            else onStep();
+          }}
+          disabled={!clientId}
+          className="flex items-center gap-1.5 bg-emerald-500/10 backdrop-blur-sm border border-emerald-500/40 rounded-l-xl px-4 py-2 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400/60 transition-colors shadow-lg disabled:opacity-40"
+          title="Pressione G"
+        >
+          <Play className="w-3.5 h-3.5" />
+          ▶ Executar
+        </button>
+        {/* Chevron to open dropdown */}
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="flex items-center px-2 bg-emerald-500/10 backdrop-blur-sm border border-l-0 border-emerald-500/40 rounded-r-xl text-emerald-400 hover:bg-emerald-500/20 transition-colors shadow-lg"
+        >
+          <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", open && "rotate-180")} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-64 bg-slate-900 border border-slate-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+          <div className="p-1">
+            <button
+              onClick={() => { onStep(); setOpen(false); setMode("step"); }}
+              className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors text-left"
+            >
+              <Play className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-none" />
+              <div>
+                <p className="text-xs font-medium text-slate-200">Rodar próxima fase</p>
+                <p className="text-[10px] text-slate-500">Modo step — revisão entre cada fase</p>
+              </div>
+            </button>
+
+            <div className="border-t border-slate-800 my-1" />
+
+            {CHECKPOINT_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => { setCheckpointAt(opt.value); setMode("checkpoint"); onCheckpoint(opt.value); setOpen(false); }}
+                className={cn(
+                  "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors text-left",
+                  mode === "checkpoint" && checkpointAt === opt.value && "bg-slate-800",
+                )}
+              >
+                <span className="text-slate-400 text-xs mt-0.5 flex-none">⏸</span>
+                <div>
+                  <p className="text-xs font-medium text-slate-200">{opt.label}</p>
+                  {opt.value === "prompt" && <p className="text-[10px] text-slate-500">Recomendado — revise antes de gastar créditos</p>}
+                </div>
+              </button>
+            ))}
+
+            <div className="border-t border-slate-800 my-1" />
+
+            <button
+              onClick={() => { onRunAll(); setOpen(false); setMode("run-all"); }}
+              className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors text-left"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-none" />
+              <div>
+                <p className="text-xs font-medium text-amber-300">Rodar tudo sem parar</p>
+                <p className="text-[10px] text-slate-500">Expert — sem pausas, sem aprovações</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Canvas inner component (needs ReactFlow context) ─────────────────────────
 function CanvasInner({ flowId }: { flowId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(DEFAULT_NODES);
@@ -192,7 +308,9 @@ function CanvasInner({ flowId }: { flowId: string }) {
   const [sideTab, setSideTab] = useState<SideTab>("agent");
   const [clientId, setClientId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [checkpointToast, setCheckpointToast] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { phases, setStatus, reset } = useCanvasStore();
 
   // Derive clientId from flowId format: "{clientId}_{flowId}"
   useEffect(() => {
@@ -248,20 +366,71 @@ function CanvasInner({ flowId }: { flowId: string }) {
     [setEdges],
   );
 
+  // Get briefing from nodes
+  function getBriefing() {
+    const bn = nodes.find(n => n.type === "briefing");
+    const d = (bn?.data ?? {}) as { clientId?: string; objetivo?: string; formato?: string };
+    return {
+      clientId: clientId ?? d.clientId ?? "",
+      objetivo: d.objetivo ?? "",
+      formato: d.formato ?? "feed",
+    };
+  }
+
+  // Run with SSE
+  async function startRun(mode: "step" | "checkpoint" | "run-all", checkpointAt?: PhaseId) {
+    if (!clientId) return;
+    const briefing = getBriefing();
+
+    const res = await fetch("/api/canvas/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, mode, checkpointAt, briefing }),
+    });
+
+    if (!res.ok || !res.body) return;
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value);
+      for (const line of text.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "phase_start") setStatus(event.phaseId as PhaseId, "running");
+          if (event.type === "phase_done") setStatus(event.phaseId as PhaseId, "done");
+          if (event.type === "phase_error") setStatus(event.phaseId as PhaseId, "error");
+          if (event.type === "checkpoint_reached") {
+            setCheckpointToast(`Pausei no ${event.phaseId}. Revise e aprove para continuar.`);
+            setTimeout(() => setCheckpointToast(null), 5000);
+          }
+        } catch { /* ignore malformed SSE lines */ }
+      }
+    }
+  }
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "g" || e.key === "G") {
-        // TODO: trigger generate all
+      if (e.key === "Escape") reset();
+      if (e.key === "s" || e.key === "S") autosave();
+      if ((e.key === "g" || e.key === "G") && !e.shiftKey) {
+        const { mode, checkpointAt } = useCanvasStore.getState();
+        startRun(mode, checkpointAt);
       }
-      if (e.key === "s" || e.key === "S") {
-        autosave();
+      if ((e.key === "G") && e.shiftKey) {
+        startRun("run-all");
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [autosave]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autosave, clientId, nodes]);
 
   return (
     <div className="flex h-full w-full bg-slate-950">
@@ -333,6 +502,15 @@ function CanvasInner({ flowId }: { flowId: string }) {
             </div>
           </Panel>
 
+          {/* Checkpoint toast */}
+          {checkpointToast && (
+            <Panel position="top-center">
+              <div className="bg-amber-900/90 border border-amber-500/50 text-amber-100 text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg backdrop-blur-sm">
+                ⏸ {checkpointToast}
+              </div>
+            </Panel>
+          )}
+
           {/* Top-right action buttons */}
           <Panel position="top-right">
             <div className="flex items-center gap-2">
@@ -352,13 +530,12 @@ function CanvasInner({ flowId }: { flowId: string }) {
                 Salvar
               </button>
 
-              <button
-                className="flex items-center gap-1.5 bg-emerald-500/10 backdrop-blur-sm border border-emerald-500/40 rounded-xl px-4 py-2 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400/60 transition-colors shadow-lg"
-                title="Pressione G"
-              >
-                <Play className="w-3.5 h-3.5" />
-                Gerar Todos
-              </button>
+              <ExecuteDropdown
+                clientId={clientId}
+                onStep={() => startRun("step")}
+                onCheckpoint={(at) => startRun("checkpoint", at)}
+                onRunAll={() => startRun("run-all")}
+              />
             </div>
           </Panel>
         </ReactFlow>
@@ -372,6 +549,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
             setTab={setSideTab}
             clientId={clientId}
             flowId={flowId}
+            phases={phases}
           />
         </div>
       )}
