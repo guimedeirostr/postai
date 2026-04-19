@@ -446,6 +446,15 @@ export default function PostsPage() {
                       </Badge>
                     </div>
 
+                    {post.status === "failed" && post.failureReason && (
+                      <p
+                        className="text-xs text-red-500/80 truncate"
+                        title={post.failureReason}
+                      >
+                        {post.failureReason.slice(0, 80)}{post.failureReason.length > 80 ? "…" : ""}
+                      </p>
+                    )}
+
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>{FORMAT_LABEL[post.format]}</span>
                       <span className="flex items-center gap-1">

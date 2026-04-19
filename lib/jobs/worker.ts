@@ -171,11 +171,29 @@ export async function processJob(
       await adminDb
         .doc(paths.slides(uid, clientId, j.postId) + `/${j.slideId}`)
         .set({ assetId, assetUrl: imageUrl, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+
+      // G3: denormalize coverUrl to Post doc — set only if not already present
+      const postRef  = adminDb.doc(paths.post(uid, clientId, j.postId));
+      const postSnap = await postRef.get();
+      if (!postSnap.data()?.coverUrl) {
+        await postRef.set({ coverUrl: imageUrl, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    const message  = err instanceof Error ? err.message : "Erro desconhecido";
+    const failMsg  = `[image] ${message}`;
     if (attempts >= MAX_ATTEMPTS) {
       await failJob(uid, clientId, job.id, message, attempts);
+      // G1: also mark the Post as failed
+      if (j.postId) {
+        await adminDb.doc(paths.post(uid, clientId, j.postId)).set({
+          status:         "failed",
+          failureReason:  failMsg,
+          failurePhase:   "image",
+          failedAt:       FieldValue.serverTimestamp(),
+          updatedAt:      FieldValue.serverTimestamp(),
+        }, { merge: true }).catch(() => null);
+      }
     } else {
       await adminDb.doc(paths.job(uid, clientId, job.id)).update({
         status:    "queued",

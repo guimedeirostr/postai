@@ -178,6 +178,8 @@ export interface GeneratedPost {
   /** URLs das imagens compostas dos slides (preenchido após generate-linkedin-images) */
   linkedin_slide_urls?: string[];
   status: "pending" | "strategy" | "copy" | "art_direction" | "generating" | "composing" | "ready" | "approved" | "rejected" | "failed";
+  /** Motivo da falha, preenchido quando status === "failed" */
+  failureReason?: string;
   /** Score de qualidade pós-geração (0–100) avaliado via Claude Vision */
   quality_score?: number;
   quality_notes?: string;
@@ -624,10 +626,14 @@ export type PostV3Status =
 export interface PostV3 {
   id: string;
   clientId: string;
+  ownerUid?: string;
   flowId?: string;
   title: string;
   status: PostV3Status;
   failureReason?: string;
+  failurePhase?: "planning" | "copy" | "direction" | "image" | "compose" | "unknown";
+  failedAt?: Timestamp;
+  coverUrl?: string;
   plan?: PlanoDePost;
   format: "feed" | "carousel" | "reels-cover" | "story";
   createdAt: Timestamp;

@@ -2,19 +2,27 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sparkles, Users, ImageIcon, TrendingUp, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import CreatePostModal from "@/components/dashboard/CreatePostModal";
 
-const stats = [
-  { label: "Clientes",        value: "0", icon: Users,      color: "text-violet-600", bg: "bg-violet-50" },
-  { label: "Posts Gerados",   value: "0", icon: ImageIcon,  color: "text-blue-600",   bg: "bg-blue-50"   },
-  { label: "Posts Aprovados", value: "0", icon: TrendingUp, color: "text-green-600",  bg: "bg-green-50"  },
+const STAT_CONFIG = [
+  { key: "clients"  as const, label: "Clientes",        icon: Users,      color: "text-violet-600", bg: "bg-violet-50" },
+  { key: "posts"    as const, label: "Posts Gerados",   icon: ImageIcon,  color: "text-blue-600",   bg: "bg-blue-50"   },
+  { key: "approved" as const, label: "Posts Aprovados", icon: TrendingUp, color: "text-green-600",  bg: "bg-green-50"  },
 ];
 
 export default function DashboardPage() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [counts, setCounts] = useState({ clients: 0, posts: 0, approved: 0 });
+
+  useEffect(() => {
+    fetch("/api/stats/dashboard")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setCounts({ clients: d.clients, posts: d.posts, approved: d.approved }); })
+      .catch(() => null);
+  }, []);
 
   return (
     <div className="p-8">
@@ -33,8 +41,8 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-        {stats.map(({ label, value, icon: Icon, color, bg }) => (
-          <Card key={label} className="border-0 shadow-sm">
+        {STAT_CONFIG.map(({ key, label, icon: Icon, color, bg }) => (
+          <Card key={key} className="border-0 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-slate-500">{label}</CardTitle>
               <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center`}>
@@ -42,7 +50,7 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-slate-900">{value}</p>
+              <p className="text-3xl font-bold text-slate-900">{counts[key]}</p>
             </CardContent>
           </Card>
         ))}
