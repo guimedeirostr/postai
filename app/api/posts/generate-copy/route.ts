@@ -335,15 +335,17 @@ export async function POST(req: NextRequest) {
     let raw = "";
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      // Na última rodada remove ferramentas para forçar end_turn com JSON
+      const isLastRound = round === MAX_TOOL_ROUNDS;
       const response = await anthropic.messages.create({
         model:      MODEL,
         max_tokens: 8192,
         system:     systemPrompt,
-        ...(useTools ? { tools: COPY_TOOLS as unknown as Anthropic.Tool[] } : {}),
+        ...(useTools && !isLastRound ? { tools: COPY_TOOLS as unknown as Anthropic.Tool[] } : {}),
         messages,
       });
 
-      if (response.stop_reason === "end_turn" || !useTools) {
+      if (response.stop_reason === "end_turn" || !useTools || isLastRound) {
         raw = response.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
         break;
       }

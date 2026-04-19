@@ -3,6 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import { format as formatDateFns } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
   ImageIcon, Loader2, Hash, Copy, Check, X,
   Calendar, Tag, Download, Wand2, Layers, RefreshCw, ScanSearch, ChevronDown,
@@ -44,8 +46,7 @@ interface PostDetailModalProps {
 
 function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailModalProps) {
   const [copied,       setCopied]       = useState<string | null>(null);
-  const [imgLoading,   setImgLoading]   = useState(false);
-  const [imgError,     setImgError]     = useState<string | null>(null);
+  const [imgError]                     = useState<string | null>(null);
   const [compLoading,  setCompLoading]  = useState(false);
   const [compError,    setCompError]    = useState<string | null>(null);
   const [imageUrl,     setImageUrl]     = useState(post.image_url ?? null);
@@ -89,53 +90,6 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
       }
     } catch { setCompError("Erro inesperado. Tente novamente."); }
     setCompLoading(false);
-  }
-
-  async function handleGenerateImage() {
-    setImgLoading(true);
-    setImgError(null);
-    try {
-      const res  = await fetch("/api/posts/generate-image", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ post_id: post.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setImgError(data.error ?? "Erro ao iniciar geração"); setImgLoading(false); return; }
-
-      // FAL/Imagen4: sync — returns image_url directly
-      if (data.image_url) {
-        setImageUrl(data.image_url);
-        onPostUpdated?.(post.id, { image_url: data.image_url });
-        setImgLoading(false);
-        // auto-compose
-        if (!composedUrl) await handleCompose();
-        return;
-      }
-
-      // Freepik: async — poll
-      const { task_id, post_id } = data as { task_id: string; post_id: string };
-      for (let i = 0; i < 22; i++) {
-        await new Promise(r => setTimeout(r, 4000));
-        const check     = await fetch(`/api/posts/check-image?task_id=${task_id}&post_id=${post_id}`);
-        const checkData = await check.json() as { status: string; image_url?: string; composed_url?: string; error?: string };
-        if (checkData.status === "COMPLETED" && checkData.image_url) {
-          setImageUrl(checkData.image_url);
-          if (checkData.composed_url) {
-            setComposedUrl(checkData.composed_url);
-            setViewComposed(true);
-          }
-          onPostUpdated?.(post.id, { image_url: checkData.image_url, composed_url: checkData.composed_url ?? null, status: "ready" });
-          setImgLoading(false);
-          return;
-        }
-        if (checkData.status === "FAILED") {
-          setImgError(checkData.error ?? "Falha na geração"); setImgLoading(false); return;
-        }
-      }
-      setImgError("Timeout. Tente novamente.");
-    } catch { setImgError("Erro inesperado. Tente novamente."); }
-    setImgLoading(false);
   }
 
   const status = STATUS_BADGE[post.status] ?? STATUS_BADGE.ready;
@@ -285,15 +239,11 @@ function PostDetailModal({ post, client, onClose, onPostUpdated }: PostDetailMod
               <img src={imageUrl} alt={post.headline} className="w-full object-cover" />
             </div>
 
-          /* Sem imagem — botão gerar */
+          /* Sem imagem */
           ) : (
-            <div className="space-y-2">
-              <Button onClick={handleGenerateImage} disabled={imgLoading}
-                className="w-full bg-violet-600 hover:bg-violet-700 text-white">
-                {imgLoading
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando imagem...</>
-                  : <><ImageIcon className="w-4 h-4 mr-2" />Gerar imagem</>}
-              </Button>
+            <div className="flex flex-col items-center justify-center gap-3 py-10 text-slate-400">
+              <ImageIcon className="w-10 h-10 text-slate-200" />
+              <p className="text-sm">Imagem sendo gerada pelo pipeline…</p>
               {imgError && <p className="text-xs text-red-500 text-center">{imgError}</p>}
             </div>
           )}
@@ -414,8 +364,12 @@ export default function PostsPage() {
 
   function formatDate(ts: GeneratedPost["created_at"]) {
     if (!ts) return "";
-    const d = (ts as unknown as { toDate?: () => Date }).toDate?.() ?? new Date((ts as unknown as number) * 1000);
-    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+    try {
+      const d = (ts as unknown as { toDate?: () => Date }).toDate?.() ?? new Date((ts as unknown as number) * 1000);
+      return formatDateFns(d, "dd MMM", { locale: ptBR });
+    } catch {
+      return "";
+    }
   }
 
   return (

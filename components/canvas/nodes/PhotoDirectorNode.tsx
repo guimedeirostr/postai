@@ -22,6 +22,7 @@ interface AiProvider {
 
 const AI_PROVIDERS: AiProvider[] = [
   { id: "freepik",   label: "Freepik Mystic",   description: "Realista · Alta qualidade",     badge: "⭐" },
+  { id: "mystic2",   label: "Freepik Mystic 2",  description: "Nano Banana 2 · Geração nova",  badge: "🆕" },
   { id: "seedream",  label: "Freepik Seedream",  description: "Criativo · Estilo único"                   },
   { id: "fal",       label: "Flux Pro",          description: "Ultra-realista · Detalhado"                },
   { id: "imagen4",   label: "Google Imagen 4",   description: "Cinematográfico · Premium"                 },

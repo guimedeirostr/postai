@@ -636,7 +636,7 @@ export async function POST(req: NextRequest) {
     console.error("[POST /api/posts/generate]", message);
 
     if (postRef) {
-      await postRef.update({ status: "failed", error: message }).catch(() => null);
+      await postRef.update({ status: "failed", error: message, failureReason: message }).catch(() => null);
     }
 
     if (err instanceof FreepikAuthError || err instanceof ImagenError || err instanceof FalError) {

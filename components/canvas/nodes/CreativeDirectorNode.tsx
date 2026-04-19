@@ -164,7 +164,7 @@ export default function CreativeDirectorNode({ selected }: NodeProps<CreativeDir
       <BaseNode
         title="Diretor Criativo"
         icon={<Wand2 />}
-        status={copyStatus === "done" && referenceImageUrl ? "done" : "idle"}
+        status={copyStatus === "done" ? "done" : "idle"}
         selected={selected}
         width={280}
       >
@@ -244,9 +244,18 @@ export default function CreativeDirectorNode({ selected }: NodeProps<CreativeDir
               />
 
               {/* Info note */}
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                Referência de estilo visual — cores, composição e posicionamento de texto.
-              </p>
+              {referenceImageUrl ? (
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Referência de estilo visual — cores, composição e posicionamento de texto.
+                </p>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-lg bg-violet-50 border border-violet-200 px-2.5 py-1.5">
+                  <Wand2 className="h-3 w-3 text-violet-500 flex-none" />
+                  <p className="text-[10px] text-violet-700 leading-relaxed font-medium">
+                    Sem referência — IA cria 100% pela copy
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

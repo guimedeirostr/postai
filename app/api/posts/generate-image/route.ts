@@ -34,6 +34,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import {
   createTask,
+  createMystic2Task,
   createSeedreamTask,
   createSeedreamEditTask,
   freepikAspect,
@@ -821,6 +822,26 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ task_id, post_id, provider: "seedream" });
+    }
+
+    // ── Freepik Mystic 2 (assíncrono) ────────────────────────────────────────
+    if (resolvedProvider === "mystic2") {
+      const primaryColor2 = client.primary_color ?? "#6d28d9";
+      const aspect2       = freepikAspect(post.format as string, "mystic");
+
+      const { task_id } = await createMystic2Task({
+        prompt:       basePrompt,
+        aspect_ratio: aspect2,
+        realism:      true,
+        styling:      { colors: [{ color: primaryColor2, weight: 0.5 }] },
+      });
+
+      await postDoc.ref.update({
+        freepik_task_id: task_id,
+        image_provider:  "mystic2",
+      });
+
+      return NextResponse.json({ task_id, post_id, provider: "mystic2" });
     }
 
     // ── Freepik Mystic (default, assíncrono) ──────────────────────────────────

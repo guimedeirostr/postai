@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
-import { pollTask, pollSeedreamTask, FreepikAuthError } from "@/lib/freepik";
+import { pollTask, pollMystic2Task, pollSeedreamTask, FreepikAuthError } from "@/lib/freepik";
 import { pollReplicateImage } from "@/lib/replicate";
 import { composePost } from "@/lib/composer";
 import { composeLinkedInPost } from "@/lib/composer-linkedin";
@@ -82,10 +82,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ status: "PENDING" });
     }
 
-    // ── Freepik / Seedream polling ─────────────────────────────────────────────
-    const result    = provider === "seedream"
-      ? await pollSeedreamTask(task_id)
-      : await pollTask(task_id);
+    // ── Freepik / Seedream / Mystic 2 polling ────────────────────────────────
+    const result =
+      provider === "seedream" ? await pollSeedreamTask(task_id) :
+      provider === "mystic2"  ? await pollMystic2Task(task_id)  :
+      await pollTask(task_id);
 
     if (result.status === "COMPLETED") {
       if (!result.image_url) {

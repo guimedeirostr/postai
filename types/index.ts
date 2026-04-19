@@ -507,3 +507,158 @@ export interface GeneratedCarousel {
   created_at:          Timestamp;
   updated_at?:         Timestamp;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// V3 — Canvas node-based (PostAI v3 / POSTAI_V3_ROADMAP.md)
+// Armazenados em users/{uid}/clients/{cid}/...  (não toca a estrutura antiga)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Assets ────────────────────────────────────────────────────────────────────
+export type AssetKind = "reference" | "avatar" | "logo" | "product" | "generated";
+
+export interface Asset {
+  id: string;
+  clientId: string;
+  kind: AssetKind;
+  url: string;
+  storagePath: string;
+  slug: string;                   // @img1, @avatar2 — único por cliente
+  prompt?: string;
+  model?: string;
+  seed?: number;
+  expiresAt?: Timestamp | null;
+  createdAt: Timestamp;
+}
+
+export interface AssetEmbedding {
+  assetId: string;
+  embedding: number[];            // text-embedding-3-small = 1536 dims
+  createdAt: Timestamp;
+}
+
+// ── Brand Kit ─────────────────────────────────────────────────────────────────
+export interface BrandKit {
+  tone: string;
+  palette: { primary: string; secondary: string; accents: string[] };
+  typography: { headline: string; body: string; weights: number[] };
+  logoUrl?: string;
+  voiceGuidelines?: string;
+  dosAndDonts?: { dos: string[]; donts: string[] };
+  updatedAt: Timestamp;
+}
+
+// ── Client Memory ─────────────────────────────────────────────────────────────
+export interface RejectedPattern {
+  pattern: string;
+  reason: string;
+  at: Timestamp;
+}
+
+export interface ClientMemory {
+  toneExamples: string[];
+  rejectedPatterns: RejectedPattern[];
+  personas: { name: string; description: string }[];
+  productCatalog: { name: string; description: string }[];
+  stats: { approved: number; rejected: number; avgCriticScore: number };
+  updatedAt: Timestamp;
+}
+
+// ── Plan ──────────────────────────────────────────────────────────────────────
+export interface SlideBriefing {
+  n: number;
+  intencao: string;
+  visual: string;
+  copy: string;
+}
+
+export interface PlanoDePost {
+  bigIdea: string;
+  publico: string;
+  tomVoz: string[];
+  estrutura: string;
+  referenciasDecididas: string[];
+  estiloVisual: string;
+  paletaAplicada: string[];
+  slidesBriefing: SlideBriefing[];
+}
+
+// ── Flow (Canvas React Flow) ──────────────────────────────────────────────────
+export type NodeKind =
+  | "briefing" | "clientMemory" | "plan"
+  | "reference" | "avatar"
+  | "prompt" | "copy" | "textOverlay"
+  | "carousel" | "output" | "critic"
+  | "list" | "organize";
+
+export interface FlowNode {
+  id: string;
+  type: NodeKind;
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+}
+
+export interface FlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  animated?: boolean;
+}
+
+export interface Flow {
+  id: string;
+  clientId: string;
+  title: string;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  updatedAt: Timestamp;
+}
+
+// ── Post V3 & Slide ───────────────────────────────────────────────────────────
+export type PostV3Status =
+  | "draft" | "planning" | "directing" | "executing"
+  | "review" | "approved" | "failed";
+
+export interface PostV3 {
+  id: string;
+  clientId: string;
+  flowId?: string;
+  title: string;
+  status: PostV3Status;
+  failureReason?: string;
+  plan?: PlanoDePost;
+  format: "feed" | "carousel" | "reels-cover" | "story";
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface SlideV3 {
+  id: string;
+  postId: string;
+  order: number;
+  assetId?: string;
+  assetUrl?: string;
+  copy?: string;
+  prompt?: string;
+  criticScore?: number;
+  criticNotes?: string;
+}
+
+// ── Generation Jobs ───────────────────────────────────────────────────────────
+export type JobStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface GenerationJob {
+  id: string;
+  clientId: string;
+  flowId?: string;
+  nodeId: string;
+  model: string;
+  prompt: string;
+  refs: string[];
+  status: JobStatus;
+  costCredits: number;
+  output?: { assetId: string; url: string };
+  error?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  attempts: number;
+}

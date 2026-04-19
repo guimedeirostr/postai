@@ -13,6 +13,7 @@ const FREEPIK_API_KEY = () => process.env.FREEPIK_API_KEY ?? "";
 
 // ── Base URLs ────────────────────────────────────────────────────────────────
 const MYSTIC_BASE      = "https://api.freepik.com/v1/ai/mystic";
+const MYSTIC2_BASE     = "https://api.freepik.com/v2/ai/mystic";
 const SEEDREAM_BASE    = "https://api.freepik.com/v1/ai/text-to-image/seedream-v5-lite";
 const SEEDREAM_EDIT    = "https://api.freepik.com/v1/ai/text-to-image/seedream-v5-lite-edit";
 const IMAGE_TO_PROMPT  = "https://api.freepik.com/v1/ai/image-to-prompt";
@@ -151,6 +152,50 @@ export async function pollTask(task_id: string): Promise<FreepikTaskResult> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`Freepik Mystic poll error ${res.status}: ${JSON.stringify(err)}`);
+  }
+
+  const data   = await res.json();
+  const status = (data.data?.status ?? "PENDING") as FreepikTaskStatus;
+
+  if (status === "COMPLETED") {
+    const generated = data.data?.generated;
+    const image_url = Array.isArray(generated) ? (generated[0] as string) : null;
+    return { status, image_url, raw: data };
+  }
+
+  return { status, image_url: null, raw: data };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MYSTIC 2
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Creates a Mystic 2 generation task (txt2img). Same params as Mystic v1. */
+export async function createMystic2Task(params: FreepikGenerateParams): Promise<FreepikTask> {
+  const res = await freepikFetch(MYSTIC2_BASE, {
+    method: "POST",
+    body:   JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Freepik Mystic 2 error ${res.status}: ${JSON.stringify(err)}`);
+  }
+
+  const data    = await res.json();
+  const task_id = data.data?.task_id as string | undefined;
+  if (!task_id) throw new Error("task_id não retornado pela Freepik Mystic 2");
+
+  return { task_id };
+}
+
+/** Polls a Mystic 2 task. */
+export async function pollMystic2Task(task_id: string): Promise<FreepikTaskResult> {
+  const res = await freepikFetch(`${MYSTIC2_BASE}/${task_id}`, { method: "GET" });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Freepik Mystic 2 poll error ${res.status}: ${JSON.stringify(err)}`);
   }
 
   const data   = await res.json();

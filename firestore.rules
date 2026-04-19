@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── V3: árvore users/{uid}/... ─────────────────────────────────────────────
+    // Cada usuário acessa só os seus próprios dados. Subcoleções herdam.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // ── Receitas globais (read-only para todos autenticados) ──────────────────
+    match /recipes/{recipeId} {
+      allow read:  if request.auth != null;
+      allow write: if false; // só via Admin SDK / scripts
+    }
+
+    // ── Legado: clients/ e posts/ na raiz (acesso via Admin SDK no servidor) ──
+    // O client-side não acessa diretamente — só via Route Handlers autenticados.
+    match /clients/{docId} {
+      allow read, write: if false;
+    }
+    match /posts/{docId} {
+      allow read, write: if false;
+    }
+  }
+}
