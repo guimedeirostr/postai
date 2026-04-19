@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { paths } from "@/lib/firestore/paths";
-import { FieldValue } from "firebase-admin/firestore";
-import type { PhaseId, PhaseRun } from "@/types";
+import type { PhaseId, PhaseRun, ClientContext } from "@/types";
 
 type RunBody = {
   clientId: string;
@@ -13,24 +12,62 @@ type RunBody = {
   runId?: string;
 };
 
+async function loadClientContext(uid: string, clientId: string): Promise<ClientContext | null> {
+  const [clientSnap, brandKitSnap, memorySnap, dnaSnap, postsSnap] = await Promise.all([
+    adminDb.collection("clients").doc(clientId).get(),
+    adminDb.doc(paths.brandKit(uid, clientId)).get(),
+    adminDb.doc(paths.memory(uid, clientId)).get(),
+    adminDb.doc(`clients/${clientId}/brand_dna/current`).get(),
+    adminDb.collection("posts")
+      .where("client_id", "==", clientId)
+      .where("status", "==", "approved")
+      .orderBy("created_at", "desc")
+      .limit(10)
+      .get(),
+  ]);
+  if (!clientSnap.exists || clientSnap.data()?.agency_id !== uid) return null;
+  return {
+    clientId,
+    clientName: clientSnap.data()?.name ?? "",
+    brandKit:     brandKitSnap.exists ? (brandKitSnap.data() as ClientContext["brandKit"]) : undefined,
+    clientMemory: memorySnap.exists   ? (memorySnap.data()   as ClientContext["clientMemory"]) : undefined,
+    dnaVisual:    dnaSnap.exists      ? (dnaSnap.data()      as ClientContext["dnaVisual"]) : undefined,
+    recentApprovedPosts: postsSnap.docs.map(d => {
+      const p = d.data();
+      return { id: d.id, coverUrl: p.image_url ?? "", copy: p.caption ?? "" };
+    }),
+    loadedAt: Date.now(),
+  };
+}
+
 // ── Phase executors ───────────────────────────────────────────────────────────
 
-async function executePlano(input: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { clientId, objetivo, formato, clientName } = input as Record<string, string>;
+async function executePlano(input: Record<string, unknown>, ctx: ClientContext): Promise<Record<string, unknown>> {
+  const { objetivo, formato } = input as Record<string, string>;
+  const patternsLearned = ctx.clientMemory?.toneExamples ?? [];
+  const identidadeVisual = ctx.dnaVisual;
   const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/director/plan`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clientId, objetivo, formato: formato ?? "feed", clientName }),
+    body: JSON.stringify({
+      clientId: ctx.clientId,
+      objetivo,
+      formato: formato ?? "feed",
+      clientName: ctx.clientName,
+      patternsLearned,
+      identidadeVisual,
+    }),
   });
   if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao gerar plano");
   return res.json();
 }
 
-async function executeMemoria(input: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { clientId } = input as { clientId: string };
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/clients/${clientId}/memory`);
-  if (!res.ok) return { memory: null };
-  return res.json();
+async function executeMemoria(_input: Record<string, unknown>, ctx: ClientContext): Promise<Record<string, unknown>> {
+  return {
+    memory: ctx.clientMemory ?? null,
+    clientId: ctx.clientId,
+    clientName: ctx.clientName,
+  };
 }
 
 async function stub(name: string): Promise<Record<string, unknown>> {
@@ -41,11 +78,12 @@ async function stub(name: string): Promise<Record<string, unknown>> {
 async function dispatchPhase(
   phaseId: PhaseId,
   input: Record<string, unknown>,
+  ctx: ClientContext,
 ): Promise<Record<string, unknown>> {
   switch (phaseId) {
     case "briefing": return { ...input };
-    case "plano":    return executePlano(input);
-    case "memoria":  return executeMemoria(input);
+    case "plano":    return executePlano(input, ctx);
+    case "memoria":  return executeMemoria(input, ctx);
     case "prompt":   return stub("prompt");
     case "copy":     return stub("copy");
     case "critico":  return stub("critico");
@@ -69,6 +107,12 @@ export async function POST(req: NextRequest) {
   const uid = user.uid;
   const startedAt = Date.now();
 
+  // Load client context (validates ownership too)
+  const ctx = await loadClientContext(uid, clientId);
+  if (!ctx) {
+    return NextResponse.json({ error: "client_not_found" }, { status: 404 });
+  }
+
   // Ensure CanvasRun exists
   const runId = existingRunId ?? adminDb.collection(paths.canvasRuns(uid, clientId)).doc().id;
   const runRef = adminDb.doc(paths.canvasRun(uid, clientId, runId));
@@ -91,6 +135,7 @@ export async function POST(req: NextRequest) {
 
   await phaseRunRef.set({
     id: phaseRunId,
+    clientId,
     phaseId,
     status: "running",
     inputHash: "",
@@ -105,7 +150,7 @@ export async function POST(req: NextRequest) {
   const finishedAt = Date.now();
 
   try {
-    output = await dispatchPhase(phaseId, input);
+    output = await dispatchPhase(phaseId, input, ctx);
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
     await phaseRunRef.update({

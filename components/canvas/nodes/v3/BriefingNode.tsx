@@ -5,6 +5,7 @@ import { FileText } from "lucide-react";
 import { useEffect } from "react";
 import BaseNodeV3 from "./BaseNodeV3";
 import { InlineRunButton } from "./InlineRunButton";
+import { ClientPicker } from "@/components/canvas/ClientPicker";
 import { useCanvasStore, canRun } from "@/lib/canvas/store";
 import { hashInput } from "@/lib/canvas/staleness";
 
@@ -17,29 +18,29 @@ interface BriefingData {
 export default function BriefingNode({ id, data, selected }: NodeProps) {
   const d = data as BriefingData;
   const { updateNodeData } = useReactFlow();
-  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve } = useCanvasStore();
+  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, markStaleDownstream, approve } = useCanvasStore();
   const phaseStatus = phases.briefing.status;
+  const effectiveClientId = storeClientId ?? d.clientId;
 
   useEffect(() => {
-    const h = hashInput({ clientId: d.clientId, objetivo: d.objetivo, formato: d.formato });
+    const h = hashInput({ clientId: effectiveClientId, objetivo: d.objetivo, formato: d.formato });
     const prev = phases.briefing.inputHash;
     if (prev && prev !== h && (phaseStatus === 'done' || phaseStatus === 'stale')) {
       setInputHash('briefing', h);
       markStaleDownstream('briefing');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.clientId, d.objetivo, d.formato]);
+  }, [effectiveClientId, d.objetivo, d.formato]);
 
   async function run() {
-    if (!d.clientId) return;
-    const input = { clientId: d.clientId, objetivo: d.objetivo ?? '', formato: d.formato ?? 'feed' };
+    if (!effectiveClientId) return;
+    const input = { clientId: effectiveClientId, objetivo: d.objetivo ?? '', formato: d.formato ?? 'feed' };
     setStatus('briefing', 'running');
     setInputHash('briefing', hashInput(input));
     await new Promise(r => setTimeout(r, 200));
     setOutput('briefing', input);
   }
 
-  // Listen for canvas:run-phase shortcut
   useEffect(() => {
     function handler(e: Event) {
       if ((e as CustomEvent).detail?.phaseId === 'briefing') run();
@@ -47,7 +48,7 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
     window.addEventListener('canvas:run-phase', handler);
     return () => window.removeEventListener('canvas:run-phase', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.clientId, d.objetivo, d.formato]);
+  }, [effectiveClientId, d.objetivo, d.formato]);
 
   return (
     <BaseNodeV3
@@ -64,6 +65,10 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
       onApprove={() => approve('briefing')}
     >
       <div className="space-y-2.5">
+        <div className="space-y-1">
+          <label className="text-xs text-slate-400">Cliente</label>
+          <ClientPicker variant="briefing" />
+        </div>
         <div className="space-y-1">
           <label className="text-xs text-slate-400">Objetivo</label>
           <input
@@ -90,7 +95,7 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
         <div className="flex justify-end pt-1">
           <InlineRunButton
             status={phaseStatus}
-            canRun={canRun(phases, 'briefing')}
+            canRun={canRun(phases, 'briefing', effectiveClientId)}
             onRun={run}
             label="Salvar briefing"
             doneLabel="Rerodar briefing"

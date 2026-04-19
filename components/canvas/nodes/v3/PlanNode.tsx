@@ -23,9 +23,9 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
   const d = data as PlanData;
   const { updateNodeData } = useReactFlow();
   const [expanded, setExpanded] = useState(false);
-  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
   const phaseStatus = phases.plano.status;
-  const isRunnable = canRun(phases, 'plano');
+  const isRunnable = canRun(phases, 'plano', storeClientId);
 
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
     if (!d.clientId || !d.objetivo) return;

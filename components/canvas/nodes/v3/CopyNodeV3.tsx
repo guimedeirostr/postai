@@ -21,9 +21,9 @@ interface CopyData {
 export default function CopyNodeV3({ id, data, selected }: NodeProps) {
   const d = data as CopyData;
   const { updateNodeData } = useReactFlow();
-  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
   const phaseStatus = phases.copy.status;
-  const isRunnable = canRun(phases, 'copy');
+  const isRunnable = canRun(phases, 'copy', storeClientId);
 
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
     const input = { clientId: d.clientId, objetivo: d.objetivo, formato: d.formato, plan: d.plan };

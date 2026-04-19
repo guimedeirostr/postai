@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import type { PhaseId, PhaseStatus } from '@/types';
+import type { PhaseId, PhaseStatus, ClientContext } from '@/types';
 import { propagateStale, CANVAS_GRAPH } from './staleness';
 
 export type PhaseState = {
@@ -17,6 +17,8 @@ type CanvasStoreState = {
   mode: 'step' | 'checkpoint' | 'run-all';
   checkpointAt?: PhaseId;
   runId?: string;
+  clientId?: string;
+  clientContext?: ClientContext;
   setStatus: (p: PhaseId, s: PhaseStatus) => void;
   setOutput: (p: PhaseId, out: unknown) => void;
   setInputHash: (p: PhaseId, hash: string) => void;
@@ -26,6 +28,8 @@ type CanvasStoreState = {
   setCheckpointAt: (p: PhaseId | undefined) => void;
   setRunId: (id: string | undefined) => void;
   reset: () => void;
+  setClientId: (id: string) => Promise<void>;
+  clearClient: () => void;
 };
 
 const INITIAL_PHASES: Record<PhaseId, PhaseState> = {
@@ -43,6 +47,8 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   mode: 'step',
   checkpointAt: 'prompt',
   runId: undefined,
+  clientId: undefined,
+  clientContext: undefined,
 
   setStatus: (p, s) =>
     set(st => ({ phases: { ...st.phases, [p]: { ...st.phases[p], status: s } } })),
@@ -70,6 +76,35 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   setRunId: (id) => set({ runId: id }),
 
   reset: () => set({ phases: { ...INITIAL_PHASES }, runId: undefined }),
+
+  setClientId: async (id: string) => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('clientId', id);
+      window.history.replaceState({}, '', url);
+    }
+    const prevClientId = get().clientId;
+    const hasRunPhases = Object.values(get().phases).some(p => p.status !== 'idle');
+    set({ clientId: id, clientContext: undefined });
+    if (prevClientId && prevClientId !== id && hasRunPhases) {
+      get().markStaleDownstream('briefing');
+    }
+    try {
+      const ctx: ClientContext = await fetch(`/api/clients/${id}/context`).then(r => r.json());
+      set({ clientContext: ctx });
+    } catch {
+      // context load failure is non-fatal — phases can still run
+    }
+  },
+
+  clearClient: () => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('clientId');
+      window.history.replaceState({}, '', url);
+    }
+    set({ clientId: undefined, clientContext: undefined });
+  },
 }));
 
 // ── Derived selectors ─────────────────────────────────────────────────────────
@@ -85,7 +120,8 @@ const UPSTREAM: Record<PhaseId, PhaseId[]> = (() => {
   return up as Record<PhaseId, PhaseId[]>;
 })();
 
-export function canRun(phases: Record<PhaseId, PhaseState>, phaseId: PhaseId): boolean {
+export function canRun(phases: Record<PhaseId, PhaseState>, phaseId: PhaseId, clientId?: string): boolean {
+  if (!clientId) return false;
   const upstreams = UPSTREAM[phaseId] ?? [];
   if (upstreams.length === 0) return true;
   return upstreams.some(u => phases[u].status === 'done' || phases[u].status === 'stale');

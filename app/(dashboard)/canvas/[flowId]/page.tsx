@@ -34,6 +34,7 @@ import ReferenceNode   from "@/components/canvas/nodes/v3/ReferenceNode";
 import CriticNode      from "@/components/canvas/nodes/v3/CriticNode";
 import OutputNode      from "@/components/canvas/nodes/v3/OutputNode";
 import ClientMemoryNode from "@/components/canvas/nodes/v3/ClientMemoryNode";
+import { ClientPicker } from "@/components/canvas/ClientPicker";
 import { useCanvasStore, type CanvasPhases } from "@/lib/canvas/store";
 import type { PhaseId } from "@/types";
 
@@ -308,21 +309,31 @@ function CanvasInner({ flowId }: { flowId: string }) {
   const [saving, setSaving] = useState(false);
   const [sideOpen, setSideOpen] = useState(true);
   const [sideTab, setSideTab] = useState<SideTab>("agent");
-  const [clientId, setClientId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [checkpointToast, setCheckpointToast] = useState<string | null>(null);
+  const [noClientToast, setNoClientToast] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { phases, setStatus, reset } = useCanvasStore();
+  const { phases, clientId: storeClientId, setClientId: setStoreClientId, setStatus, reset } = useCanvasStore();
 
-  // Derive clientId from flowId format: "{clientId}_{flowId}"
+  // URL sync: read ?clientId on mount; if absent show onboarding
   useEffect(() => {
-    if (flowId && !flowId.startsWith("new-")) {
-      const parts = flowId.split("_");
-      if (parts.length > 1) setClientId(parts[0]);
-    } else if (flowId?.startsWith("new-")) {
-      setClientId(flowId.slice(4));
+    const params = new URLSearchParams(window.location.search);
+    const urlClientId = params.get("clientId");
+    if (urlClientId) {
+      setStoreClientId(urlClientId);
+    } else {
+      setShowOnboarding(true);
     }
-  }, [flowId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Dismiss onboarding once client is selected
+  useEffect(() => {
+    if (storeClientId) setShowOnboarding(false);
+  }, [storeClientId]);
+
+  const clientId = storeClientId ?? null;
 
   // Load flow from API
   useEffect(() => {
@@ -379,9 +390,19 @@ function CanvasInner({ flowId }: { flowId: string }) {
     };
   }
 
+  function requireClient(): boolean {
+    if (!clientId) {
+      setNoClientToast(true);
+      setTimeout(() => setNoClientToast(false), 4000);
+      document.getElementById("client-picker-trigger")?.focus();
+      return false;
+    }
+    return true;
+  }
+
   // Run with SSE
   async function startRun(mode: "step" | "checkpoint" | "run-all", checkpointAt?: PhaseId) {
-    if (!clientId) return;
+    if (!requireClient()) return;
     const briefing = getBriefing();
 
     const res = await fetch("/api/canvas/run", {
@@ -465,6 +486,18 @@ function CanvasInner({ flowId }: { flowId: string }) {
 
   return (
     <div className="flex h-full w-full bg-slate-950">
+      {/* Onboarding overlay */}
+      {showOnboarding && (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center backdrop-blur-sm bg-slate-950/60"
+          onClick={() => setShowOnboarding(false)}
+        >
+          <div onClick={e => e.stopPropagation()}>
+            <ClientPicker variant="onboarding" onChange={() => setShowOnboarding(false)} />
+          </div>
+        </div>
+      )}
+
       {/* React Flow canvas */}
       <div className="flex-1 relative">
         <ReactFlow
@@ -513,7 +546,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
             maskColor="rgba(2,6,23,0.6)"
           />
 
-          {/* Top-left branding + save status */}
+          {/* Top-left branding + client picker */}
           <Panel position="top-left">
             <div className="flex items-center gap-3 bg-slate-900/90 backdrop-blur-sm border border-slate-700/60 rounded-2xl px-4 py-2.5 shadow-lg">
               <div className="w-7 h-7 rounded-lg bg-violet-500/20 flex items-center justify-center">
@@ -530,6 +563,8 @@ function CanvasInner({ flowId }: { flowId: string }) {
                   ) : "Autosave ativo"}
                 </p>
               </div>
+              <div className="w-px h-8 bg-slate-700/60" />
+              <ClientPicker variant="header" />
             </div>
           </Panel>
 
@@ -538,6 +573,15 @@ function CanvasInner({ flowId }: { flowId: string }) {
             <Panel position="top-center">
               <div className="bg-amber-900/90 border border-amber-500/50 text-amber-100 text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg backdrop-blur-sm">
                 ⏸ {checkpointToast}
+              </div>
+            </Panel>
+          )}
+
+          {/* No-client toast */}
+          {noClientToast && (
+            <Panel position="top-center">
+              <div className="bg-red-900/90 border border-red-500/50 text-red-100 text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg backdrop-blur-sm">
+                Escolha o cliente antes de executar o pipeline
               </div>
             </Panel>
           )}

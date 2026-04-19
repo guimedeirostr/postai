@@ -25,9 +25,9 @@ interface PromptData {
 export default function PromptNode({ id, data, selected }: NodeProps) {
   const d = data as PromptData;
   const { updateNodeData } = useReactFlow();
-  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
   const phaseStatus = phases.prompt.status;
-  const isRunnable = canRun(phases, 'prompt');
+  const isRunnable = canRun(phases, 'prompt', storeClientId);
 
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
     if (!d.prompt?.trim() || !d.clientId) return;

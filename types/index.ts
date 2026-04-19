@@ -735,6 +735,33 @@ export interface SlotWeightEntry {
   total:      number;
 }
 
+// ── Client Context (hidrataçao completa para o Canvas V3) ────────────────────
+export interface ClientContextPost {
+  id: string;
+  coverUrl: string;
+  copy: string;
+}
+
+export interface ClientContext {
+  clientId: string;
+  clientName: string;
+  brandKit?: BrandKit;
+  clientMemory?: ClientMemory;
+  dnaVisual?: BrandDNA;
+  recentApprovedPosts?: ClientContextPost[];
+  loadedAt?: number;
+}
+
+export interface ClientPickerOption {
+  id: string;
+  name: string;
+  initials: string;
+  hasDnaVisual: boolean;
+  dnaConfidence?: number;
+  lastUsedAt: number;
+  postCount: number;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // V3 — Canvas Execution Modes (POSTAI_V3_EXECUTION_MODES.md)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -759,6 +786,7 @@ export type PhaseStatus =
 
 export interface PhaseRun {
   id: string;
+  clientId: string;
   phaseId: PhaseId;
   status: PhaseStatus;
   inputHash: string;

@@ -45,9 +45,9 @@ function SegmentControl<T extends string>({ options, value, onChange }: {
 
 export default function OutputNode({ data, selected }: NodeProps) {
   const d = data as OutputData;
-  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
   const phaseStatus = phases.output.status;
-  const isRunnable = canRun(phases, 'output');
+  const isRunnable = canRun(phases, 'output', storeClientId);
   const hasOutput = !!d.imageUrl;
 
   const [variations, setVariations] = useState<Variations>(1);

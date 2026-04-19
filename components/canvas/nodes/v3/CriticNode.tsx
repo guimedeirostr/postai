@@ -22,9 +22,9 @@ interface CriticData {
 export default function CriticNode({ id, data, selected }: NodeProps) {
   const d = data as CriticData;
   const { updateNodeData } = useReactFlow();
-  const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
+  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, markStaleDownstream, approve, runId } = useCanvasStore();
   const phaseStatus = phases.critico.status;
-  const isRunnable = canRun(phases, 'critico');
+  const isRunnable = canRun(phases, 'critico', storeClientId);
   const hasResult = d.score !== undefined;
 
   const scoreColor =
