@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Palette, Brain, Sparkles, Loader2, ArrowRight, Image } from "lucide-react";
+import { ArrowLeft, Palette, Brain, Sparkles, Loader2, ArrowRight, Image, Lock } from "lucide-react";
+import { FLAGS } from "@/lib/flags";
 import type { BrandProfile } from "@/types";
 
 interface DnaInfo {
@@ -79,6 +80,13 @@ export default function ClientOverviewPage({ params }: { params: Promise<{ id: s
         ? `${dna.confidence_score ?? 0}% mapeado`
         : "Não processado",
     },
+    ...(FLAGS.LOCKSET_ENABLED ? [{
+      href: `/clients/${clientId}/lockset`,
+      icon: <Lock className="w-6 h-6 text-slate-500" />,
+      bg: "bg-slate-50",
+      title: "Brand Lockset",
+      subtitle: "Travas de marca para o Diretor IA",
+    }] : []),
   ];
 
   return (

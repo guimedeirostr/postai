@@ -21,8 +21,10 @@ import "@xyflow/react/dist/style.css";
 
 import {
   Sparkles, Save, Loader2, Play, ChevronDown,
-  Palette, History, ChevronRight, ChevronLeft, Zap,
+  Palette, History, ChevronRight, ChevronLeft, Zap, Lock,
 } from "lucide-react";
+import { LocksetPreview } from "@/components/lockset/LocksetPreview";
+import { FLAGS } from "@/lib/flags";
 import { cn } from "@/lib/utils";
 
 import GlowEdge from "@/components/canvas/edges/GlowEdge";
@@ -84,7 +86,7 @@ const CHECKPOINT_OPTIONS: { value: PhaseId; label: string }[] = [
 ];
 
 // ── Side panel tabs ───────────────────────────────────────────────────────────
-type SideTab = "agent" | "brand" | "history";
+type SideTab = "agent" | "brand" | "history" | "locks";
 
 function SidePanel({ tab, setTab, clientId, flowId, phases }: {
   tab: SideTab;
@@ -120,6 +122,7 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
         {([
           { id: "agent",   label: "Agente",    icon: <Zap className="w-3.5 h-3.5" /> },
           { id: "brand",   label: "Brand Kit",  icon: <Palette className="w-3.5 h-3.5" /> },
+          ...(FLAGS.LOCKSET_ENABLED ? [{ id: "locks" as SideTab, label: "Locks", icon: <Lock className="w-3.5 h-3.5" /> }] : []),
           { id: "history", label: "Histórico",  icon: <History className="w-3.5 h-3.5" /> },
         ] as { id: SideTab; label: string; icon: React.ReactNode }[]).map(t => (
           <button
@@ -210,6 +213,16 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
               Histórico disponível em breve
             </div>
           </div>
+        )}
+
+        {tab === "locks" && FLAGS.LOCKSET_ENABLED && (
+          clientId ? (
+            <LocksetPreview clientId={clientId} />
+          ) : (
+            <p className="text-xs text-pi-text-muted/60 text-center py-4">
+              Selecione um cliente para ver os locks
+            </p>
+          )
         )}
       </div>
     </div>

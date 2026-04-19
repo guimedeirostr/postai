@@ -9,20 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   LayoutDashboard, Users, ImageIcon, Settings,
-  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow, Layers, Palette,
+  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow, Layers, Palette, Lock,
 } from "lucide-react";
+import { FLAGS } from "@/lib/flags";
 import { useState } from "react";
 
 const navItems = [
-  { href: "/",            label: "Dashboard",     icon: LayoutDashboard },
-  { href: "/clients",     label: "Clientes",      icon: Users },
-  { href: "/brand-kits",  label: "Brand Kits",    icon: Palette },
-  { href: "/posts",       label: "Posts Gerados", icon: ImageIcon },
-  { href: "/variants",  label: "Variantes",     icon: Layers },
-  { href: "/carousels", label: "Carrosseis",    icon: GalleryHorizontal },
-  { href: "/canvas/new", label: "Canvas IA",     icon: Workflow },
-  { href: "/settings",  label: "Configurações", icon: Settings },
-];
+  { href: "/",             label: "Dashboard",     icon: LayoutDashboard },
+  { href: "/clients",      label: "Clientes",      icon: Users },
+  { href: "/brand-kits",   label: "Brand Kits",    icon: Palette },
+  ...(FLAGS.LOCKSET_ENABLED ? [{ href: "/locksets", label: "Brand Locksets", icon: Lock }] : []),
+  { href: "/posts",        label: "Posts Gerados", icon: ImageIcon },
+  { href: "/variants",     label: "Variantes",     icon: Layers },
+  { href: "/carousels",    label: "Carrosseis",    icon: GalleryHorizontal },
+  { href: "/canvas/new",   label: "Canvas IA",     icon: Workflow },
+  { href: "/settings",     label: "Configurações", icon: Settings },
+] as { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[];
 
 interface Props {
   userEmail: string;

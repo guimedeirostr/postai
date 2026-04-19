@@ -35,6 +35,12 @@ export const paths = {
   promptOutcomes:  (u: string, c: string) => `users/${u}/clients/${c}/promptOutcomes`,
   promptOutcome:   (u: string, c: string, o: string) => `users/${u}/clients/${c}/promptOutcomes/${o}`,
 
+  // Brand Lockset V3
+  locksets:        (u: string, c: string) => `users/${u}/clients/${c}/brandLocksets`,
+  lockset:         (u: string, c: string) => `users/${u}/clients/${c}/brandLocksets/current`,
+  locksetVersions: (u: string, c: string) => `users/${u}/clients/${c}/brandLocksets/current/versions`,
+  locksetVersion:  (u: string, c: string, v: string) => `users/${u}/clients/${c}/brandLocksets/current/versions/${v}`,
+
   // Canvas Execution Modes V3
   canvasRuns:   (u: string, c: string) => `users/${u}/clients/${c}/canvasRuns`,
   canvasRun:    (u: string, c: string, r: string) => `users/${u}/clients/${c}/canvasRuns/${r}`,

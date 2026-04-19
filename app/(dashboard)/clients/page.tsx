@@ -3,7 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch, GalleryHorizontal, RotateCcw, Palette, Brain } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch, GalleryHorizontal, RotateCcw, Palette, Brain, Lock } from "lucide-react";
+import { FLAGS } from "@/lib/flags";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientFormModal } from "@/components/client-form-modal";
@@ -224,6 +225,12 @@ export default function ClientsPage() {
                     className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50 transition-colors">
                     <Brain className="w-3.5 h-3.5" /> Memória
                   </a>
+                  {FLAGS.LOCKSET_ENABLED && (
+                    <a href={`/clients/${client.id}/lockset`}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+                      <Lock className="w-3.5 h-3.5" /> Lockset
+                    </a>
+                  )}
                   <Button size="sm" variant="outline"
                     onClick={() => setViewPhotos(client)}
                     className="text-slate-600 border-slate-200 hover:bg-slate-50">

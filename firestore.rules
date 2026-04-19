@@ -10,6 +10,14 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
 
+      // Brand Lockset — lockset + version history
+      match /clients/{cid}/brandLocksets/{locksetId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+        match /versions/{versionId} {
+          allow read, write: if request.auth != null && request.auth.uid == uid;
+        }
+      }
+
       // Canvas Execution Modes — canvasRuns + phaseRuns
       match /clients/{cid}/canvasRuns/{runId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;

@@ -862,6 +862,60 @@ export interface FormatSpec {
   charLimit?: number;
 }
 
+// ── Brand Lockset ─────────────────────────────────────────────────────────────
+// Ciclo 1: CRUD de travas de marca. Armazenado em
+// users/{uid}/clients/{cid}/brandLocksets/current
+
+export type LockScope =
+  | 'typography'
+  | 'color'
+  | 'composition'
+  | 'signature'
+  | 'cta'
+  | 'tone'
+  | 'forbidden';
+
+/** Tipos de slide para aplicação seletiva de locks (diferente do SlideType do carrossel legado) */
+export type LockSlideType =
+  | 'single'
+  | 'carousel_opener'
+  | 'carousel_middle'
+  | 'carousel_cta'
+  | 'stories'
+  | 'reels_cover';
+
+export interface BrandLock {
+  id: string;
+  scope: LockScope;
+  description: string;
+  enforcement: 'hard' | 'soft';
+  promptHint: string;
+  appliesTo?: {
+    formats?: FormatKey[];
+    slideTypes?: LockSlideType[];
+  };
+  source: 'manual' | 'dna_visual' | 'user_approved_pattern';
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+  active?: boolean;
+}
+
+export interface BrandLockset {
+  id: string;
+  clientId: string;
+  locks: BrandLock[];
+  version: number;
+  lastModifiedAt: number;
+}
+
+export interface LockSuggestion {
+  lock: Omit<BrandLock, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>;
+  reason: string;
+  source: 'dna_visual' | 'repeated_pattern';
+  confidence: number;
+}
+
 export const FORMATS: Record<FormatKey, FormatSpec> = {
   ig_feed:            { key: 'ig_feed',            platform: 'instagram', label: 'Feed',            aspectRatio: '1:1',    copyStyle: 'ig-casual',           ctaStyle: 'link-in-bio',  charLimit: 2200 },
   ig_carousel:        { key: 'ig_carousel',        platform: 'instagram', label: 'Carrossel',       aspectRatio: '1:1',    maxSlides: 10, copyStyle: 'ig-storytelling', ctaStyle: 'link-in-bio',  charLimit: 2200 },
