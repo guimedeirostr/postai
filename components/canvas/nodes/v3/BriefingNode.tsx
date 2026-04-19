@@ -4,6 +4,7 @@ import { NodeProps, useReactFlow } from "@xyflow/react";
 import { FileText } from "lucide-react";
 import { useEffect } from "react";
 import BaseNodeV3 from "./BaseNodeV3";
+import { InlineRunButton } from "./InlineRunButton";
 import { useCanvasStore, canRun } from "@/lib/canvas/store";
 import { hashInput } from "@/lib/canvas/staleness";
 
@@ -19,7 +20,6 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
   const { phases, setStatus, setOutput, setInputHash, markStaleDownstream, approve } = useCanvasStore();
   const phaseStatus = phases.briefing.status;
 
-  // Propagate stale when briefing inputs change
   useEffect(() => {
     const h = hashInput({ clientId: d.clientId, objetivo: d.objetivo, formato: d.formato });
     const prev = phases.briefing.inputHash;
@@ -33,17 +33,21 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
   async function run() {
     if (!d.clientId) return;
     const input = { clientId: d.clientId, objetivo: d.objetivo ?? '', formato: d.formato ?? 'feed' };
-    const h = hashInput(input);
     setStatus('briefing', 'running');
-    setInputHash('briefing', h);
-    // Briefing has no API — it's user input, so immediately mark done
+    setInputHash('briefing', hashInput(input));
     await new Promise(r => setTimeout(r, 200));
     setOutput('briefing', input);
   }
 
-  async function runToHere() {
-    await run();
-  }
+  // Listen for canvas:run-phase shortcut
+  useEffect(() => {
+    function handler(e: Event) {
+      if ((e as CustomEvent).detail?.phaseId === 'briefing') run();
+    }
+    window.addEventListener('canvas:run-phase', handler);
+    return () => window.removeEventListener('canvas:run-phase', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.clientId, d.objetivo, d.formato]);
 
   return (
     <BaseNodeV3
@@ -54,10 +58,9 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
       selected={selected}
       phaseId="briefing"
       phaseStatus={phaseStatus}
-      canRun={canRun(phases, 'briefing')}
-      onRun={run}
-      onRunToHere={runToHere}
+      onRunToHere={run}
       onRegenerate={run}
+      onReset={() => setStatus('briefing', 'idle')}
       onApprove={() => approve('briefing')}
     >
       <div className="space-y-2.5">
@@ -82,6 +85,17 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
             <option value="story">Stories</option>
             <option value="reels-cover">Capa de Reels</option>
           </select>
+        </div>
+
+        <div className="flex justify-end pt-1">
+          <InlineRunButton
+            status={phaseStatus}
+            canRun={canRun(phases, 'briefing')}
+            onRun={run}
+            label="Salvar briefing"
+            doneLabel="Rerodar briefing"
+            size="sm"
+          />
         </div>
       </div>
     </BaseNodeV3>

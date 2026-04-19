@@ -162,11 +162,13 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
               <p className="text-xs font-medium text-slate-300 mb-1.5">Atalhos</p>
               <div className="space-y-1">
                 {[
+                  { key: "R",       desc: "Rodar nó selecionado" },
+                  { key: "Shift+R", desc: "Regenerar nó selecionado" },
+                  { key: "Enter",   desc: "Aprovar nó selecionado" },
                   { key: "G",       desc: "Executar (modo selecionado)" },
                   { key: "Shift+G", desc: "Run All silencioso" },
                   { key: "S",       desc: "Salvar" },
                   { key: "Esc",     desc: "Cancelar run" },
-                  { key: "Space",   desc: "Pan livre" },
                 ].map(({ key, desc }) => (
                   <div key={key} className="flex justify-between text-xs gap-2">
                     <kbd className="bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono text-[10px]">{key}</kbd>
@@ -413,17 +415,46 @@ function CanvasInner({ flowId }: { flowId: string }) {
     }
   }
 
+  // Map node type → PhaseId for keyboard shortcuts
+  const NODE_TYPE_TO_PHASE: Record<string, PhaseId> = {
+    briefing:     "briefing",
+    plan:         "plano",
+    prompt:       "prompt",
+    copy:         "copy",
+    critic:       "critico",
+    output:       "output",
+    clientMemory: "memoria",
+  };
+
+  function getSelectedPhaseId(): PhaseId | null {
+    const sel = nodes.find(n => n.selected);
+    if (!sel?.type) return null;
+    return NODE_TYPE_TO_PHASE[sel.type] ?? null;
+  }
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "Escape") reset();
       if (e.key === "s" || e.key === "S") autosave();
+
+      // R — run selected node
+      if ((e.key === "r" || e.key === "R") && !e.shiftKey) {
+        const phaseId = getSelectedPhaseId();
+        if (phaseId) window.dispatchEvent(new CustomEvent('canvas:run-phase', { detail: { phaseId } }));
+      }
+      // Shift+R — regenerate selected node
+      if (e.key === "R" && e.shiftKey) {
+        const phaseId = getSelectedPhaseId();
+        if (phaseId) window.dispatchEvent(new CustomEvent('canvas:run-phase', { detail: { phaseId, triggeredBy: 'regenerate' } }));
+      }
+
       if ((e.key === "g" || e.key === "G") && !e.shiftKey) {
         const { mode, checkpointAt } = useCanvasStore.getState();
         startRun(mode, checkpointAt);
       }
-      if ((e.key === "G") && e.shiftKey) {
+      if (e.key === "G" && e.shiftKey) {
         startRun("run-all");
       }
     };

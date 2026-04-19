@@ -4,7 +4,7 @@ import { NodeProps } from "@xyflow/react";
 import { Brain, BookOpen } from "lucide-react";
 import { useState } from "react";
 import BaseNodeV3 from "./BaseNodeV3";
-import { useCanvasStore, canRun } from "@/lib/canvas/store";
+import { useCanvasStore } from "@/lib/canvas/store";
 import { hashInput } from "@/lib/canvas/staleness";
 import type { ClientMemory } from "@/types";
 
@@ -20,15 +20,12 @@ export default function ClientMemoryNode({ data, selected }: NodeProps) {
   const [tab, setTab] = useState<"approved" | "rejected">("approved");
   const { phases, setStatus, setOutput, setInputHash, approve, runId } = useCanvasStore();
   const phaseStatus = phases.memoria.status;
-  const isRunnable = canRun(phases, 'memoria');
 
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
     if (!d.clientId) return;
     const input = { clientId: d.clientId };
-    const h = hashInput(input);
     setStatus('memoria', 'running');
-    setInputHash('memoria', h);
-
+    setInputHash('memoria', hashInput(input));
     try {
       const res = await fetch("/api/canvas/phase/run", {
         method: "POST",
@@ -43,15 +40,7 @@ export default function ClientMemoryNode({ data, selected }: NodeProps) {
     }
   }
 
-  async function handleApprove() {
-    approve('memoria');
-    await fetch("/api/canvas/phase/approve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phaseId: 'memoria', clientId: d.clientId, runId }),
-    }).catch(() => null);
-  }
-
+  // Memória não tem InlineRunButton — só menu ⋯ no header ("Re-processar memória")
   return (
     <BaseNodeV3
       label="Memória"
@@ -61,11 +50,10 @@ export default function ClientMemoryNode({ data, selected }: NodeProps) {
       width={280}
       phaseId="memoria"
       phaseStatus={phaseStatus}
-      canRun={isRunnable}
-      onRun={() => run('step')}
       onRunToHere={() => run('run-to-here')}
       onRegenerate={() => run('regenerate')}
-      onApprove={handleApprove}
+      onReset={() => setStatus('memoria', 'idle')}
+      onApprove={() => approve('memoria')}
     >
       {!mem ? (
         <p className="text-xs text-slate-500 text-center py-2">

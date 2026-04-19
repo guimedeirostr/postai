@@ -1,26 +1,26 @@
 'use client';
 
-import { Play, FastForward, RotateCcw, Check, Loader2 } from 'lucide-react';
+import { Check, MoreHorizontal } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import type { PhaseId, PhaseStatus } from '@/types';
 
 const STATUS_BADGE: Record<PhaseStatus, { txt: string; cls: string }> = {
-  idle:    { txt: 'Aguardando',      cls: 'bg-slate-700 text-slate-300' },
-  queued:  { txt: 'Na fila',         cls: 'bg-blue-900 text-blue-200' },
-  running: { txt: 'Rodando…',        cls: 'bg-violet-700 text-white animate-pulse' },
-  done:    { txt: 'Pronto',          cls: 'bg-emerald-700 text-white' },
-  stale:   { txt: 'Desatualizado',   cls: 'bg-amber-700 text-amber-100' },
-  error:   { txt: 'Erro',            cls: 'bg-red-800 text-red-100' },
-  skipped: { txt: 'Pulado',          cls: 'bg-slate-800 text-slate-400' },
+  idle:    { txt: 'Aguardando',    cls: 'bg-slate-700 text-slate-300' },
+  queued:  { txt: 'Na fila',       cls: 'bg-blue-900 text-blue-200' },
+  running: { txt: 'Rodando…',      cls: 'bg-violet-700 text-white animate-pulse' },
+  done:    { txt: 'Pronto',        cls: 'bg-emerald-700 text-white' },
+  stale:   { txt: 'Desatualizado', cls: 'bg-amber-700 text-amber-100' },
+  error:   { txt: 'Erro',          cls: 'bg-red-800 text-red-100' },
+  skipped: { txt: 'Pulado',        cls: 'bg-slate-800 text-slate-400' },
 };
 
 interface NodeHeaderProps {
   phaseId: PhaseId;
   status: PhaseStatus;
-  canRun: boolean;
-  onRun: () => void;
   onRunToHere: () => void;
   onRegenerate: () => void;
+  onReset: () => void;
   onApprove: () => void;
   label: string;
   icon: React.ReactNode;
@@ -28,15 +28,23 @@ interface NodeHeaderProps {
 }
 
 export function NodeHeader({
-  status, canRun, onRun, onRunToHere, onRegenerate, onApprove, label, icon, accentColor = '#a855f7',
+  status, onRunToHere, onRegenerate, onReset, onApprove, label, icon, accentColor = '#a855f7',
 }: NodeHeaderProps) {
   const badge = STATUS_BADGE[status];
-  const isRunning = status === 'running';
-  const canRegenerate = status === 'done' || status === 'stale' || status === 'error';
-  const canApprove = status === 'done';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpen]);
 
   return (
     <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+      {/* Left: icon + label + badge */}
       <div className="flex items-center gap-2 min-w-0">
         <div
           className="w-6 h-6 rounded-md flex items-center justify-center flex-none"
@@ -50,47 +58,53 @@ export function NodeHeader({
         </span>
       </div>
 
-      <div className="flex items-center gap-0.5 flex-none">
-        {isRunning ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
-        ) : (
-          <>
-            <button
-              disabled={!canRun}
-              onClick={onRun}
-              title={canRun ? 'Rodar este nó' : 'Upstream não concluído'}
-              className="p-1 rounded hover:bg-white/10 disabled:opacity-30 transition-colors"
-            >
-              <Play className="h-3.5 w-3.5" />
-            </button>
-            <button
-              disabled={!canRun}
-              onClick={onRunToHere}
-              title="Rodar do início até aqui"
-              className="p-1 rounded hover:bg-white/10 disabled:opacity-30 transition-colors"
-            >
-              <FastForward className="h-3.5 w-3.5" />
-            </button>
-            {canRegenerate && (
-              <button
-                onClick={onRegenerate}
-                title="Regenerar"
-                className="p-1 rounded hover:bg-white/10 transition-colors"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-            )}
-            {canApprove && (
-              <button
-                onClick={onApprove}
-                title="Aprovar (libera próxima fase)"
-                className="p-1 rounded bg-emerald-700 hover:bg-emerald-600 transition-colors"
-              >
-                <Check className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </>
+      {/* Right: Approve + ⋯ menu */}
+      <div className="flex items-center gap-1 flex-none">
+        {status === 'done' && (
+          <button
+            onClick={onApprove}
+            title="Aprovar (libera próxima fase)"
+            className="p-1 rounded bg-emerald-700 hover:bg-emerald-600 transition-colors"
+          >
+            <Check className="h-3.5 w-3.5 text-white" />
+          </button>
         )}
+
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen(v => !v)}
+            className="p-1 rounded hover:bg-white/10 transition-colors text-slate-400"
+            title="Mais opções"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-44 bg-slate-900 border border-slate-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+              <div className="p-1">
+                <button
+                  onClick={() => { onRunToHere(); setMenuOpen(false); }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  ⏩ Rodar até aqui
+                </button>
+                <button
+                  onClick={() => { onRegenerate(); setMenuOpen(false); }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  ↻ Regenerar
+                </button>
+                <div className="border-t border-slate-800 my-1" />
+                <button
+                  onClick={() => { onReset(); setMenuOpen(false); }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  ✕ Resetar fase
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

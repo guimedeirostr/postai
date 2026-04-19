@@ -21,10 +21,9 @@ interface BaseNodeV3Props {
   // Phase state machine props (V3 execution modes)
   phaseId?: PhaseId;
   phaseStatus?: PhaseStatus;
-  canRun?: boolean;
-  onRun?: () => void;
   onRunToHere?: () => void;
   onRegenerate?: () => void;
+  onReset?: () => void;
   onApprove?: () => void;
 }
 
@@ -33,8 +32,8 @@ export default function BaseNodeV3({
   accentColor = "#a855f7",
   hasInput = true, hasOutput = true,
   width = 280, selected,
-  phaseId, phaseStatus, canRun = false,
-  onRun, onRunToHere, onRegenerate, onApprove,
+  phaseId, phaseStatus,
+  onRunToHere, onRegenerate, onReset, onApprove,
 }: BaseNodeV3Props) {
   const usePhaseHeader = phaseId !== undefined && phaseStatus !== undefined;
 
@@ -46,7 +45,7 @@ export default function BaseNodeV3({
         selected && "ring-2 ring-violet-500/60",
         phaseStatus === 'stale' && "border-amber-500/40",
         phaseStatus === 'error' && "border-red-500/40",
-        phaseStatus === 'done' && "border-emerald-500/30",
+        phaseStatus === 'done'  && "border-emerald-500/30",
       )}
       style={{ width, boxShadow: selected ? `0 0 0 2px ${accentColor}40` : undefined }}
     >
@@ -55,15 +54,14 @@ export default function BaseNodeV3({
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
       </div>
 
-      {/* Header — phase-aware or legacy */}
+      {/* Header */}
       {usePhaseHeader ? (
         <NodeHeader
           phaseId={phaseId}
           status={phaseStatus}
-          canRun={canRun}
-          onRun={onRun ?? (() => {})}
           onRunToHere={onRunToHere ?? (() => {})}
           onRegenerate={onRegenerate ?? (() => {})}
+          onReset={onReset ?? (() => {})}
           onApprove={onApprove ?? (() => {})}
           label={label}
           icon={icon}
