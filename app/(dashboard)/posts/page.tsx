@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import { format as formatDateFns } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import Link from "next/link";
 import {
   ImageIcon, Loader2, Hash, Copy, Check, X,
   Calendar, Tag, Download, Wand2, Layers, RefreshCw, ScanSearch, ChevronDown,
@@ -410,9 +411,9 @@ export default function PostsPage() {
           {posts.map(post => {
             const status = STATUS_BADGE[post.status] ?? STATUS_BADGE.ready;
             return (
-              <Card key={post.id}
-                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setSelected(post)}>
+              <Link key={post.id} href={`/posts/${post.id}`} className="block">
+              <Card
+                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                 <CardContent className="p-0">
                   {/* Imagem ou placeholder — prefere a versão composta (premium) */}
                   {(post.composed_url ?? post.image_url) ? (
@@ -465,6 +466,7 @@ export default function PostsPage() {
                   </div>
                 </CardContent>
               </Card>
+              </Link>
             );
           })}
         </div>

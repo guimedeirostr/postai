@@ -55,8 +55,20 @@ const ASPECT_RATIO: Record<string, string> = {
 };
 
 function parseJson<T>(raw: string): T {
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  return JSON.parse(cleaned) as T;
+  // Strategy 1: strip markdown fences
+  const cleaned = raw.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/im, "").trim();
+  try { return JSON.parse(cleaned) as T; } catch { /* try next */ }
+
+  // Strategy 2: extract between first { and last }
+  const first = raw.indexOf("{"), last = raw.lastIndexOf("}");
+  if (first !== -1 && last > first) {
+    try { return JSON.parse(raw.slice(first, last + 1)) as T; } catch { /* try next */ }
+  }
+
+  // Strategy 3: direct parse
+  try { return JSON.parse(raw.trim()) as T; } catch { /* give up */ }
+
+  throw new SyntaxError(`JSON inválido (${raw.length} chars): ${raw.slice(0, 120)}`);
 }
 
 export async function POST(req: NextRequest) {

@@ -196,8 +196,8 @@ export default function PostTimelinePage({ params }: { params: Promise<{ id: str
       </div>
 
       {/* Ações */}
-      {["ready", "approved"].includes(post.status) && (
-        <div className="mt-8 flex gap-3">
+      <div className="mt-8 flex flex-wrap gap-3">
+        {["ready", "approved"].includes(post.status) && (
           <button
             onClick={() => router.push("/posts")}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl transition-colors"
@@ -205,8 +205,20 @@ export default function PostTimelinePage({ params }: { params: Promise<{ id: str
             <ImageIcon className="w-4 h-4" />
             Ver post completo
           </button>
-        </div>
-      )}
+        )}
+        <Link
+          href={`/posts/${postId}/review`}
+          className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-xl transition-colors"
+        >
+          Revisão de Slides
+        </Link>
+        <Link
+          href={`/posts/${postId}/compiler`}
+          className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium rounded-xl transition-colors"
+        >
+          Prompt Compiler
+        </Link>
+      </div>
     </div>
   );
 }

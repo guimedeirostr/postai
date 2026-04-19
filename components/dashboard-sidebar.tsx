@@ -18,7 +18,7 @@ const navItems = [
   { href: "/posts",     label: "Posts Gerados", icon: ImageIcon },
   { href: "/variants",  label: "Variantes",     icon: Layers },
   { href: "/carousels", label: "Carrosseis",    icon: GalleryHorizontal },
-  { href: "/canvas",    label: "Canvas IA",     icon: Workflow },
+  { href: "/canvas/new", label: "Canvas IA",     icon: Workflow },
   { href: "/settings",  label: "Configurações", icon: Settings },
 ];
 
@@ -58,12 +58,12 @@ export function DashboardSidebar({ userEmail, userName }: Props) {
             href={href}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-              pathname === href
+              (pathname === href || (href === "/canvas/new" && pathname.startsWith("/canvas/")))
                 ? "bg-violet-50 text-violet-700"
                 : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
             )}
           >
-            <Icon className={cn("w-4 h-4", pathname === href ? "text-violet-600" : "text-slate-400")} />
+            <Icon className={cn("w-4 h-4", (pathname === href || (href === "/canvas/new" && pathname.startsWith("/canvas/"))) ? "text-violet-600" : "text-slate-400")} />
             {label}
           </Link>
         ))}
