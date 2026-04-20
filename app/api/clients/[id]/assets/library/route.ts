@@ -36,15 +36,29 @@ export async function POST(req: NextRequest, { params }: P) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { id: clientId } = await params;
 
-    const body   = await req.json();
-    const parsed = AssetCreateSchema.safeParse(body);
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch (e) {
+      console.log(JSON.stringify({ event: 'assets.create.invalid_json', clientId, error: String((e as Error)?.message ?? e) }));
+      return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
+    }
+
+    const parsed = AssetCreateSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.log(JSON.stringify({
+        event: 'assets.create.validation_failed',
+        clientId,
+        issues: parsed.error.issues.map(i => ({ path: i.path.join('.'), code: i.code, message: i.message })),
+      }));
+      return NextResponse.json({ error: 'validation_failed', issues: parsed.error.issues }, { status: 400 });
+    }
 
     const data = parsed.data;
 
     if (await slugExists(user.uid, clientId, data.slug)) {
       console.log(JSON.stringify({ event: 'assets.create.slug_conflict', clientId, slug: data.slug }));
-      return NextResponse.json({ error: 'slug_taken' }, { status: 409 });
+      return NextResponse.json({ error: 'slug_conflict' }, { status: 409 });
     }
 
     const asset     = await createAsset(user.uid, clientId, data);
@@ -55,6 +69,6 @@ export async function POST(req: NextRequest, { params }: P) {
   } catch (e: unknown) {
     const err = e as Error | undefined;
     console.log(JSON.stringify({ event: 'assets.unhandled_error', endpoint: 'POST /library', error: String(err?.message ?? e), stack: err?.stack, ms: Date.now() - t0 }));
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 }

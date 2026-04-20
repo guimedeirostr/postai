@@ -17,12 +17,27 @@ export async function PATCH(req: NextRequest, { params }: P) {
     const existing = await getAsset(user.uid, clientId, assetId);
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const body   = await req.json();
-    const parsed = AssetUpdateSchema.safeParse(body);
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch (e) {
+      console.log(JSON.stringify({ event: 'assets.update.invalid_json', clientId, assetId, error: String((e as Error)?.message ?? e) }));
+      return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
+    }
 
-    const updated   = await updateAsset(user.uid, clientId, assetId, parsed.data);
-    const fields    = Object.keys(parsed.data);
+    const parsed = AssetUpdateSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.log(JSON.stringify({
+        event: 'assets.update.validation_failed',
+        clientId,
+        assetId,
+        issues: parsed.error.issues.map(i => ({ path: i.path.join('.'), code: i.code, message: i.message })),
+      }));
+      return NextResponse.json({ error: 'validation_failed', issues: parsed.error.issues }, { status: 400 });
+    }
+
+    const updated  = await updateAsset(user.uid, clientId, assetId, parsed.data);
+    const fields   = Object.keys(parsed.data);
     const wasPrefer = parsed.data.preferred === true;
 
     if (wasPrefer) {
@@ -33,7 +48,7 @@ export async function PATCH(req: NextRequest, { params }: P) {
   } catch (e: unknown) {
     const err = e as Error | undefined;
     console.log(JSON.stringify({ event: 'assets.unhandled_error', endpoint: 'PATCH /library/[assetId]', error: String(err?.message ?? e), ms: Date.now() - t0 }));
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 }
 
@@ -54,6 +69,6 @@ export async function DELETE(_req: NextRequest, { params }: P) {
   } catch (e: unknown) {
     const err = e as Error | undefined;
     console.log(JSON.stringify({ event: 'assets.unhandled_error', endpoint: 'DELETE /library/[assetId]', error: String(err?.message ?? e), ms: Date.now() - t0 }));
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 }

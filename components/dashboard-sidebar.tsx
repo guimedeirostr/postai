@@ -19,7 +19,7 @@ const navItems = [
   { href: "/clients",      label: "Clientes",      icon: Users },
   { href: "/brand-kits",   label: "Brand Kits",    icon: Palette },
   ...(FLAGS.LOCKSET_ENABLED ? [{ href: "/locksets", label: "Brand Locksets", icon: Lock }] : []),
-  ...(FLAGS.ASSETS_ENABLED  ? [{ href: "/assets",   label: "Assets",         icon: FolderOpen }] : []),
+  ...(FLAGS.ASSETS_ENABLED  ? [{ href: "/clients",  label: "Biblioteca de Assets", icon: FolderOpen }] : []),
   { href: "/posts",        label: "Posts Gerados", icon: ImageIcon },
   { href: "/variants",     label: "Variantes",     icon: Layers },
   { href: "/carousels",    label: "Carrosseis",    icon: GalleryHorizontal },
