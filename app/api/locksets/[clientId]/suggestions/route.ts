@@ -8,13 +8,14 @@ type Params = { params: Promise<{ clientId: string }> };
 export async function GET(_req: NextRequest, { params }: Params) {
   if (!FLAGS.LOCKSET_ENABLED) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const { clientId } = await params;
   const t0 = Date.now();
 
   try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { clientId } = await params;
+
     const suggestions = await computeLockSuggestions(user.uid, clientId);
 
     console.log(JSON.stringify({
@@ -30,8 +31,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const err = e as Error | undefined;
     console.log(JSON.stringify({
       event: 'suggestions.unhandled_error',
-      uid: user.uid,
-      clientId,
       error: String(err?.message ?? e),
       stack: err?.stack,
       ms: Date.now() - t0,
