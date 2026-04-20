@@ -84,6 +84,7 @@ export default function CopyNodeV3({ id, data, selected }: NodeProps) {
       selected={selected}
       phaseId="copy"
       phaseStatus={phaseStatus}
+      requiredService="anthropic"
       onRunToHere={() => run('run-to-here')}
       onRegenerate={() => run('regenerate')}
       onReset={() => { setStatus('copy', 'idle'); updateNodeData(id, { headline: undefined, caption: undefined }); }}

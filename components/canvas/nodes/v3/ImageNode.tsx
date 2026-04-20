@@ -108,6 +108,7 @@ export default function ImageNode({ id, data, selected }: NodeProps) {
       width={280}
       phaseId="image"
       phaseStatus={phaseStatus}
+      requiredService="replicate"
       onRunToHere={() => run('run-to-here')}
       onRegenerate={() => run('regenerate')}
       onReset={() => { setStatus('image', 'idle'); updateNodeData(id, { imageUrl: undefined }); }}

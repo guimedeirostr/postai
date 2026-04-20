@@ -92,6 +92,7 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
       width={320}
       phaseId="plano"
       phaseStatus={phaseStatus}
+      requiredService="anthropic"
       onRunToHere={() => run('run-to-here')}
       onRegenerate={() => run('regenerate')}
       onReset={() => { setStatus('plano', 'idle'); updateNodeData(id, { plan: undefined }); }}

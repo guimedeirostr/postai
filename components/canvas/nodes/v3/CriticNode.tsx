@@ -109,6 +109,7 @@ export default function CriticNode({ id, data, selected }: NodeProps) {
       width={240}
       phaseId="critico"
       phaseStatus={phaseStatus}
+      requiredService="anthropic"
       onRunToHere={() => run('run-to-here')}
       onRegenerate={() => run('regenerate')}
       onReset={() => { setStatus('critico', 'idle'); updateNodeData(id, { score: undefined, notes: undefined }); }}

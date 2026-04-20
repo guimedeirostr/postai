@@ -1,10 +1,12 @@
 "use client";
 
 import { Handle, Position, NodeProps } from "@xyflow/react";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NodeHeader } from "./NodeHeader";
+import { useServiceMissing, SERVICE_ENV_LABEL } from "@/lib/canvas/useHealth";
 import type { PhaseId, PhaseStatus } from "@/types";
+import type { ServiceHealth } from "@/lib/canvas/useHealth";
 
 export type NodeStatus = "idle" | "loading" | "done" | "error";
 
@@ -25,6 +27,7 @@ interface BaseNodeV3Props {
   onRegenerate?: () => void;
   onReset?: () => void;
   onApprove?: () => void;
+  requiredService?: keyof ServiceHealth;
 }
 
 export default function BaseNodeV3({
@@ -34,8 +37,11 @@ export default function BaseNodeV3({
   width = 280, selected,
   phaseId, phaseStatus,
   onRunToHere, onRegenerate, onReset, onApprove,
+  requiredService,
 }: BaseNodeV3Props) {
   const usePhaseHeader = phaseId !== undefined && phaseStatus !== undefined;
+  const serviceMissing = useServiceMissing(requiredService);
+  const missingLabel   = requiredService && serviceMissing ? SERVICE_ENV_LABEL[requiredService] : null;
 
   return (
     <div
@@ -83,7 +89,18 @@ export default function BaseNodeV3({
       )}
 
       {/* Body */}
-      <div className="p-4 space-y-3">{children}</div>
+      <div className="p-4 space-y-3">
+        {missingLabel && (
+          <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 px-2.5 py-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-none mt-0.5" />
+            <p className="text-[10px] text-amber-300 leading-snug">
+              <span className="font-semibold">{missingLabel}</span>
+              {" não configurada no servidor — contate o admin"}
+            </p>
+          </div>
+        )}
+        {children}
+      </div>
 
       {/* Handles */}
       {hasInput && (
