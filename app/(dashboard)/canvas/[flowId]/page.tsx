@@ -40,6 +40,7 @@ import OutputNode      from "@/components/canvas/nodes/v3/OutputNode";
 import ClientMemoryNode from "@/components/canvas/nodes/v3/ClientMemoryNode";
 import { ClientPicker } from "@/components/canvas/ClientPicker";
 import { useCanvasStore, type CanvasPhases } from "@/lib/canvas/store";
+import { PHASE_INFO } from "@/lib/canvas/phases";
 import type { PhaseId } from "@/types";
 
 // ── Node / edge type registries ───────────────────────────────────────────────
@@ -97,19 +98,6 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
   flowId: string;
   phases: CanvasPhases;
 }) {
-  const PHASE_INFO: { id: PhaseId; label: string; color: string }[] = [
-    { id: "briefing",   label: "Briefing",                              color: "#60a5fa" },
-    { id: "plano",      label: "Plano",                                  color: "#a78bfa" },
-    ...(FLAGS.COMPILER_ENABLED
-      ? [{ id: "compilacao" as PhaseId, label: compilerStrings.phaseName, color: "#8b5cf6" }]
-      : []),
-    { id: "prompt",     label: "Prompt",                                 color: "#f59e0b" },
-    { id: "copy",       label: "Copy",                                   color: "#34d399" },
-    { id: "critico",    label: "Crítica",                                color: "#fb923c" },
-    { id: "output",     label: "Output",                                 color: "#22d3ee" },
-    { id: "memoria",    label: "Memória",                                color: "#818cf8" },
-  ];
-
   const statusDot: Record<string, string> = {
     idle: "bg-slate-600",
     queued: "bg-blue-500 animate-pulse",
@@ -158,13 +146,16 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
             {/* Phase progress checklist */}
             <div className="bg-pi-surface-muted/60 rounded-xl p-3 space-y-2">
               <p className="text-xs font-medium text-pi-text mb-1">Fases</p>
-              {PHASE_INFO.map(({ id, label, color }) => (
-                <div key={id} className="flex items-center gap-2">
-                  <div className={cn("w-2 h-2 rounded-full flex-none", statusDot[phases[id].status])} />
-                  <span className="text-xs text-pi-text-muted flex-1">{label}</span>
-                  <span className="text-[10px] text-pi-text-muted/60 capitalize">{phases[id].status}</span>
-                </div>
-              ))}
+              {PHASE_INFO.map(({ id, label }) => {
+                const st = phases[id]?.status ?? 'idle';
+                return (
+                  <div key={id} className="flex items-center gap-2">
+                    <div className={cn("w-2 h-2 rounded-full flex-none", statusDot[st])} />
+                    <span className="text-xs text-pi-text-muted flex-1">{label}</span>
+                    <span className="text-[10px] text-pi-text-muted/60 capitalize">{st}</span>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Keyboard shortcuts */}
