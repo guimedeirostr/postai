@@ -33,16 +33,22 @@ export default function CriticNode({ id, data, selected }: NodeProps) {
     d.score >= 6 ? "#f59e0b" :
     "#f87171";
 
+  const resolvedClientId = storeClientId ?? d.clientId;
+
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
+    if (!resolvedClientId) {
+      console.error('[CriticNode] clientId ausente — selecione um cliente no header do Canvas');
+      return;
+    }
     if (!d.imageUrl || !d.brief) return;
-    const input = { imageUrl: d.imageUrl, brief: d.brief, clientId: d.clientId };
+    const input = { imageUrl: d.imageUrl, brief: d.brief };
     setStatus('critico', 'running');
     setInputHash('critico', hashInput(input));
     try {
       const res = await fetch("/api/canvas/phase/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: d.clientId, phaseId: 'critico', input, triggeredBy, runId }),
+        body: JSON.stringify({ clientId: resolvedClientId, phaseId: 'critico', input, triggeredBy, runId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro na crítica");
@@ -60,7 +66,7 @@ export default function CriticNode({ id, data, selected }: NodeProps) {
     await fetch("/api/canvas/phase/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phaseId: 'critico', clientId: d.clientId, runId }),
+      body: JSON.stringify({ phaseId: 'critico', clientId: resolvedClientId, runId }),
     }).catch(() => null);
   }
 
@@ -71,7 +77,7 @@ export default function CriticNode({ id, data, selected }: NodeProps) {
     window.addEventListener('canvas:run-phase', handler);
     return () => window.removeEventListener('canvas:run-phase', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.imageUrl, d.brief, d.clientId]);
+  }, [d.imageUrl, d.brief, resolvedClientId]);
 
   return (
     <BaseNodeV3

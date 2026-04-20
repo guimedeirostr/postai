@@ -18,19 +18,23 @@ export default function ClientMemoryNode({ data, selected }: NodeProps) {
   const d = data as ClientMemoryData;
   const mem = d.memory;
   const [tab, setTab] = useState<"approved" | "rejected">("approved");
-  const { phases, setStatus, setOutput, setInputHash, approve, runId } = useCanvasStore();
+  const { phases, clientId: storeClientId, setStatus, setOutput, setInputHash, approve, runId } = useCanvasStore();
   const phaseStatus = phases.memoria.status;
+  const resolvedClientId = storeClientId ?? d.clientId;
 
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
-    if (!d.clientId) return;
-    const input = { clientId: d.clientId };
+    if (!resolvedClientId) {
+      console.error('[ClientMemoryNode] clientId ausente — selecione um cliente no header do Canvas');
+      return;
+    }
+    const input = { clientId: resolvedClientId };
     setStatus('memoria', 'running');
     setInputHash('memoria', hashInput(input));
     try {
       const res = await fetch("/api/canvas/phase/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: d.clientId, phaseId: 'memoria', input, triggeredBy, runId }),
+        body: JSON.stringify({ clientId: resolvedClientId, phaseId: 'memoria', input, triggeredBy, runId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar memória");

@@ -54,15 +54,21 @@ export default function OutputNode({ data, selected }: NodeProps) {
   const [ratio,      setRatio]      = useState<Ratio>("4:5");
   const [resolution, setResolution] = useState<Resolution>("2K");
 
+  const resolvedClientId = storeClientId ?? d.clientId;
+
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
-    const input = { imageUrl: d.imageUrl, clientId: d.clientId, variations, ratio, resolution };
+    if (!resolvedClientId) {
+      console.error('[OutputNode] clientId ausente — selecione um cliente no header do Canvas');
+      return;
+    }
+    const input = { imageUrl: d.imageUrl, variations, ratio, resolution };
     setStatus('output', 'running');
     setInputHash('output', hashInput(input));
     try {
       const res = await fetch("/api/canvas/phase/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: d.clientId, phaseId: 'output', input, triggeredBy, runId }),
+        body: JSON.stringify({ clientId: resolvedClientId, phaseId: 'output', input, triggeredBy, runId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro no output");
@@ -78,7 +84,7 @@ export default function OutputNode({ data, selected }: NodeProps) {
     await fetch("/api/canvas/phase/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phaseId: 'output', clientId: d.clientId, runId, postId: d.postId }),
+      body: JSON.stringify({ phaseId: 'output', clientId: resolvedClientId, runId, postId: d.postId }),
     }).catch(() => null);
   }
 
@@ -89,7 +95,7 @@ export default function OutputNode({ data, selected }: NodeProps) {
     window.addEventListener('canvas:run-phase', handler);
     return () => window.removeEventListener('canvas:run-phase', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.imageUrl, d.clientId, variations, ratio, resolution]);
+  }, [d.imageUrl, resolvedClientId, variations, ratio, resolution]);
 
   return (
     <BaseNodeV3

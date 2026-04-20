@@ -25,15 +25,27 @@ export default function CopyNodeV3({ id, data, selected }: NodeProps) {
   const phaseStatus = phases.copy.status;
   const isRunnable = canRun(phases, 'copy', storeClientId);
 
+  // Resolve inputs from store — node data is never populated via edges in React Flow
+  const briefingOut = phases.briefing.output as { clientId?: string; objetivo?: string; formato?: string } | undefined;
+  const planoOut    = phases.plano.output    as { plan?: unknown } | undefined;
+  const resolvedClientId = storeClientId ?? briefingOut?.clientId ?? d.clientId;
+  const resolvedObjetivo = briefingOut?.objetivo ?? d.objetivo;
+  const resolvedFormato  = briefingOut?.formato  ?? d.formato ?? 'feed';
+  const resolvedPlan     = planoOut?.plan        ?? d.plan;
+
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
-    const input = { clientId: d.clientId, objetivo: d.objetivo, formato: d.formato, plan: d.plan };
+    if (!resolvedClientId) {
+      console.error('[CopyNodeV3] clientId ausente — selecione um cliente no header do Canvas');
+      return;
+    }
+    const input = { objetivo: resolvedObjetivo, formato: resolvedFormato, plan: resolvedPlan };
     setStatus('copy', 'running');
     setInputHash('copy', hashInput(input));
     try {
       const res = await fetch("/api/canvas/phase/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: d.clientId, phaseId: 'copy', input, triggeredBy, runId }),
+        body: JSON.stringify({ clientId: resolvedClientId, phaseId: 'copy', input, triggeredBy, runId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao gerar copy");
@@ -51,7 +63,7 @@ export default function CopyNodeV3({ id, data, selected }: NodeProps) {
     await fetch("/api/canvas/phase/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phaseId: 'copy', clientId: d.clientId, runId }),
+      body: JSON.stringify({ phaseId: 'copy', clientId: resolvedClientId, runId }),
     }).catch(() => null);
   }
 
@@ -62,7 +74,7 @@ export default function CopyNodeV3({ id, data, selected }: NodeProps) {
     window.addEventListener('canvas:run-phase', handler);
     return () => window.removeEventListener('canvas:run-phase', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.clientId, d.objetivo, d.formato]);
+  }, [resolvedClientId, resolvedObjetivo, resolvedFormato]);
 
   return (
     <BaseNodeV3
