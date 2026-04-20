@@ -1048,6 +1048,11 @@ export interface CompileInput {
       index: number;
       compiledSummary?: string;
     }>;
+    currentSlide?: {
+      index: number;
+      role: string;
+      totalSlides: number;
+    };
   };
   options?: {
     includeSoftLocks?: boolean;
@@ -1075,7 +1080,11 @@ export interface CompileWarning {
     | 'asset_role_empty'
     | 'slot_truncated'
     | 'brief_empty'
-    | 'unknown_format';
+    | 'unknown_format'
+    | 'no_product_asset'
+    | 'no_lockset'
+    | 'slides_count_high'
+    | 'custom_sequence_unusual';
   slot?: SlotKey;
   message: string;
   detail?: Record<string, unknown>;
@@ -1086,4 +1095,40 @@ export interface CompileOutput {
   slots: PromptSlot[];
   trace: CompileTrace;
   warnings: CompileWarning[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Ciclo 4 — Carousel Compiler
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type SlideRole = 'hook' | 'context' | 'development' | 'proof' | 'product' | 'cta';
+
+export interface SlideStoryboard {
+  mode: 'auto' | 'custom';
+  sequence: SlideRole[];
+}
+
+export interface CarouselSlideCompile {
+  index: number;
+  role: SlideRole;
+  compiled: string;
+  slots: PromptSlot[];
+  chars: number;
+  slotsRendered: number;
+}
+
+export interface CarouselCompileMeta {
+  slides_count: number;
+  storyboard_mode: 'auto' | 'custom';
+  locksApplied: { hard: number; soft: number };
+  assetsApplied: { role: string; assetId: string; slug: string }[];
+  totalChars: number;
+  compiledAt: number;
+}
+
+export interface CarouselCompileOutput {
+  slides: CarouselSlideCompile[];
+  meta: CarouselCompileMeta;
+  sharedBase: Partial<Record<SlotKey, PromptSlot>>;
+  globalWarnings: CompileWarning[];
 }
