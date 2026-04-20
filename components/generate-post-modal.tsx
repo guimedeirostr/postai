@@ -110,7 +110,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
   const [copied,         setCopied]         = useState<string | null>(null);
   const [imgLoading,     setImgLoading]     = useState(false);
   const [imgError,       setImgError]       = useState<string | null>(null);
-  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "ideogram" | "imagen4" | "flux_dev" | "gemini">("freepik");
+  const [imageMode,          setImageMode]          = useState<"freepik" | "real" | "library" | "fal" | "fal_pulid" | "fal_canny" | "fal_depth" | "ideogram" | "imagen4" | "imagen4_ultra" | "nano_banana2" | "flux_dev" | "gemini">("freepik");
   const [curateReason,       setCurateReason]       = useState<string | null>(null);
   const [composedUrl,        setComposedUrl]        = useState<string | null>(null);
   const [viewComposed,       setViewComposed]       = useState(true);
@@ -639,6 +639,12 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
       } else if (imageMode === "imagen4") {
         payload.provider        = "replicate";
         payload.replicate_model = "google/imagen-4";
+      } else if (imageMode === "imagen4_ultra") {
+        payload.provider        = "replicate";
+        payload.replicate_model = "google/imagen-4-ultra";
+      } else if (imageMode === "nano_banana2") {
+        payload.provider        = "replicate";
+        payload.replicate_model = "google/nano-banana-2";
       } else if (imageMode === "flux_dev") {
         payload.provider        = "replicate";
         payload.replicate_model = "black-forest-labs/flux-dev";
@@ -1981,7 +1987,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                   </div>
 
                   {/* ── Freepik / FAL padrão — toggle de modelo ── */}
-                  {(imageMode === "freepik" || imageMode === "fal" || imageMode === "ideogram" || imageMode === "imagen4" || imageMode === "flux_dev" || imageMode === "gemini") && (
+                  {(imageMode === "freepik" || imageMode === "fal" || imageMode === "ideogram" || imageMode === "imagen4" || imageMode === "imagen4_ultra" || imageMode === "nano_banana2" || imageMode === "flux_dev" || imageMode === "gemini") && (
                     <div className="space-y-1.5">
                       {/* Linha 1: Freepik models */}
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Freepik</p>
@@ -2043,6 +2049,26 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       </div>
                       {/* Linha 3: Google Gemini — Experimental */}
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 pt-1">Google <span className="text-sky-500 normal-case font-semibold">experimental</span></p>
+                      {/* Linha 3: Google Premium */}
+                      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                        <button type="button" onClick={() => setImageMode("nano_banana2")}
+                          className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "nano_banana2"
+                              ? "bg-white text-yellow-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          🍌 Nano Banana 2
+                        </button>
+                        <button type="button" onClick={() => setImageMode("imagen4_ultra")}
+                          className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            imageMode === "imagen4_ultra"
+                              ? "bg-white text-indigo-600 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}>
+                          ✨ Imagen 4 Ultra
+                        </button>
+                      </div>
+                      {/* Linha 4: Gemini */}
                       <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
                         <button type="button" onClick={() => setImageMode("gemini")}
                           className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -2050,7 +2076,7 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                               ? "bg-white text-sky-600 shadow-sm"
                               : "text-slate-500 hover:text-slate-700"
                           }`}>
-                          ✨ Gemini Flash
+✨ Gemini Flash
                         </button>
                       </div>
                       {/* Descrição do modelo selecionado */}
@@ -2067,6 +2093,16 @@ export function GeneratePostModal({ client, onClose, onGenerated }: Props) {
                       {imageMode === "flux_dev" && (
                         <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
                           <strong>Flux Dev:</strong> 12B parâmetros, experimental, gratuito. Boa diversidade criativa para cenários e ambientes.
+                        </p>
+                      )}
+                      {imageMode === "nano_banana2" && (
+                        <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-100 rounded-lg px-3 py-2">
+                          <strong>Nano Banana 2:</strong> Modelo Google de última geração — até 4K, suporte nativo 4:5 (sem crop), até 14 imagens de referência. Ideal para retratos e produtos com máximo detalhe.
+                        </p>
+                      )}
+                      {imageMode === "imagen4_ultra" && (
+                        <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                          <strong>Imagen 4 Ultra:</strong> Versão premium do Imagen 4 — renderização de texto nativo, detalhes intrincados e cenas complexas. Limite de 400 chars no prompt.
                         </p>
                       )}
                       {imageMode === "gemini" && (

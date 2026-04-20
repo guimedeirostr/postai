@@ -7,7 +7,9 @@
  * ┌───────────────────────────────────────┬────────────────────────────────────┐
  * │ Modelo                                │ Uso                                │
  * ├───────────────────────────────────────┼────────────────────────────────────┤
- * │ google/imagen-4                       │ Geração de imagem txt2img          │
+ * │ google/nano-banana-2                  │ txt2img 4K — suporta 4:5 nativo    │
+ * │ google/imagen-4-ultra                 │ txt2img 2K — max qualidade Google  │
+ * │ google/imagen-4                       │ txt2img — equilíbrio custo/qualid. │
  * │ black-forest-labs/flux-kontext-pro    │ txt2img com forte aderência prompt │
  * │ black-forest-labs/flux-1.1-pro        │ txt2img qualidade/diversidade      │
  * │ ideogram-ai/ideogram-v3-turbo         │ txt2img — bom com texto na imagem  │
@@ -44,6 +46,8 @@ export interface ReplicatePrediction {
 
 /** Modelos disponíveis para geração de imagem */
 export type ReplicateImageModel =
+  | "google/nano-banana-2"
+  | "google/imagen-4-ultra"
   | "google/imagen-4"
   | "black-forest-labs/flux-kontext-pro"
   | "black-forest-labs/flux-1.1-pro"
@@ -55,6 +59,18 @@ export type ReplicateImageModel =
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ASPECT_RATIO: Record<string, Record<string, string>> = {
+  "google/nano-banana-2": {
+    feed:        "4:5",   // suporta 4:5 nativo ✓
+    carousel:    "4:5",
+    stories:     "9:16",
+    reels_cover: "9:16",
+  },
+  "google/imagen-4-ultra": {
+    feed:        "3:4",   // ultra não suporta 4:5 nativo → 3:4 mais próximo
+    carousel:    "3:4",
+    stories:     "9:16",
+    reels_cover: "9:16",
+  },
   "google/imagen-4": {
     feed:        "3:4",   // Imagen 4 não suporta 4:5 nativo
     carousel:    "3:4",
@@ -126,6 +142,12 @@ function buildModelInput(
   const ar = resolveAspectRatio(model, format);
 
   switch (model) {
+    case "google/nano-banana-2":
+      return { prompt, aspect_ratio: ar, output_format: "jpg" };
+
+    case "google/imagen-4-ultra":
+      return { prompt, aspect_ratio: ar, output_format: "jpg", safety_filter_level: "block_medium_and_above" };
+
     case "google/imagen-4":
       return { prompt, aspect_ratio: ar, output_format: "jpg" };
 
