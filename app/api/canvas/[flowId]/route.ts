@@ -40,17 +40,37 @@ export async function PUT(
   const body: { clientId: string; title?: string; nodes: unknown[]; edges: unknown[] } = await req.json();
   const { clientId, nodes, edges, title } = body;
 
-  if (!clientId) return NextResponse.json({ error: "clientId obrigatório" }, { status: 400 });
+  if (!clientId) return NextResponse.json({ error: "clientId obrigatório", code: "MISSING_CLIENT_ID" }, { status: 400 });
 
-  const realFlowId = flowId.startsWith("new-") ? adminDb.collection(paths.flows(user.uid, clientId)).doc().id : flowId.split("_").slice(1).join("_");
+  // "new" or "new-{clientId}" → generate a fresh Firestore doc ID.
+  // Any other shape: expect "{clientId}_{realFlowId}" — extract the part after the first "_".
+  let realFlowId: string;
+  if (flowId === "new" || flowId.startsWith("new-")) {
+    realFlowId = adminDb.collection(paths.flows(user.uid, clientId)).doc().id;
+  } else {
+    realFlowId = flowId.split("_").slice(1).join("_");
+  }
 
-  await adminDb.doc(paths.flow(user.uid, clientId, realFlowId)).set({
-    clientId,
-    title: title ?? "Novo fluxo",
-    nodes,
-    edges,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  if (!realFlowId) {
+    return NextResponse.json(
+      { error: "flowId inválido", code: "INVALID_FLOW_ID", details: `flowId recebido: "${flowId}"` },
+      { status: 400 }
+    );
+  }
+
+  try {
+    await adminDb.doc(paths.flow(user.uid, clientId, realFlowId)).set({
+      clientId,
+      title: title ?? "Novo fluxo",
+      nodes,
+      edges,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[PUT /api/canvas/[flowId]] Firestore error", message);
+    return NextResponse.json({ error: message, code: "FIRESTORE_ERROR" }, { status: 500 });
+  }
 
   return NextResponse.json({ flowId: realFlowId });
 }

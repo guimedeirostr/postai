@@ -20,17 +20,31 @@ export async function GET(
     }
     const clientData = clientDoc.data()!;
 
-    const [brandKitSnap, memorySnap, dnaSnap, postsSnap] = await Promise.all([
+    const [brandKitSnap, memorySnap, dnaSnap] = await Promise.all([
       adminDb.doc(paths.brandKit(user.uid, clientId)).get(),
       adminDb.doc(paths.memory(user.uid, clientId)).get(),
       adminDb.doc(`clients/${clientId}/brand_dna/current`).get(),
-      adminDb.collection("posts")
+    ]);
+
+    let recentApprovedPosts: ClientContext["recentApprovedPosts"] = [];
+    try {
+      const postsSnap = await adminDb.collection("posts")
         .where("client_id", "==", clientId)
         .where("status", "==", "approved")
         .orderBy("created_at", "desc")
         .limit(10)
-        .get(),
-    ]);
+        .get();
+      recentApprovedPosts = postsSnap.docs.map(d => {
+        const p = d.data();
+        return { id: d.id, coverUrl: p.image_url ?? "", copy: p.caption ?? "" };
+      });
+    } catch (postsErr: unknown) {
+      if ((postsErr as { code?: number }).code === 9) {
+        console.warn("[GET /api/clients/[id]/context] Composite index missing for posts query — deploy firestore indexes");
+      } else {
+        throw postsErr;
+      }
+    }
 
     const ctx: ClientContext = {
       clientId,
@@ -38,10 +52,7 @@ export async function GET(
       brandKit:      brandKitSnap.exists ? (brandKitSnap.data() as ClientContext["brandKit"]) : undefined,
       clientMemory:  memorySnap.exists   ? (memorySnap.data()   as ClientContext["clientMemory"]) : undefined,
       dnaVisual:     dnaSnap.exists      ? (dnaSnap.data()      as ClientContext["dnaVisual"]) : undefined,
-      recentApprovedPosts: postsSnap.docs.map(d => {
-        const p = d.data();
-        return { id: d.id, coverUrl: p.image_url ?? "", copy: p.caption ?? "" };
-      }),
+      recentApprovedPosts,
       loadedAt: Date.now(),
     };
 

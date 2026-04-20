@@ -13,29 +13,41 @@ type RunBody = {
 };
 
 async function loadClientContext(uid: string, clientId: string): Promise<ClientContext | null> {
-  const [clientSnap, brandKitSnap, memorySnap, dnaSnap, postsSnap] = await Promise.all([
+  const [clientSnap, brandKitSnap, memorySnap, dnaSnap] = await Promise.all([
     adminDb.collection("clients").doc(clientId).get(),
     adminDb.doc(paths.brandKit(uid, clientId)).get(),
     adminDb.doc(paths.memory(uid, clientId)).get(),
     adminDb.doc(`clients/${clientId}/brand_dna/current`).get(),
-    adminDb.collection("posts")
+  ]);
+  if (!clientSnap.exists || clientSnap.data()?.agency_id !== uid) return null;
+
+  let recentApprovedPosts: ClientContext["recentApprovedPosts"] = [];
+  try {
+    const postsSnap = await adminDb.collection("posts")
       .where("client_id", "==", clientId)
       .where("status", "==", "approved")
       .orderBy("created_at", "desc")
       .limit(10)
-      .get(),
-  ]);
-  if (!clientSnap.exists || clientSnap.data()?.agency_id !== uid) return null;
+      .get();
+    recentApprovedPosts = postsSnap.docs.map(d => {
+      const p = d.data();
+      return { id: d.id, coverUrl: p.image_url ?? "", copy: p.caption ?? "" };
+    });
+  } catch (postsErr: unknown) {
+    if ((postsErr as { code?: number }).code === 9) {
+      console.warn("[loadClientContext] Composite index missing for posts query — deploy firestore indexes");
+    } else {
+      throw postsErr;
+    }
+  }
+
   return {
     clientId,
     clientName: clientSnap.data()?.name ?? "",
     brandKit:     brandKitSnap.exists ? (brandKitSnap.data() as ClientContext["brandKit"]) : undefined,
     clientMemory: memorySnap.exists   ? (memorySnap.data()   as ClientContext["clientMemory"]) : undefined,
     dnaVisual:    dnaSnap.exists      ? (dnaSnap.data()      as ClientContext["dnaVisual"]) : undefined,
-    recentApprovedPosts: postsSnap.docs.map(d => {
-      const p = d.data();
-      return { id: d.id, coverUrl: p.image_url ?? "", copy: p.caption ?? "" };
-    }),
+    recentApprovedPosts,
     loadedAt: Date.now(),
   };
 }
