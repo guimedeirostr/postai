@@ -27,16 +27,31 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
   const phaseStatus = phases.plano.status;
   const isRunnable = canRun(phases, 'plano', storeClientId);
 
+  // Resolve inputs from store (canonical source) with node data as fallback.
+  // BriefingNode stores its output in phases.briefing.output after running.
+  // d.clientId / d.objetivo are populated after BriefingNode.run() via updateNodeData.
+  const briefingOut = phases.briefing.output as { clientId?: string; objetivo?: string; formato?: string } | undefined;
+  const resolvedClientId = storeClientId ?? briefingOut?.clientId ?? d.clientId;
+  const resolvedObjetivo = briefingOut?.objetivo ?? d.objetivo;
+  const resolvedFormato  = briefingOut?.formato  ?? d.formato ?? 'feed';
+
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
-    if (!d.clientId || !d.objetivo) return;
-    const input = { clientId: d.clientId, objetivo: d.objetivo, formato: d.formato ?? 'feed' };
+    if (!resolvedClientId) {
+      console.error('[PlanNode] clientId ausente — selecione um cliente no header do Canvas');
+      return;
+    }
+    if (!resolvedObjetivo) {
+      console.error('[PlanNode] objetivo ausente — preencha o campo Objetivo no BriefingNode e clique em Salvar briefing');
+      return;
+    }
+    const input = { clientId: resolvedClientId, objetivo: resolvedObjetivo, formato: resolvedFormato };
     setStatus('plano', 'running');
     setInputHash('plano', hashInput(input));
     try {
       const res = await fetch("/api/canvas/phase/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: d.clientId, phaseId: 'plano', input, triggeredBy, runId }),
+        body: JSON.stringify({ clientId: resolvedClientId, phaseId: 'plano', input, triggeredBy, runId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao gerar plano");
@@ -55,7 +70,7 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
     await fetch("/api/canvas/phase/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phaseId: 'plano', clientId: d.clientId, runId }),
+      body: JSON.stringify({ phaseId: 'plano', clientId: resolvedClientId, runId }),
     }).catch(() => null);
   }
 
@@ -66,7 +81,7 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
     window.addEventListener('canvas:run-phase', handler);
     return () => window.removeEventListener('canvas:run-phase', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.clientId, d.objetivo, d.formato]);
+  }, [resolvedClientId, resolvedObjetivo, resolvedFormato]);
 
   return (
     <BaseNodeV3
@@ -84,9 +99,11 @@ export default function PlanNode({ id, data, selected }: NodeProps) {
     >
       {!d.plan ? (
         <div className="space-y-2">
-          {(!d.clientId || !d.objetivo) ? (
+          {(!resolvedClientId || !resolvedObjetivo) ? (
             <p className="text-xs text-slate-500 text-center py-3">
-              Conecte um BriefingNode com clientId e objetivo preenchidos
+              {!resolvedClientId
+                ? 'Selecione um cliente no header do Canvas'
+                : 'Preencha o Objetivo no BriefingNode e clique em Salvar briefing'}
             </p>
           ) : (
             <p className="text-xs text-slate-400 text-center py-2">

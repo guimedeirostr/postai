@@ -39,6 +39,8 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
     const input = { clientId: effectiveClientId, objetivo: d.objetivo ?? '', formato: d.formato ?? 'feed' };
     setStatus('briefing', 'running');
     setInputHash('briefing', hashInput(input));
+    // Persist clientId into node data so downstream nodes can read it as fallback
+    updateNodeData(id, { clientId: effectiveClientId });
     await new Promise(r => setTimeout(r, 200));
     setOutput('briefing', input);
   }
@@ -99,7 +101,7 @@ export default function BriefingNode({ id, data, selected }: NodeProps) {
           >
             <optgroup label="Instagram">
               <option value="ig_feed">Feed (1:1)</option>
-              <option value="ig_carousel">Carrossel (1:1)</option>
+              <option value="ig_carousel">Carrossel (4:5)</option>
               <option value="ig_stories">Stories (9:16)</option>
               <option value="ig_reels_cover">Capa de Reels (9:16)</option>
             </optgroup>
