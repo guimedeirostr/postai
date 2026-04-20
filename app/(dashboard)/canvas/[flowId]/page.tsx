@@ -21,11 +21,12 @@ import "@xyflow/react/dist/style.css";
 
 import {
   Sparkles, Save, Loader2, Play, ChevronDown,
-  Palette, History, ChevronRight, ChevronLeft, Zap, Lock, FolderOpen,
+  Palette, History, ChevronRight, ChevronLeft, Zap, Lock, FolderOpen, Cpu,
 } from "lucide-react";
 import { LocksetPreview } from "@/components/lockset/LocksetPreview";
 import { AssetsTab } from "@/components/canvas/AssetsTab";
 import { FLAGS } from "@/lib/flags";
+import { compilerStrings } from "@/lib/i18n/pt-br";
 import { cn } from "@/lib/utils";
 
 import GlowEdge from "@/components/canvas/edges/GlowEdge";
@@ -592,6 +593,12 @@ function CanvasInner({ flowId }: { flowId: string }) {
               </div>
               <div className="w-px h-8 bg-slate-700/60" />
               <ClientPicker variant="header" />
+              {FLAGS.COMPILER_ENABLED && (
+                <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-lg bg-violet-500/15 border border-violet-500/30 text-violet-300">
+                  <Cpu className="w-3 h-3" />
+                  {compilerStrings.compilerBadge}
+                </span>
+              )}
             </div>
           </Panel>
 
