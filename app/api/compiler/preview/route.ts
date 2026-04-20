@@ -57,27 +57,38 @@ export async function POST(req: NextRequest) {
     clientId = parsed.data.clientId;
     console.log(JSON.stringify({ event: 'compiler.preview.request', cid: clientId, uid }));
 
-    // Verify client ownership
-    const clientSnap = await adminDb.doc(paths.client(uid, clientId)).get();
-    if (!clientSnap.exists) {
+    // Verify client ownership via flat clients/{clientId} collection (legacy structure)
+    const clientSnap = await adminDb.collection('clients').doc(clientId).get();
+    if (!clientSnap.exists || clientSnap.data()?.agency_id !== uid) {
       return NextResponse.json({ error: 'missing_client' }, { status: 404 });
     }
     const clientData = clientSnap.data() ?? {};
 
-    // Fetch DNA (brandKit), locks and assets in parallel
+    // Fetch V3 brandKit, locks and assets in parallel
     const [lockset, assets, brandKitSnap] = await Promise.all([
       getActiveLockset(uid, clientId),
       listLibraryAssets(uid, clientId, { includeInactive: false }),
       adminDb.doc(paths.brandKit(uid, clientId)).get(),
     ]);
 
-    const dna = brandKitSnap.exists ? brandKitSnap.data() : undefined;
+    // Synthesize DNA: prefer V3 brandKit, fall back to flat BrandProfile fields
+    const dna = brandKitSnap.exists
+      ? brandKitSnap.data()
+      : {
+          palette: {
+            primary:   clientData.primary_color   ?? null,
+            secondary: clientData.secondary_color ?? null,
+            accents:   [] as string[],
+          },
+          voice_tone: (clientData.tone_of_voice as string | undefined) ?? null,
+          typography: null,
+        };
 
     const input: CompileInput = {
       client: {
         id: clientId,
         name: (clientData.name as string | undefined) ?? clientId,
-        handle: (clientData.handle as string | undefined) ?? undefined,
+        handle: (clientData.instagram_handle as string | undefined) ?? undefined,
         segment: (clientData.segment as string | undefined) ?? undefined,
       },
       dna,
