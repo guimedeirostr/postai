@@ -11,7 +11,7 @@ import { fetchFewShotOutcomes, resolvePromptModel } from "./outcome";
 import { PROMPT_SLOT_ORDER } from "@/types";
 import type {
   SlideBriefing, PlanoDePost, BrandKit, Recipe,
-  PromptSlot, PromptSlotKey, CompiledPromptV3,
+  LegacyPromptSlot as PromptSlot, PromptSlotKey, CompiledPromptV3,
 } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

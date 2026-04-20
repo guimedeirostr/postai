@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       compiledPromptId: compiledPromptId ?? "",
       clientId,
       slideId,
-      slotsSnapshot:    slotsSnapshot as import("@/types").PromptSlot[],
+      slotsSnapshot:    slotsSnapshot as import("@/types").LegacyPromptSlot[],
       criticScore:      criticScore ?? 0,
       humanDecision,
       humanReason,

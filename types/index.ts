@@ -685,7 +685,7 @@ export const PROMPT_SLOT_ORDER: PromptSlotKey[] = [
   "TEXTO_LITERAL", "ELEMENTOS_GRAFICOS", "ACABAMENTO",
 ];
 
-export interface PromptSlot {
+export interface LegacyPromptSlot {
   key: PromptSlotKey;
   required: boolean;
   value: string;
@@ -696,7 +696,7 @@ export interface PromptSlot {
 export interface CompiledPromptV3 {
   postId: string;
   slideId: string;
-  slots: PromptSlot[];
+  slots: LegacyPromptSlot[];
   finalText: string;
   modelTarget: "flux-1.1-pro" | "ideogram-3" | "nano-banana";
   refsResolved: { slug: string; url: string }[];
@@ -709,7 +709,7 @@ export interface PromptOutcome {
   compiledPromptId: string;
   clientId: string;
   slideId: string;
-  slotsSnapshot: PromptSlot[];
+  slotsSnapshot: LegacyPromptSlot[];
   criticScore: number;
   humanDecision: "approved" | "rejected" | "regenerated";
   humanReason?: string;
@@ -978,3 +978,111 @@ export const FORMATS: Record<FormatKey, FormatSpec> = {
   li_carousel_pdf:    { key: 'li_carousel_pdf',    platform: 'linkedin',  label: 'Carrossel PDF',   aspectRatio: '4:5',    maxSlides: 12, copyStyle: 'li-thought-leadership', ctaStyle: 'comment', charLimit: 3000 },
   li_article:         { key: 'li_article',         platform: 'linkedin',  label: 'Artigo',          aspectRatio: '1.91:1', copyStyle: 'li-thought-leadership', ctaStyle: 'direct-link' },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Ciclo 3 — Prompt Compiler
+// Tipos canônicos do compilador de prompts estruturados.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type SlotKey =
+  | 'BRAND_IDENTITY'
+  | 'TONE_AND_VOICE'
+  | 'PALETA'
+  | 'TIPOGRAFIA'
+  | 'LOGO'
+  | 'PRODUTO'
+  | 'PESSOA'
+  | 'FUNDO'
+  | 'BRIEFING'
+  | 'RESTRICOES_DURAS'
+  | 'CONTEXTO_CARROSSEL';
+
+export const SLOT_ORDER: SlotKey[] = [
+  'BRAND_IDENTITY',
+  'TONE_AND_VOICE',
+  'PALETA',
+  'TIPOGRAFIA',
+  'LOGO',
+  'PRODUTO',
+  'PESSOA',
+  'FUNDO',
+  'BRIEFING',
+  'RESTRICOES_DURAS',
+  'CONTEXTO_CARROSSEL',
+];
+
+export type SlotSource =
+  | { kind: 'dna'; field: string }
+  | { kind: 'lock'; lockId: string; scope: string }
+  | { kind: 'asset'; assetId: string; role: string; slug: string }
+  | { kind: 'brief'; field: string }
+  | { kind: 'carousel'; slideIndex: number };
+
+export interface PromptSlot {
+  key: SlotKey;
+  rendered: string;
+  sources: SlotSource[];
+  skipped?: boolean;
+  skipReason?: string;
+}
+
+export interface CompileInput {
+  client: {
+    id: string;
+    name: string;
+    handle?: string;
+    segment?: string;
+  };
+  dna?: unknown;
+  locks?: unknown;
+  assets?: unknown;
+  brief: {
+    objective: string;
+    format: 'feed' | 'story' | 'carousel' | 'reels' | 'linkedin_post';
+    phase: 'briefing' | 'plano' | 'prompt' | 'copy' | 'critica' | 'output' | 'memoria';
+    extra?: Record<string, unknown>;
+  };
+  carousel?: {
+    slides: Array<{
+      index: number;
+      compiledSummary?: string;
+    }>;
+  };
+  options?: {
+    includeSoftLocks?: boolean;
+    maxSlotLength?: number;
+    language?: 'pt-BR';
+  };
+}
+
+export interface CompileTrace {
+  clientId: string;
+  phase: CompileInput['brief']['phase'];
+  format: CompileInput['brief']['format'];
+  totalChars: number;
+  slotsRendered: number;
+  slotsSkipped: number;
+  locksApplied: { hard: number; soft: number };
+  assetsApplied: { role: string; assetId: string; slug: string }[];
+  ms: number;
+}
+
+export interface CompileWarning {
+  code:
+    | 'missing_dna'
+    | 'no_hard_locks'
+    | 'asset_role_empty'
+    | 'slot_truncated'
+    | 'brief_empty'
+    | 'unknown_format';
+  slot?: SlotKey;
+  message: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface CompileOutput {
+  compiled: string;
+  slots: PromptSlot[];
+  trace: CompileTrace;
+  warnings: CompileWarning[];
+}

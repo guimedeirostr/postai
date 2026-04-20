@@ -97,3 +97,54 @@ export const PT_BR = {
     },
   },
 } as const;
+
+export const compilerStrings = {
+  phaseName: 'Compilação',
+  phaseDescription: 'Monta o prompt final a partir do Lockset, Assets e Briefing',
+  compilingStatus: 'Compilando prompt...',
+  compiledSuccess: 'Prompt compilado',
+  recompileButton: 'Recompilar',
+  recompileConfirm: 'Descartar edições manuais e recompilar?',
+  viewSlotsButton: 'Ver slots',
+  slotsDrawerTitle: 'Slots compilados',
+  slotsCounter: (done: number, total: number) => `${done}/${total}`,
+  summaryLine: (done: number, warnings: number) =>
+    warnings === 0
+      ? `${done} slots compilados • 0 warnings`
+      : `${done} slots compilados • ${warnings} warning${warnings > 1 ? 's' : ''} ⚠`,
+  sourceLabels: {
+    lockset: 'Lockset',
+    'asset-preferred': 'Asset preferido',
+    'brand-hint': 'Dica da marca',
+    briefing: 'Briefing',
+    default: 'Default',
+    missing: 'Ausente',
+  },
+  slotNames: {
+    BRAND_IDENTITY: 'Identidade da marca',
+    TONE_AND_VOICE: 'Tom e voz',
+    PALETA: 'Paleta',
+    TIPOGRAFIA: 'Tipografia',
+    LOGO: 'Logo',
+    PRODUTO: 'Produto',
+    PESSOA: 'Pessoa',
+    FUNDO: 'Fundo',
+    BRIEFING: 'Briefing',
+    RESTRICOES_DURAS: 'Restrições duras',
+    CONTEXTO_CARROSSEL: 'Contexto do carrossel',
+  },
+  editedBadge: 'editado manualmente',
+  restoreCompiled: 'Restaurar compilado',
+  compilerBadge: 'Compiler ON',
+  errors: {
+    missing_client: 'Cliente não encontrado',
+    missing_lockset: 'Lockset não encontrado para este cliente',
+    compile_failed: 'Falha ao compilar prompt',
+    flag_off: 'Recurso indisponível',
+  },
+  warnings: {
+    no_preferred_asset: (role: string) => `Nenhum asset preferido para ${role}`,
+    hex_fallback: 'Paleta usando hint do brand (sem Lockset)',
+    briefing_empty: 'Briefing vazio — usando default',
+  },
+};

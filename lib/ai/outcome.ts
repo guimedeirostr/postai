@@ -4,7 +4,7 @@
 import { adminDb } from "@/lib/firebase-admin";
 import { paths } from "@/lib/firestore/paths";
 import { FieldValue } from "firebase-admin/firestore";
-import type { PromptOutcome, PromptSlot, PromptSlotKey, SlotWeightEntry } from "@/types";
+import type { PromptOutcome, LegacyPromptSlot as PromptSlot, PromptSlotKey, SlotWeightEntry } from "@/types";
 
 // ── Registrar outcome ─────────────────────────────────────────────────────────
 
