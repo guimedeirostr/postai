@@ -138,3 +138,8 @@ export async function getAsset(uid: string, clientId: string, assetId: string): 
   if (!snap.exists) return null;
   return { id: snap.id, ...snap.data() } as LibraryAsset;
 }
+
+// Hard delete — used only as rollback if Storage URL generation fails after Firestore write
+export async function hardDeleteAsset(uid: string, clientId: string, assetId: string): Promise<void> {
+  await doc(uid, clientId, assetId).delete();
+}

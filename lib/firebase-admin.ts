@@ -6,14 +6,22 @@ import { getStorage } from "firebase-admin/storage";
 function getAdminApp(): App {
   if (getApps().length > 0) return getApps()[0];
 
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const projectId     = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+
+  if (!storageBucket) {
+    console.warn(JSON.stringify({
+      event: 'firebase.init.missing_storage_bucket',
+      hint:  'Set FIREBASE_STORAGE_BUCKET in Vercel env vars (e.g. your-project.appspot.com)',
+    }));
+  }
 
   // Opção 1: JSON em base64 (recomendado — sem problemas de formatação)
   const base64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
   if (base64) {
     try {
       const json = Buffer.from(base64.trim(), "base64").toString("utf-8");
-      return initializeApp({ credential: cert(JSON.parse(json)), projectId });
+      return initializeApp({ credential: cert(JSON.parse(json)), projectId, storageBucket });
     } catch (err) {
       console.error("[firebase-admin] Falha ao decodificar FIREBASE_SERVICE_ACCOUNT_BASE64:", err);
     }
@@ -29,14 +37,14 @@ function getAdminApp(): App {
       }
       json = json.replace(/\\n/g, "\n");
       if (!json.startsWith("{")) json = "{" + json + "}";
-      return initializeApp({ credential: cert(JSON.parse(json)), projectId });
+      return initializeApp({ credential: cert(JSON.parse(json)), projectId, storageBucket });
     } catch (err) {
       console.error("[firebase-admin] Falha ao parsear FIREBASE_SERVICE_ACCOUNT_JSON:", err);
     }
   }
 
   console.error("[firebase-admin] Nenhuma credencial encontrada! Configure FIREBASE_SERVICE_ACCOUNT_BASE64.");
-  return initializeApp({ projectId });
+  return initializeApp({ projectId, storageBucket });
 }
 
 const adminApp = getAdminApp();

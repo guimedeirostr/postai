@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 import { FLAGS } from '@/lib/flags';
 import { AssetCreateSchema } from '@/lib/assets/schema';
-import { listLibraryAssets, createAsset, slugExists } from '@/lib/assets/service';
+import { listLibraryAssets, createAsset, slugExists, hardDeleteAsset } from '@/lib/assets/service';
 import { generateUploadUrl } from '@/lib/assets/storage';
 
 type P = { params: Promise<{ id: string }> };
@@ -61,8 +61,22 @@ export async function POST(req: NextRequest, { params }: P) {
       return NextResponse.json({ error: 'slug_conflict' }, { status: 409 });
     }
 
-    const asset     = await createAsset(user.uid, clientId, data);
-    const uploadUrl = await generateUploadUrl(asset.storagePath, data.mimeType);
+    const asset = await createAsset(user.uid, clientId, data);
+
+    let uploadUrl: string;
+    try {
+      uploadUrl = await generateUploadUrl(asset.storagePath, data.mimeType);
+    } catch (storageErr) {
+      // Rollback: remove orphaned doc so client can retry without hitting 409
+      await hardDeleteAsset(user.uid, clientId, asset.id).catch(() => {});
+      console.log(JSON.stringify({
+        event: 'assets.create.storage_url_failed',
+        clientId, assetId: asset.id,
+        error: String((storageErr as Error)?.message ?? storageErr),
+        hint: 'Check FIREBASE_STORAGE_BUCKET env var in Vercel',
+      }));
+      return NextResponse.json({ error: 'storage_unavailable' }, { status: 503 });
+    }
 
     console.log(JSON.stringify({ event: 'assets.create.ok', clientId, assetId: asset.id, role: asset.role, slug: asset.slug, bytes: asset.bytes, ms: Date.now() - t0 }));
     return NextResponse.json({ asset, uploadUrl }, { status: 201 });
