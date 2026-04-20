@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { paths } from "@/lib/firestore/paths";
+import { runDirectorPlan } from "@/lib/director/plan";
 import type { PhaseId, PhaseRun, ClientContext } from "@/types";
 
 type RunBody = {
@@ -56,22 +57,14 @@ async function loadClientContext(uid: string, clientId: string): Promise<ClientC
 
 async function executePlano(input: Record<string, unknown>, ctx: ClientContext): Promise<Record<string, unknown>> {
   const { objetivo, formato } = input as Record<string, string>;
-  const patternsLearned = ctx.clientMemory?.toneExamples ?? [];
-  const identidadeVisual = ctx.dnaVisual;
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/director/plan`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      clientId: ctx.clientId,
-      objetivo,
-      formato: formato ?? "feed",
-      clientName: ctx.clientName,
-      patternsLearned,
-      identidadeVisual,
-    }),
+  const plan = await runDirectorPlan({
+    objetivo,
+    formato:      formato ?? "feed",
+    clientName:   ctx.clientName,
+    brandKit:     ctx.brandKit,
+    clientMemory: ctx.clientMemory,
   });
-  if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao gerar plano");
-  return res.json();
+  return { plan };
 }
 
 async function executeMemoria(_input: Record<string, unknown>, ctx: ClientContext): Promise<Record<string, unknown>> {
