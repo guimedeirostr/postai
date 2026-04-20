@@ -85,6 +85,7 @@ export interface FreepikTaskResult {
 /** Mystic supports social_post_4_5 (exact Instagram feed ratio) */
 const MYSTIC_ASPECT: Record<string, string> = {
   feed:               "social_post_4_5",
+  carousel:           "social_post_4_5",  // Instagram carousel 4:5 (1080×1350)
   carousel_panoramic: "widescreen_16_9",  // wide para panorâmica 2 slides (2160×1350)
   stories:            "social_story_9_16",
   reels_cover:        "social_story_9_16",
@@ -101,6 +102,7 @@ const MYSTIC_ASPECT: Record<string, string> = {
  */
 const SEEDREAM_ASPECT: Record<string, string> = {
   feed:             "traditional_3_4",
+  carousel:         "traditional_3_4",    // closest to 4:5 available in Seedream
   stories:          "social_story_9_16",
   reels_cover:      "social_story_9_16",
   linkedin_post:    "widescreen_16_9",

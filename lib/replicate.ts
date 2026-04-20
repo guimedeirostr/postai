@@ -57,26 +57,31 @@ export type ReplicateImageModel =
 const ASPECT_RATIO: Record<string, Record<string, string>> = {
   "google/imagen-4": {
     feed:        "3:4",   // Imagen 4 não suporta 4:5 nativo
+    carousel:    "3:4",
     stories:     "9:16",
     reels_cover: "9:16",
   },
   "black-forest-labs/flux-kontext-pro": {
     feed:        "4:5",
+    carousel:    "4:5",
     stories:     "9:16",
     reels_cover: "9:16",
   },
   "black-forest-labs/flux-1.1-pro": {
     feed:        "4:5",
+    carousel:    "4:5",
     stories:     "9:16",
     reels_cover: "9:16",
   },
   "black-forest-labs/flux-dev": {
     feed:        "4:5",
+    carousel:    "4:5",
     stories:     "9:16",
     reels_cover: "9:16",
   },
   "ideogram-ai/ideogram-v3-turbo": {
     feed:        "PORTRAIT",   // Ideogram usa nomes por extenso
+    carousel:    "PORTRAIT",
     stories:     "VERTICAL",
     reels_cover: "VERTICAL",
   },

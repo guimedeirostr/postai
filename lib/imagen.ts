@@ -33,6 +33,7 @@ export type ImagenModel = (typeof IMAGEN_MODELS)[keyof typeof IMAGEN_MODELS];
 
 const FORMAT_ASPECT: Record<string, string> = {
   feed:               "3:4",   // Instagram feed 4:5 → closest supported is 3:4
+  carousel:           "3:4",   // Instagram carousel 4:5 → same fallback as feed
   stories:            "9:16",  // Stories / Reels — exact
   reels_cover:        "9:16",
   linkedin_post:      "16:9",

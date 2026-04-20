@@ -971,7 +971,7 @@ export interface LockSuggestion {
 
 export const FORMATS: Record<FormatKey, FormatSpec> = {
   ig_feed:            { key: 'ig_feed',            platform: 'instagram', label: 'Feed',            aspectRatio: '1:1',    copyStyle: 'ig-casual',           ctaStyle: 'link-in-bio',  charLimit: 2200 },
-  ig_carousel:        { key: 'ig_carousel',        platform: 'instagram', label: 'Carrossel',       aspectRatio: '1:1',    maxSlides: 10, copyStyle: 'ig-storytelling', ctaStyle: 'link-in-bio',  charLimit: 2200 },
+  ig_carousel:        { key: 'ig_carousel',        platform: 'instagram', label: 'Carrossel',       aspectRatio: '4:5',    maxSlides: 10, copyStyle: 'ig-storytelling', ctaStyle: 'link-in-bio',  charLimit: 2200 },
   ig_stories:         { key: 'ig_stories',         platform: 'instagram', label: 'Stories',         aspectRatio: '9:16',   copyStyle: 'ig-casual',           ctaStyle: 'dm' },
   ig_reels_cover:     { key: 'ig_reels_cover',     platform: 'instagram', label: 'Capa de Reels',   aspectRatio: '9:16',   copyStyle: 'ig-casual',           ctaStyle: 'link-in-bio' },
   li_post_square:     { key: 'li_post_square',     platform: 'linkedin',  label: 'Post Quadrado',   aspectRatio: '1:1',    copyStyle: 'li-professional',     ctaStyle: 'direct-link',  charLimit: 3000 },

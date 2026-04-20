@@ -288,7 +288,7 @@ export async function POST(req: NextRequest) {
           // ── Dados comuns para ambos os caminhos (template de referência ou genérico)
           const headline = (post.visual_headline ?? post.headline ?? "") as string;
           const format   = (post.format ?? "feed") as "feed" | "stories" | "reels_cover";
-          const H        = format === "feed" ? 1350 : 1920;
+          const H        = (format as string) === "carousel" || format === "feed" ? 1350 : 1920;
           const strategy = post.strategy as { tema?: string; pilar?: string } | undefined;
           const rawCaption = (post.caption ?? "") as string;
           const captionLines = rawCaption.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
