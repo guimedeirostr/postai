@@ -33,13 +33,14 @@ type CanvasStoreState = {
 };
 
 const INITIAL_PHASES: Record<PhaseId, PhaseState> = {
-  briefing: { status: 'idle' },
-  memoria:  { status: 'idle' },
-  plano:    { status: 'idle' },
-  prompt:   { status: 'idle' },
-  copy:     { status: 'idle' },
-  critico:  { status: 'idle' },
-  output:   { status: 'idle' },
+  briefing:    { status: 'idle' },
+  memoria:     { status: 'idle' },
+  plano:       { status: 'idle' },
+  compilacao:  { status: 'idle' },
+  prompt:      { status: 'idle' },
+  copy:        { status: 'idle' },
+  critico:     { status: 'idle' },
+  output:      { status: 'idle' },
 };
 
 export const useCanvasStore = create<CanvasStoreState>((set, get) => ({

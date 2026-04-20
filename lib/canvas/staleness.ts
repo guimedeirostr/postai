@@ -2,13 +2,14 @@ import { createHash } from 'crypto';
 import type { PhaseId, PhaseStatus } from '@/types';
 
 export const CANVAS_GRAPH: Record<PhaseId, PhaseId[]> = {
-  briefing: ['plano'],
-  memoria:  ['plano', 'prompt'],
-  plano:    ['prompt', 'copy'],
-  prompt:   ['critico'],
-  copy:     ['critico'],
-  critico:  ['output'],
-  output:   ['memoria'],
+  briefing:   ['plano'],
+  memoria:    ['plano', 'prompt'],
+  plano:      ['prompt', 'copy'],
+  compilacao: [],
+  prompt:     ['critico'],
+  copy:       ['critico'],
+  critico:    ['output'],
+  output:     ['memoria'],
 };
 
 export function hashInput(input: unknown): string {

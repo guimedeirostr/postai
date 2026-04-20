@@ -53,6 +53,7 @@ export default function PromptNode({ id, data, selected }: NodeProps) {
     if (compilationStatus === "running") return;
 
     setCompilationStatus("running");
+    setStatus('compilacao', 'running');
     setCompilationError(null);
     try {
       const res = await fetch("/api/compiler/preview", {
@@ -82,12 +83,14 @@ export default function PromptNode({ id, data, selected }: NodeProps) {
         wasEdited: false,
       });
       setCompilationStatus("done");
+      setStatus('compilacao', 'done');
       console.log(JSON.stringify({ event: 'compiler.canvas.recompile', cid: clientId, hadManualEdits: !!d.wasEdited }));
     } catch (e) {
       setCompilationStatus("error");
+      setStatus('compilacao', 'error');
       setCompilationError(String((e as Error)?.message ?? e));
     }
-  }, [clientId, d.format, d.wasEdited, compilationStatus, id, updateNodeData]);
+  }, [clientId, d.format, d.wasEdited, compilationStatus, id, updateNodeData, setStatus]);
 
   // Auto-compile on mount when flag is ON and clientId is known
   useEffect(() => {

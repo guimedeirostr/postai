@@ -769,6 +769,7 @@ export interface ClientPickerOption {
 export type PhaseId =
   | 'briefing'
   | 'plano'
+  | 'compilacao'
   | 'prompt'
   | 'copy'
   | 'critico'

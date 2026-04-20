@@ -81,13 +81,14 @@ async function dispatchPhase(
   ctx: ClientContext,
 ): Promise<Record<string, unknown>> {
   switch (phaseId) {
-    case "briefing": return { ...input };
-    case "plano":    return executePlano(input, ctx);
-    case "memoria":  return executeMemoria(input, ctx);
-    case "prompt":   return stub("prompt");
-    case "copy":     return stub("copy");
-    case "critico":  return stub("critico");
-    case "output":   return stub("output");
+    case "briefing":   return { ...input };
+    case "plano":      return executePlano(input, ctx);
+    case "memoria":    return executeMemoria(input, ctx);
+    case "compilacao": return stub("compilacao");
+    case "prompt":     return stub("prompt");
+    case "copy":       return stub("copy");
+    case "critico":    return stub("critico");
+    case "output":     return stub("output");
   }
 }
 

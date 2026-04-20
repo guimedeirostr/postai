@@ -4,7 +4,8 @@ export function renderBrandIdentity(
   input: CompileInput,
   _ctx: { warnings: CompileWarning[]; maxSlotLength: number },
 ): PromptSlot {
-  const { name, handle, segment } = input.client;
+  const { name, segment } = input.client;
+  const handle = (input.client.handle ?? '').replace(/^@+/, '');
   const parts = [`Cliente: ${name}`];
   if (handle) parts.push(`(@${handle})`);
   if (segment) parts.push(`— segmento: ${segment}`);
