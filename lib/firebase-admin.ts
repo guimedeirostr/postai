@@ -44,3 +44,10 @@ const adminApp = getAdminApp();
 export const adminDb      = getFirestore(adminApp);
 export const adminAuth    = getAuth(adminApp);
 export const adminStorage = () => getStorage(adminApp);
+
+// Guard against double-call on hot reload — settings() can only be called once per instance
+const _settingsKey = '__postai_firestore_settings_applied';
+if (!(adminDb as unknown as Record<string, unknown>)[_settingsKey]) {
+  adminDb.settings({ ignoreUndefinedProperties: true });
+  (adminDb as unknown as Record<string, unknown>)[_settingsKey] = true;
+}
