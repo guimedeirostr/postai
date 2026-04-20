@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Palette, Brain, Sparkles, Loader2, ArrowRight, Image, Lock } from "lucide-react";
+import { ArrowLeft, Palette, Brain, Sparkles, Loader2, ArrowRight, Image, Lock, FolderOpen } from "lucide-react";
 import { FLAGS } from "@/lib/flags";
 import type { BrandProfile } from "@/types";
 
@@ -86,6 +86,13 @@ export default function ClientOverviewPage({ params }: { params: Promise<{ id: s
       bg: "bg-slate-50",
       title: "Brand Lockset",
       subtitle: "Travas de marca para o Diretor IA",
+    }] : []),
+    ...(FLAGS.ASSETS_ENABLED ? [{
+      href: `/clients/${clientId}/assets`,
+      icon: <FolderOpen className="w-6 h-6 text-teal-500" />,
+      bg: "bg-teal-50",
+      title: "Assets",
+      subtitle: "Logos, produtos e fundos",
     }] : []),
   ];
 

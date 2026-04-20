@@ -35,6 +35,10 @@ export const paths = {
   promptOutcomes:  (u: string, c: string) => `users/${u}/clients/${c}/promptOutcomes`,
   promptOutcome:   (u: string, c: string, o: string) => `users/${u}/clients/${c}/promptOutcomes/${o}`,
 
+  // Asset Library V3 (Ciclo 2)
+  libraryAssets: (u: string, c: string) => `users/${u}/clients/${c}/libraryAssets`,
+  libraryAsset:  (u: string, c: string, a: string) => `users/${u}/clients/${c}/libraryAssets/${a}`,
+
   // Brand Lockset V3
   locksets:        (u: string, c: string) => `users/${u}/clients/${c}/brandLocksets`,
   lockset:         (u: string, c: string) => `users/${u}/clients/${c}/brandLocksets/current`,

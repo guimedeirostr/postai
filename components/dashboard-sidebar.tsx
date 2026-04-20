@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   LayoutDashboard, Users, ImageIcon, Settings,
-  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow, Layers, Palette, Lock,
+  Sparkles, LogOut, Loader2, GalleryHorizontal, Workflow, Layers, Palette, Lock, FolderOpen,
 } from "lucide-react";
 import { FLAGS } from "@/lib/flags";
 import { useState } from "react";
@@ -19,6 +19,7 @@ const navItems = [
   { href: "/clients",      label: "Clientes",      icon: Users },
   { href: "/brand-kits",   label: "Brand Kits",    icon: Palette },
   ...(FLAGS.LOCKSET_ENABLED ? [{ href: "/locksets", label: "Brand Locksets", icon: Lock }] : []),
+  ...(FLAGS.ASSETS_ENABLED  ? [{ href: "/assets",   label: "Assets",         icon: FolderOpen }] : []),
   { href: "/posts",        label: "Posts Gerados", icon: ImageIcon },
   { href: "/variants",     label: "Variantes",     icon: Layers },
   { href: "/carousels",    label: "Carrosseis",    icon: GalleryHorizontal },

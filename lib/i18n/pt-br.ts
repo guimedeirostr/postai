@@ -37,4 +37,63 @@ export const PT_BR = {
     dryRunNotice:
       'Estes locks serão injetados no prompt quando o Compiler estiver ativo (Ciclo 3). Por enquanto, só estão sendo registrados.',
   },
+
+  assets: {
+    pageTitle:   'Biblioteca de Assets',
+    newAsset:    'Novo asset',
+    filterAll:   'Todos',
+    roles: {
+      logo:       'Logo',
+      product:    'Produto',
+      person:     'Pessoa',
+      background: 'Fundo',
+    },
+    emptyAll:   'Comece subindo o logo da marca. Depois, fotos de produtos e pessoas.',
+    emptyRole:  'Nenhum asset nesta categoria ainda.',
+    addFirst:   'Primeiro asset',
+    upload: {
+      title:       'Novo asset',
+      file:        'Arquivo (PNG, JPG ou WEBP, até 10 MB)',
+      role:        'Papel',
+      slug:        'Identificador',
+      slugHint:    'Ex: logo-principal. Letras minúsculas, números e hífens.',
+      label:       'Nome',
+      description: 'Descrição (opcional)',
+      submit:      'Enviar',
+      sending:     'Enviando',
+    },
+    edit: {
+      title:     'Editar asset',
+      preferred: 'Preferido para esta categoria',
+      save:      'Salvar',
+      delete:    'Excluir',
+    },
+    card: {
+      preferredBadge: 'Preferido',
+      menu: {
+        edit:    'Editar',
+        prefer:  'Marcar como preferido',
+        delete:  'Excluir',
+        restore: 'Restaurar',
+      },
+    },
+    canvasTab: {
+      title:   'Assets',
+      notice:  'Assets visíveis como referência. Injeção automática em prompt começa no Ciclo 3 (Compiler).',
+      manage:  'Gerenciar assets',
+    },
+    toasts: {
+      created:      'Asset adicionado',
+      updated:      'Asset atualizado',
+      deleted:      'Asset removido',
+      restored:     'Asset restaurado',
+      preferredSet: 'Asset marcado como preferido',
+    },
+    errors: {
+      slugTaken:    'Este identificador já está em uso neste cliente.',
+      tooLarge:     'Arquivo excede 10 MB.',
+      invalidType:  'Apenas PNG, JPG ou WEBP são aceitos.',
+      uploadFailed: 'Falha no upload. Tente novamente.',
+    },
+  },
 } as const;

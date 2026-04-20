@@ -862,6 +862,58 @@ export interface FormatSpec {
   charLimit?: number;
 }
 
+// ── Asset Library (Ciclo 2) ───────────────────────────────────────────────────
+// Armazenado em users/{uid}/clients/{cid}/libraryAssets/{assetId}
+// NÃO confundir com Asset (canvas V3 acima) que usa kind+@slug para prompt refs.
+
+export type AssetRole =
+  | 'logo'        // marca, monograma, assinatura
+  | 'product'     // produto / prato / item-hero
+  | 'person'      // rosto / talento / fundador
+  | 'background'; // textura / cenário / fundo neutro
+
+export type AssetSlug = string; // kebab-case, 3-40 chars: /^[a-z0-9]+(-[a-z0-9]+)*$/
+
+export interface LibraryAsset {
+  id: string;
+  clientId: string;
+  role: AssetRole;
+  slug: AssetSlug;
+  label: string;
+  description?: string;
+  storagePath: string;        // postai-assets/{cid}/{assetId}.{ext}
+  downloadUrl: string;        // URL pública (após finalize)
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  width?: number;
+  height?: number;
+  bytes: number;
+  preferred: boolean;         // 1 preferido por role por cliente (regra server-side)
+  active: boolean;            // false = soft-delete
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+}
+
+export interface AssetCreateInput {
+  role: AssetRole;
+  slug: AssetSlug;
+  label: string;
+  description?: string;
+  mimeType: LibraryAsset['mimeType'];
+  bytes: number;
+  width?: number;
+  height?: number;
+}
+
+export interface AssetUpdateInput {
+  role?: AssetRole;
+  slug?: AssetSlug;
+  label?: string;
+  description?: string;
+  preferred?: boolean;
+  active?: boolean;
+}
+
 // ── Brand Lockset ─────────────────────────────────────────────────────────────
 // Ciclo 1: CRUD de travas de marca. Armazenado em
 // users/{uid}/clients/{cid}/brandLocksets/current

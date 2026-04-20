@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch, GalleryHorizontal, RotateCcw, Palette, Brain, Lock } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Loader2, ImageIcon, Camera, ScanSearch, GalleryHorizontal, RotateCcw, Palette, Brain, Lock, FolderOpen } from "lucide-react";
 import { FLAGS } from "@/lib/flags";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -229,6 +229,12 @@ export default function ClientsPage() {
                     <a href={`/clients/${client.id}/lockset`}
                       className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
                       <Lock className="w-3.5 h-3.5" /> Lockset
+                    </a>
+                  )}
+                  {FLAGS.ASSETS_ENABLED && (
+                    <a href={`/clients/${client.id}/assets`}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 transition-colors">
+                      <FolderOpen className="w-3.5 h-3.5" /> Assets
                     </a>
                   )}
                   <Button size="sm" variant="outline"
