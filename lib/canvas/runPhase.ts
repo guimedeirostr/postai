@@ -28,6 +28,8 @@ function normalizeFormat(fmt: string): CompileInput["brief"]["format"] {
   return FORMAT_MAP[fmt] ?? "feed";
 }
 
+const CAROUSEL_FORMATS = new Set(["carousel", "ig_carousel", "li_carousel_pdf"]);
+
 // ── Client context ─────────────────────────────────────────────────────────────
 
 export async function loadClientContext(uid: string, clientId: string): Promise<ClientContext | null> {
@@ -181,11 +183,87 @@ async function executeCritic(
   return result as unknown as Record<string, unknown>;
 }
 
+// ── Output — persists the pipeline result to Firestore ─────────────────────────
+
+type SlideResult = {
+  n: number; role: string; headline: string; body: string;
+  cta?: string | null; imageUrl?: string | null; score?: number | null; notes?: string | null;
+};
+
+async function executeOutput(
+  input: Record<string, unknown>,
+  ctx: ClientContext,
+  uid: string,
+  meta: { runId: string; flowId?: string },
+): Promise<Record<string, unknown>> {
+  const formato = (input.formato as string) ?? "feed";
+
+  if (CAROUSEL_FORMATS.has(formato)) {
+    const slides = (input.slideResults as SlideResult[] | undefined) ?? [];
+    const docRef = adminDb.collection(paths.carousels(uid, ctx.clientId)).doc();
+    const doc = {
+      id:         docRef.id,
+      uid,
+      clientId:   ctx.clientId,
+      clientName: ctx.clientName,
+      objetivo:   (input.objetivo  as string) ?? "",
+      formato,
+      caption:    (input.caption   as string) ?? "",
+      cta:        (input.cta       as string) ?? "",
+      plan:       input.plan ?? null,
+      slides:     slides.map(s => ({
+        n:        s.n,
+        role:     s.role,
+        headline: s.headline,
+        body:     s.body,
+        cta:      s.cta      ?? null,
+        imageUrl: s.imageUrl ?? null,
+        score:    s.score    ?? null,
+        notes:    s.notes    ?? null,
+      })),
+      status:     "pronto" as const,
+      runId:      meta.runId,
+      flowId:     meta.flowId ?? null,
+      createdAt:  Date.now(),
+    };
+    await docRef.set(doc);
+    return { ...input, carouselId: docRef.id, persisted: true };
+  }
+
+  // Single-post formats
+  const docRef = adminDb.collection(paths.posts(uid, ctx.clientId)).doc();
+  const doc = {
+    id:         docRef.id,
+    uid,
+    clientId:   ctx.clientId,
+    clientName: ctx.clientName,
+    objetivo:   (input.objetivo  as string) ?? "",
+    formato,
+    headline:   (input.headline  as string) ?? "",
+    caption:    (input.caption   as string) ?? "",
+    cta:        (input.cta       as string) ?? "",
+    hashtags:   (input.hashtags  as string[]) ?? [],
+    imageUrl:   (input.imageUrl  as string) ?? null,
+    score:      (input.score     as number) ?? null,
+    notes:      (input.notes     as string) ?? null,
+    plan:       input.plan ?? null,
+    status:     "pronto" as const,
+    runId:      meta.runId,
+    flowId:     meta.flowId ?? null,
+    createdAt:  Date.now(),
+  };
+  await docRef.set(doc);
+  return { ...input, postId: docRef.id, persisted: true };
+}
+
+// ── Dispatcher ─────────────────────────────────────────────────────────────────
+
 async function dispatchPhase(
   phaseId: PhaseId,
   input:   Record<string, unknown>,
   ctx:     ClientContext,
   uid:     string,
+  meta:    { runId: string; flowId?: string },
 ): Promise<Record<string, unknown>> {
   switch (phaseId) {
     case "briefing":   return { ...input };
@@ -196,7 +274,7 @@ async function dispatchPhase(
     case "image":      return executeImage(input, ctx);
     case "copy":       return executeCopy(input, ctx, uid);
     case "critico":    return executeCritic(input, ctx);
-    case "output":     return { ...input };
+    case "output":     return executeOutput(input, ctx, uid, meta);
   }
 }
 
@@ -209,6 +287,7 @@ export interface RunPhaseParams {
   input:       Record<string, unknown>;
   triggeredBy: PhaseRun["triggeredBy"];
   runId:       string;
+  flowId?:     string;
 }
 
 export interface RunPhaseResult {
@@ -223,7 +302,7 @@ export interface RunPhaseResult {
 export async function runPhaseWithCtx(
   params: RunPhaseParams & { ctx: ClientContext },
 ): Promise<RunPhaseResult> {
-  const { uid, clientId, phaseId, input, triggeredBy, runId, ctx } = params;
+  const { uid, clientId, phaseId, input, triggeredBy, runId, flowId, ctx } = params;
   const startedAt = Date.now();
 
   const phaseRunRef = adminDb.collection(paths.phaseRuns(uid, clientId, runId)).doc();
@@ -240,7 +319,7 @@ export async function runPhaseWithCtx(
 
   let output: Record<string, unknown>;
   try {
-    output = await dispatchPhase(phaseId, input, ctx, uid);
+    output = await dispatchPhase(phaseId, input, ctx, uid, { runId, flowId });
   } catch (err) {
     await phaseRunRef.update({
       status:       "error",

@@ -156,7 +156,10 @@ function SidePanel({ tab, setTab, clientId, flowId, phases }: {
                   <div key={id} className="flex items-center gap-2">
                     <div className={cn("w-2 h-2 rounded-full flex-none", statusDot[st])} />
                     <span className="text-xs text-pi-text-muted flex-1">{label}</span>
-                    <span className="text-[10px] text-pi-text-muted/60 capitalize">{st}</span>
+                    <span
+                      className="text-[10px] text-pi-text-muted/60 capitalize cursor-default"
+                      title={st === "stale" ? "Entrada mudou — regerar?" : undefined}
+                    >{st}</span>
                   </div>
                 );
               })}
@@ -340,7 +343,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
   const [noClientToast, setNoClientToast] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { phases, clientId: storeClientId, setClientId: setStoreClientId, setStatus, reset } = useCanvasStore();
+  const { phases, clientId: storeClientId, setClientId: setStoreClientId, setStatus, setOutput, hydratePhases, reset } = useCanvasStore();
 
   // URL sync: read ?clientId on mount; if absent show onboarding
   useEffect(() => {
@@ -366,14 +369,18 @@ function CanvasInner({ flowId }: { flowId: string }) {
     if (!flowId) return;
     fetch(`/api/canvas/${flowId}`)
       .then(r => r.json())
-      .then(({ flow }) => {
+      .then(({ flow, phases: savedPhases }) => {
         if (flow?.nodes?.length) {
           setNodes(flow.nodes);
           setEdges(flow.edges ?? []);
         }
+        if (savedPhases && Object.keys(savedPhases).length > 0) {
+          hydratePhases(savedPhases as CanvasPhases);
+        }
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowId, setNodes, setEdges]);
 
   // Autosave with 1s debounce
@@ -434,7 +441,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
     const res = await fetch("/api/canvas/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, mode, checkpointAt, briefing }),
+      body: JSON.stringify({ clientId, mode, checkpointAt, briefing, flowId }),
     });
 
     if (!res.ok || !res.body) return;
@@ -451,7 +458,10 @@ function CanvasInner({ flowId }: { flowId: string }) {
         try {
           const event = JSON.parse(line.slice(6));
           if (event.type === "phase_start") setStatus(event.phaseId as PhaseId, "running");
-          if (event.type === "phase_done") setStatus(event.phaseId as PhaseId, "done");
+          if (event.type === "phase_done") {
+            setStatus(event.phaseId as PhaseId, "done");
+            if (event.output) setOutput(event.phaseId as PhaseId, event.output);
+          }
           if (event.type === "phase_error") setStatus(event.phaseId as PhaseId, "error");
           if (event.type === "checkpoint_reached") {
             setCheckpointToast(`Pausei no ${event.phaseId}. Revise e aprove para continuar.`);

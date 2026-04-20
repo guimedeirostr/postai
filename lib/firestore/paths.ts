@@ -45,6 +45,10 @@ export const paths = {
   locksetVersions: (u: string, c: string) => `users/${u}/clients/${c}/brandLocksets/current/versions`,
   locksetVersion:  (u: string, c: string, v: string) => `users/${u}/clients/${c}/brandLocksets/current/versions/${v}`,
 
+  // Canvas Results V3
+  carousels: (u: string, c: string) => `users/${u}/clients/${c}/carousels`,
+  carousel:  (u: string, c: string, id: string) => `users/${u}/clients/${c}/carousels/${id}`,
+
   // Canvas Execution Modes V3
   canvasRuns:   (u: string, c: string) => `users/${u}/clients/${c}/canvasRuns`,
   canvasRun:    (u: string, c: string, r: string) => `users/${u}/clients/${c}/canvasRuns/${r}`,

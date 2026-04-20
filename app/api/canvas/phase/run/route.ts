@@ -13,6 +13,7 @@ type RunBody = {
   input:       Record<string, unknown>;
   triggeredBy: PhaseRun["triggeredBy"];
   runId?:      string;
+  flowId?:     string;
 };
 
 export async function POST(req: NextRequest) {
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body: RunBody = await req.json();
-  const { clientId, phaseId, input, triggeredBy, runId: existingRunId } = body;
+  const { clientId, phaseId, input, triggeredBy, runId: existingRunId, flowId } = body;
 
   if (!clientId || !phaseId) {
     return NextResponse.json({ error: "clientId e phaseId obrigatórios", code: "MISSING_PARAMS" }, { status: 400 });
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await runPhase({ uid, clientId, phaseId, input, triggeredBy: triggeredBy ?? "step", runId });
+    const result = await runPhase({ uid, clientId, phaseId, input, triggeredBy: triggeredBy ?? "step", runId, flowId });
     return NextResponse.json({ phaseRunId: result.phaseRunId, runId, output: result.output });
   } catch (err) {
     const msg  = err instanceof Error ? err.message : String(err);

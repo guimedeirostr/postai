@@ -3,6 +3,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { paths } from "@/lib/firestore/paths";
 import { FieldValue } from "firebase-admin/firestore";
+import type { PhaseId } from "@/types";
 
 export async function GET(
   _req: NextRequest,
@@ -24,9 +25,31 @@ export async function GET(
 
   if (!clientId) return NextResponse.json({ flow: null });
 
-  const snap = await adminDb.doc(paths.flow(user.uid, clientId, parts.slice(1).join("_"))).get();
+  const realFlowId = parts.slice(1).join("_");
+  const snap = await adminDb.doc(paths.flow(user.uid, clientId, realFlowId)).get();
   if (!snap.exists) return NextResponse.json({ flow: null });
-  return NextResponse.json({ flow: { id: snap.id, ...snap.data() } });
+
+  const flowData  = snap.data()!;
+  const latestRunId = flowData.latestRunId as string | undefined;
+
+  let phases: Record<string, unknown> = {};
+  if (latestRunId) {
+    const phaseRunsSnap = await adminDb
+      .collection(paths.phaseRuns(user.uid, clientId, latestRunId))
+      .get();
+
+    const doneDocs = phaseRunsSnap.docs
+      .map(d => d.data())
+      .filter(d => d.status === "done")
+      .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+
+    for (const doc of doneDocs) {
+      const pid = doc.phaseId as PhaseId;
+      if (pid) phases[pid] = { status: "done", output: doc.output ?? {} };
+    }
+  }
+
+  return NextResponse.json({ flow: { id: snap.id, ...flowData }, phases });
 }
 
 export async function PUT(

@@ -13,6 +13,7 @@ type RunBody = {
   mode:         "step" | "checkpoint" | "run-all";
   checkpointAt?: PhaseId;
   briefing:     BriefingInput;
+  flowId?:      string;
 };
 
 const CAROUSEL_FORMATS = new Set(["carousel", "ig_carousel", "li_carousel_pdf"]);
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   if (!user) return new Response("Unauthorized", { status: 401 });
 
   const body: RunBody = await req.json();
-  const { clientId, mode, checkpointAt, briefing } = body;
+  const { clientId, mode, checkpointAt, briefing, flowId } = body;
 
   if (!clientId) return new Response("clientId obrigatório", { status: 400 });
 
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
       async function exec(phaseId: PhaseId, input: Record<string, unknown>, slideN?: number): Promise<boolean> {
         controller.enqueue(encode({ type: "phase_start", phaseId, slideN, runId }));
         try {
-          const result = await runPhaseWithCtx({ uid, clientId, phaseId, input, triggeredBy, runId, ctx });
+          const result = await runPhaseWithCtx({ uid, clientId, phaseId, input, triggeredBy, runId, flowId, ctx });
           Object.assign(accum, result.output);
           controller.enqueue(encode({ type: "phase_done", phaseId, slideN, output: result.output, runId }));
           return true;
@@ -136,12 +137,17 @@ export async function POST(req: NextRequest) {
 
           if (!aborted) {
             // Phase 2: per-slide (compilacao → prompt → image → critico)
-            type Slide = { n: number; role: string; headline: string; body: string };
+            type Slide = { n: number; role: string; headline: string; body: string; cta?: string };
             const slides = (accum.slides as Slide[] | undefined) ?? [];
             // Fallback: single virtual slide if copy didn't return structure
             const slidesToRun: Slide[] = slides.length > 0
               ? slides
               : [{ n: 1, role: "hook", headline: (accum.headline as string) ?? "", body: (accum.caption as string) ?? "" }];
+
+            const accumSlides: Array<{
+              n: number; role: string; headline: string; body: string;
+              cta?: string | null; imageUrl?: string | null; score?: number | null; notes?: string | null;
+            }> = [];
 
             for (const slide of slidesToRun) {
               const slideN       = slide.n;
@@ -152,6 +158,8 @@ export async function POST(req: NextRequest) {
               accum.brief         = slide.headline || (accum.caption as string | undefined) || "";
               accum.compiledText  = undefined;
               accum.imageUrl      = undefined;
+              accum.score         = undefined;
+              accum.notes         = undefined;
 
               const perSlide: PhaseId[] = ["compilacao", "prompt", "image", "critico"];
               let slideAborted = false;
@@ -161,14 +169,38 @@ export async function POST(req: NextRequest) {
                 if (!ok) { slideAborted = true; break; }
               }
 
+              accumSlides.push({
+                n:        slide.n,
+                role:     slide.role,
+                headline: slide.headline,
+                body:     slide.body,
+                cta:      slide.cta ?? null,
+                imageUrl: (accum.imageUrl as string) ?? null,
+                score:    (accum.score as number) ?? null,
+                notes:    (accum.notes as string) ?? null,
+              });
+
               if (slideAborted) { aborted = true; break; }
               if (hitCheckpoint("critico", slideN)) { aborted = true; break; }
             }
 
             if (!aborted) {
+              accum.slideResults = accumSlides;
               await exec("output", buildInput("output", accum));
             }
           }
+        }
+
+        // Update flow document with latestRunId for hydration on next load
+        if (flowId && !flowId.startsWith("new")) {
+          try {
+            const parts      = flowId.split("_");
+            const fClientId  = parts[0];
+            const fRealId    = parts.slice(1).join("_");
+            if (fClientId && fRealId) {
+              await adminDb.doc(paths.flow(uid, fClientId, fRealId)).update({ latestRunId: runId });
+            }
+          } catch { /* non-fatal — flow may not exist yet */ }
         }
 
         controller.enqueue(encode({ type: "run_complete", runId }));

@@ -30,6 +30,8 @@ type CanvasStoreState = {
   reset: () => void;
   setClientId: (id: string) => Promise<void>;
   clearClient: () => void;
+  /** Restores phase states from Firestore (called after canvas load). */
+  hydratePhases: (incoming: Partial<CanvasPhases>) => void;
 };
 
 const INITIAL_PHASES: Record<PhaseId, PhaseState> = {
@@ -98,6 +100,15 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
       // context load failure is non-fatal — phases can still run
     }
   },
+
+  hydratePhases: (incoming) =>
+    set(st => {
+      const merged = { ...st.phases };
+      for (const [k, v] of Object.entries(incoming)) {
+        if (v) merged[k as PhaseId] = { ...merged[k as PhaseId], ...v };
+      }
+      return { phases: merged };
+    }),
 
   clearClient: () => {
     if (typeof window !== 'undefined') {
