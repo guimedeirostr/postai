@@ -95,3 +95,4 @@ export function compilePrompt(input: CompileInput): CompileOutput {
 }
 
 export { selectPreferredAsset, selectLocks, extractHexFromPromptHint } from './selectors';
+export { compileCarousel } from './carousel';
