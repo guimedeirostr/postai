@@ -3,7 +3,12 @@ import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { paths } from "@/lib/firestore/paths";
 import { runDirectorPlan } from "@/lib/director/plan";
-import type { PhaseId, PhaseRun, ClientContext } from "@/types";
+import { runDirectorCopy } from "@/lib/director/copy";
+import { runDirectorImage } from "@/lib/director/image";
+import { runDirectorCritic } from "@/lib/director/critic";
+import type { PhaseId, PhaseRun, ClientContext, PlanoDePost } from "@/types";
+
+export const maxDuration = 60;
 
 type RunBody = {
   clientId: string;
@@ -75,15 +80,62 @@ async function executeMemoria(_input: Record<string, unknown>, ctx: ClientContex
   };
 }
 
+async function executeCopy(input: Record<string, unknown>, ctx: ClientContext, uid: string): Promise<Record<string, unknown>> {
+  const { objetivo, formato, plan } = input as { objetivo?: string; formato?: string; plan?: PlanoDePost };
+  const result = await runDirectorCopy({
+    uid,
+    clientId:  ctx.clientId,
+    objetivo:  objetivo ?? '',
+    formato:   formato  ?? 'feed',
+    plan,
+  });
+  return result as unknown as Record<string, unknown>;
+}
+
+async function executeImage(input: Record<string, unknown>, ctx: ClientContext): Promise<Record<string, unknown>> {
+  const { compiledText, formato, model, slideN } = input as {
+    compiledText?: string;
+    formato?: string;
+    model?: string;
+    slideN?: number;
+  };
+
+  const { imageUrl } = await runDirectorImage({
+    clientId:       ctx.clientId,
+    promptCompilado: compiledText ?? '',
+    formato:        formato ?? 'feed',
+    model:          model as Parameters<typeof runDirectorImage>[0]['model'],
+    slideN,
+  });
+  return { imageUrl };
+}
+
+async function executeCritic(input: Record<string, unknown>, ctx: ClientContext): Promise<Record<string, unknown>> {
+  const { imageUrl, brief, slideN } = input as { imageUrl?: string; brief?: string; slideN?: number };
+
+  if (!imageUrl) throw Object.assign(new Error('imageUrl ausente para fase critico'), { code: 'MISSING_INPUT' });
+  if (!brief)    throw Object.assign(new Error('brief ausente para fase critico'),    { code: 'MISSING_INPUT' });
+
+  const result = await runDirectorCritic({
+    imageUrl,
+    brief,
+    clientName: ctx.clientName,
+    plan: (ctx as unknown as { plan?: PlanoDePost }).plan,
+    slideN,
+  });
+  return result as unknown as Record<string, unknown>;
+}
+
 async function stub(name: string): Promise<Record<string, unknown>> {
   await new Promise(r => setTimeout(r, 800));
   return { placeholder: true, phase: name };
 }
 
 async function dispatchPhase(
-  phaseId: PhaseId,
-  input: Record<string, unknown>,
-  ctx: ClientContext,
+  phaseId:  PhaseId,
+  input:    Record<string, unknown>,
+  ctx:      ClientContext,
+  uid:      string,
 ): Promise<Record<string, unknown>> {
   switch (phaseId) {
     case "briefing":   return { ...input };
@@ -91,8 +143,9 @@ async function dispatchPhase(
     case "memoria":    return executeMemoria(input, ctx);
     case "compilacao": return stub("compilacao");
     case "prompt":     return stub("prompt");
-    case "copy":       return stub("copy");
-    case "critico":    return stub("critico");
+    case "image":      return executeImage(input, ctx);
+    case "copy":       return executeCopy(input, ctx, uid);
+    case "critico":    return executeCritic(input, ctx);
     case "output":     return stub("output");
   }
 }
@@ -107,19 +160,17 @@ export async function POST(req: NextRequest) {
   const { clientId, phaseId, input, triggeredBy, runId: existingRunId } = body;
 
   if (!clientId || !phaseId) {
-    return NextResponse.json({ error: "clientId e phaseId obrigatórios" }, { status: 400 });
+    return NextResponse.json({ error: "clientId e phaseId obrigatórios", code: "MISSING_PARAMS" }, { status: 400 });
   }
 
   const uid = user.uid;
   const startedAt = Date.now();
 
-  // Load client context (validates ownership too)
   const ctx = await loadClientContext(uid, clientId);
   if (!ctx) {
-    return NextResponse.json({ error: "client_not_found" }, { status: 404 });
+    return NextResponse.json({ error: "client_not_found", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  // Ensure CanvasRun exists
   const runId = existingRunId ?? adminDb.collection(paths.canvasRuns(uid, clientId)).doc().id;
   const runRef = adminDb.doc(paths.canvasRun(uid, clientId, runId));
   const runSnap = await runRef.get();
@@ -135,7 +186,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Create PhaseRun doc
   const phaseRunRef = adminDb.collection(paths.phaseRuns(uid, clientId, runId)).doc();
   const phaseRunId = phaseRunRef.id;
 
@@ -150,22 +200,27 @@ export async function POST(req: NextRequest) {
     triggeredBy,
   } satisfies Omit<PhaseRun, "id"> & { id: string });
 
-  // Execute phase
   let output: Record<string, unknown>;
   let errorMessage: string | undefined;
   const finishedAt = Date.now();
 
   try {
-    output = await dispatchPhase(phaseId, input, ctx);
+    output = await dispatchPhase(phaseId, input, ctx, uid);
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
+    const errCode = (err as { code?: string }).code;
+    const errDetails = (err as { details?: unknown }).details;
+    console.error(`[canvas/phase/run] phaseId=${phaseId} error:`, err);
     await phaseRunRef.update({
       status: "error",
       errorMessage,
       finishedAt: Date.now(),
       latencyMs: Date.now() - startedAt,
     });
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    return NextResponse.json(
+      { error: errorMessage, code: errCode ?? "PHASE_ERROR", details: errDetails },
+      { status: 500 },
+    );
   }
 
   await phaseRunRef.update({

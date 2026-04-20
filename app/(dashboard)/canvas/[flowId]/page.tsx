@@ -35,6 +35,7 @@ import PlanNode        from "@/components/canvas/nodes/v3/PlanNode";
 import PromptNode      from "@/components/canvas/nodes/v3/PromptNode";
 import CopyNodeV3      from "@/components/canvas/nodes/v3/CopyNodeV3";
 import ReferenceNode   from "@/components/canvas/nodes/v3/ReferenceNode";
+import ImageNode       from "@/components/canvas/nodes/v3/ImageNode";
 import CriticNode      from "@/components/canvas/nodes/v3/CriticNode";
 import OutputNode      from "@/components/canvas/nodes/v3/OutputNode";
 import ClientMemoryNode from "@/components/canvas/nodes/v3/ClientMemoryNode";
@@ -48,6 +49,7 @@ const nodeTypes = {
   briefing:     BriefingNode,
   plan:         PlanNode,
   prompt:       PromptNode,
+  image:        ImageNode,
   copy:         CopyNodeV3,
   reference:    ReferenceNode,
   critic:       CriticNode,
@@ -61,13 +63,14 @@ const edgeTypes = {
 
 // ── Default starter layout ────────────────────────────────────────────────────
 const DEFAULT_NODES: Node[] = [
-  { id: "briefing-1", type: "briefing",     position: { x: 60,  y: 200 }, data: { objetivo: "", formato: "feed" } },
-  { id: "memory-1",   type: "clientMemory", position: { x: 60,  y: 420 }, data: {} },
-  { id: "plan-1",     type: "plan",         position: { x: 440, y: 160 }, data: {} },
-  { id: "prompt-1",   type: "prompt",       position: { x: 840, y: 80  }, data: { slideN: 1 } },
-  { id: "copy-1",     type: "copy",         position: { x: 840, y: 320 }, data: {} },
-  { id: "critic-1",   type: "critic",       position: { x: 1200, y: 200 }, data: {} },
-  { id: "output-1",   type: "output",       position: { x: 1520, y: 200 }, data: {} },
+  { id: "briefing-1", type: "briefing",     position: { x: 60,   y: 200 }, data: { objetivo: "", formato: "feed" } },
+  { id: "memory-1",   type: "clientMemory", position: { x: 60,   y: 420 }, data: {} },
+  { id: "plan-1",     type: "plan",         position: { x: 440,  y: 160 }, data: {} },
+  { id: "prompt-1",   type: "prompt",       position: { x: 840,  y: 80  }, data: { slideN: 1 } },
+  { id: "copy-1",     type: "copy",         position: { x: 840,  y: 340 }, data: {} },
+  { id: "image-1",    type: "image",        position: { x: 1200, y: 80  }, data: {} },
+  { id: "critic-1",   type: "critic",       position: { x: 1560, y: 220 }, data: {} },
+  { id: "output-1",   type: "output",       position: { x: 1880, y: 220 }, data: {} },
 ];
 
 const DEFAULT_EDGES: Edge[] = [
@@ -75,9 +78,10 @@ const DEFAULT_EDGES: Edge[] = [
   { id: "e2", source: "memory-1",    target: "plan-1",    type: "glow", animated: false },
   { id: "e3", source: "plan-1",      target: "prompt-1",  type: "glow", animated: true },
   { id: "e4", source: "plan-1",      target: "copy-1",    type: "glow", animated: true },
-  { id: "e5", source: "prompt-1",    target: "critic-1",  type: "glow", animated: false },
+  { id: "e5", source: "prompt-1",    target: "image-1",   type: "glow", animated: false },
   { id: "e6", source: "copy-1",      target: "critic-1",  type: "glow", animated: false },
   { id: "e7", source: "critic-1",    target: "output-1",  type: "glow", animated: false },
+  { id: "e8", source: "image-1",     target: "critic-1",  type: "glow", animated: false },
 ];
 
 // ── Checkpoint options ────────────────────────────────────────────────────────
@@ -463,6 +467,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
     briefing:     "briefing",
     plan:         "plano",
     prompt:       "prompt",
+    image:        "image",
     copy:         "copy",
     critic:       "critico",
     output:       "output",
@@ -557,6 +562,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
               n.type === "briefing"     ? "#60a5fa" :
               n.type === "plan"         ? "#a78bfa" :
               n.type === "prompt"       ? "#f59e0b" :
+              n.type === "image"        ? "#f472b6" :
               n.type === "copy"         ? "#34d399" :
               n.type === "reference"    ? "#f472b6" :
               n.type === "critic"       ? "#fb923c" :

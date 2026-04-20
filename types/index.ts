@@ -771,6 +771,7 @@ export type PhaseId =
   | 'plano'
   | 'compilacao'
   | 'prompt'
+  | 'image'
   | 'copy'
   | 'critico'
   | 'output'

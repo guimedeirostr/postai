@@ -38,6 +38,7 @@ const INITIAL_PHASES: Record<PhaseId, PhaseState> = {
   plano:       { status: 'idle' },
   compilacao:  { status: 'idle' },
   prompt:      { status: 'idle' },
+  image:       { status: 'idle' },
   copy:        { status: 'idle' },
   critico:     { status: 'idle' },
   output:      { status: 'idle' },

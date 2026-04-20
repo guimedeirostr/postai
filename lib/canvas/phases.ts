@@ -12,6 +12,7 @@ export const PHASE_INFO: { id: PhaseId; label: string; color: string }[] = [
     : []
   ),
   { id: 'prompt',     label: 'Prompt',                            color: '#f59e0b' },
+  { id: 'image',      label: 'Imagem',                            color: '#f472b6' },
   { id: 'copy',       label: 'Copy',                              color: '#34d399' },
   { id: 'critico',    label: 'Crítica',                           color: '#fb923c' },
   { id: 'output',     label: 'Output',                            color: '#22d3ee' },
