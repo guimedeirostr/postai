@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, MoreHorizontal } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import type { PhaseId, PhaseStatus } from '@/types';
 import { useCanvasStore } from '@/lib/canvas/store';
@@ -34,7 +34,11 @@ export function NodeHeader({
   const badge = STATUS_BADGE[status];
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const traces = useCanvasStore(s => s.traces.filter(t => t.phaseId === phaseId));
+  const allTraces = useCanvasStore(s => s.traces);
+  const traces = useMemo(
+    () => allTraces.filter(t => t.phaseId === phaseId),
+    [allTraces, phaseId],
+  );
   const startTs = traces.find(t => t.code === "start")?.ts;
   const doneTs  = traces.find(t => t.code === "done")?.ts;
   const durationMs = startTs && doneTs ? doneTs - startTs : undefined;
