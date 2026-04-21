@@ -196,11 +196,22 @@ async function executeOutput(
   uid: string,
   meta: { runId: string; flowId?: string },
 ): Promise<Record<string, unknown>> {
-  const formato = (input.formato as string) ?? "feed";
+  const formato   = (input.formato as string) ?? "feed";
+  const { runId, flowId } = meta;
+  const slides    = (input.slideResults as SlideResult[] | undefined) ?? [];
+
+  console.log("[output] start", {
+    uid, clientId: ctx.clientId, formato, flowId: flowId ?? null, runId,
+    slidesCount: slides.length,
+    hasSlideResults: "slideResults" in input,
+    inputKeys: Object.keys(input),
+  });
 
   if (CAROUSEL_FORMATS.has(formato)) {
-    const slides = (input.slideResults as SlideResult[] | undefined) ?? [];
-    const docRef = adminDb.collection(paths.carousels(uid, ctx.clientId)).doc();
+    const docRef  = adminDb.collection(paths.carousels(uid, ctx.clientId)).doc();
+    const docPath = `users/${uid}/clients/${ctx.clientId}/carousels/${docRef.id}`;
+    console.log("[output] saving carousel", { docPath, slidesCount: slides.length });
+
     const doc = {
       id:         docRef.id,
       uid,
@@ -222,16 +233,31 @@ async function executeOutput(
         notes:    s.notes    ?? null,
       })),
       status:     "pronto" as const,
-      runId:      meta.runId,
-      flowId:     meta.flowId ?? null,
+      runId,
+      flowId:     flowId ?? null,
       createdAt:  Date.now(),
     };
-    await docRef.set(doc);
-    return { ...input, carouselId: docRef.id, persisted: true };
+
+    try {
+      await docRef.set(doc);
+    } catch (err) {
+      console.error("[output] save FAILED (carousel)", {
+        err: (err as Error).message,
+        stack: (err as Error).stack,
+        docPath, flowId: flowId ?? null, runId,
+      });
+      throw err;
+    }
+
+    console.log("[output] saved carousel", { carouselId: docRef.id, docPath });
+    return { ...input, carouselId: docRef.id, slidesCount: slides.length, persisted: true };
   }
 
   // Single-post formats
-  const docRef = adminDb.collection(paths.posts(uid, ctx.clientId)).doc();
+  const docRef  = adminDb.collection(paths.posts(uid, ctx.clientId)).doc();
+  const docPath = `users/${uid}/clients/${ctx.clientId}/posts/${docRef.id}`;
+  console.log("[output] saving post", { docPath });
+
   const doc = {
     id:         docRef.id,
     uid,
@@ -248,11 +274,23 @@ async function executeOutput(
     notes:      (input.notes     as string) ?? null,
     plan:       input.plan ?? null,
     status:     "pronto" as const,
-    runId:      meta.runId,
-    flowId:     meta.flowId ?? null,
+    runId,
+    flowId:     flowId ?? null,
     createdAt:  Date.now(),
   };
-  await docRef.set(doc);
+
+  try {
+    await docRef.set(doc);
+  } catch (err) {
+    console.error("[output] save FAILED (post)", {
+      err: (err as Error).message,
+      stack: (err as Error).stack,
+      docPath, flowId: flowId ?? null, runId,
+    });
+    throw err;
+  }
+
+  console.log("[output] saved post", { postId: docRef.id, docPath });
   return { ...input, postId: docRef.id, persisted: true };
 }
 

@@ -79,6 +79,30 @@ export async function POST(req: NextRequest) {
   const triggeredBy = (mode === "step" ? "step" : "run-all") as "step" | "run-all";
   const isCarousel  = CAROUSEL_FORMATS.has(briefing.formato ?? "feed");
 
+  // Resolve or auto-create a stable flow doc before streaming begins
+  let resolvedFlowId: string | undefined;
+  if (flowId && !flowId.startsWith("new")) {
+    resolvedFlowId = flowId;
+  } else {
+    try {
+      const newFlowRef = adminDb.collection(paths.flows(uid, clientId)).doc();
+      await newFlowRef.set({
+        clientId,
+        title:     briefing.objetivo ? briefing.objetivo.slice(0, 60) : `Run ${new Date().toISOString().slice(0, 10)}`,
+        nodes:     [],
+        edges:     [],
+        createdBy: uid,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      resolvedFlowId = `${clientId}_${newFlowRef.id}`;
+      console.log("[canvas/run] auto-created flow", { resolvedFlowId, runId });
+    } catch (err) {
+      console.error("[canvas/run] failed to auto-create flow", { err: (err as Error).message, runId });
+      // Continue — output will persist with flowId: null
+    }
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
 
@@ -88,10 +112,13 @@ export async function POST(req: NextRequest) {
         formato:  briefing.formato  ?? "feed",
       };
 
+      // First event — gives client the real flowId to rewrite the URL
+      controller.enqueue(encode({ type: "run_started", flowId: resolvedFlowId ?? null, runId }));
+
       async function exec(phaseId: PhaseId, input: Record<string, unknown>, slideN?: number): Promise<boolean> {
         controller.enqueue(encode({ type: "phase_start", phaseId, slideN, runId }));
         try {
-          const result = await runPhaseWithCtx({ uid, clientId, phaseId, input, triggeredBy, runId, flowId, ctx });
+          const result = await runPhaseWithCtx({ uid, clientId, phaseId, input, triggeredBy, runId, flowId: resolvedFlowId, ctx });
           Object.assign(accum, result.output);
           controller.enqueue(encode({ type: "phase_done", phaseId, slideN, output: result.output, runId }));
           return true;
@@ -192,20 +219,30 @@ export async function POST(req: NextRequest) {
         }
 
         // Update flow document with latestRunId for hydration on next load
-        if (flowId && !flowId.startsWith("new")) {
+        if (resolvedFlowId) {
           try {
-            const parts      = flowId.split("_");
-            const fClientId  = parts[0];
-            const fRealId    = parts.slice(1).join("_");
+            const parts     = resolvedFlowId.split("_");
+            const fClientId = parts[0];
+            const fRealId   = parts.slice(1).join("_");
             if (fClientId && fRealId) {
               await adminDb.doc(paths.flow(uid, fClientId, fRealId)).update({ latestRunId: runId });
+              console.log("[canvas/run] latestRunId updated", { resolvedFlowId, runId });
             }
-          } catch { /* non-fatal — flow may not exist yet */ }
+          } catch (err) {
+            console.error("[canvas/run] failed to update latestRunId", { err: (err as Error).message, resolvedFlowId, runId });
+          }
         }
 
-        controller.enqueue(encode({ type: "run_complete", runId }));
-      } catch {
-        controller.enqueue(encode({ type: "run_complete", runId, error: true }));
+        controller.enqueue(encode({
+          type:       "run_complete",
+          flowId:     resolvedFlowId ?? null,
+          runId,
+          carouselId: (accum.carouselId as string) ?? null,
+          postId:     (accum.postId    as string) ?? null,
+        }));
+      } catch (err) {
+        console.error("[canvas/run] unhandled error in stream", { err: (err as Error).message });
+        controller.enqueue(encode({ type: "run_complete", flowId: resolvedFlowId ?? null, runId, error: true }));
       } finally {
         controller.close();
       }

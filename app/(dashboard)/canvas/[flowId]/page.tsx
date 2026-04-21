@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ReactFlow,
   Background,
@@ -333,6 +333,7 @@ function ExecuteDropdown({ clientId, onRunAll, onCheckpoint, onStep }: {
 
 // ── Canvas inner component (needs ReactFlow context) ─────────────────────────
 function CanvasInner({ flowId }: { flowId: string }) {
+  const router = useRouter();
   const [nodes, setNodes, onNodesChange] = useNodesState(DEFAULT_NODES);
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
   const [saving, setSaving] = useState(false);
@@ -367,19 +368,32 @@ function CanvasInner({ flowId }: { flowId: string }) {
   // Load flow from API
   useEffect(() => {
     if (!flowId) return;
+    console.log("[canvas] loading flow", { flowId });
     fetch(`/api/canvas/${flowId}`)
       .then(r => r.json())
       .then(({ flow, phases: savedPhases }) => {
+        console.log("[canvas] flow loaded", {
+          flowId,
+          hasFlow: !!flow,
+          hasNodes: !!(flow?.nodes?.length),
+          phaseKeys: savedPhases ? Object.keys(savedPhases) : [],
+        });
         if (flow?.nodes?.length) {
           setNodes(flow.nodes);
           setEdges(flow.edges ?? []);
         }
         if (savedPhases && Object.keys(savedPhases).length > 0) {
           hydratePhases(savedPhases as CanvasPhases);
+          console.log("[canvas] hydratePhases called", { phaseKeys: Object.keys(savedPhases) });
+        } else {
+          console.log("[canvas] no savedPhases to hydrate");
         }
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch((err) => {
+        console.error("[canvas] failed to load flow", { flowId, err: (err as Error).message });
+        setLoaded(true);
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowId, setNodes, setEdges]);
 
@@ -457,6 +471,14 @@ function CanvasInner({ flowId }: { flowId: string }) {
         if (!line.startsWith("data: ")) continue;
         try {
           const event = JSON.parse(line.slice(6));
+          if (event.type === "run_started") {
+            const serverFlowId = event.flowId as string | null;
+            console.log("[canvas] run_started", { serverFlowId, runId: event.runId });
+            if (serverFlowId && !serverFlowId.startsWith("new")) {
+              const newUrl = `/canvas/${serverFlowId}${clientId ? `?clientId=${clientId}` : ""}`;
+              router.replace(newUrl);
+            }
+          }
           if (event.type === "phase_start") setStatus(event.phaseId as PhaseId, "running");
           if (event.type === "phase_done") {
             setStatus(event.phaseId as PhaseId, "done");
@@ -466,6 +488,15 @@ function CanvasInner({ flowId }: { flowId: string }) {
           if (event.type === "checkpoint_reached") {
             setCheckpointToast(`Pausei no ${event.phaseId}. Revise e aprove para continuar.`);
             setTimeout(() => setCheckpointToast(null), 5000);
+          }
+          if (event.type === "run_complete") {
+            console.log("[canvas] run_complete", {
+              flowId: event.flowId,
+              runId: event.runId,
+              carouselId: event.carouselId ?? null,
+              postId: event.postId ?? null,
+              error: event.error ?? false,
+            });
           }
         } catch { /* ignore malformed SSE lines */ }
       }

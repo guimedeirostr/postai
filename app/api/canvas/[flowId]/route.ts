@@ -13,33 +13,43 @@ export async function GET(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { flowId } = await params;
 
-  // flowId pode ser "new-{clientId}" para fluxos ainda não persistidos
-  if (flowId.startsWith("new-")) {
-    return NextResponse.json({ flow: null });
+  // flowId "new" or "new-{clientId}" — canvas not yet persisted
+  if (flowId === "new" || flowId.startsWith("new-")) {
+    console.log("[GET canvas] flowId is 'new' — returning empty", { flowId });
+    return NextResponse.json({ flow: null, phases: {} });
   }
 
-  // Busca o flow em qualquer cliente deste user (query em collection group)
-  // Simplificado: o flowId inclui clientId no formato "{clientId}_{flowId}"
   const parts    = flowId.split("_");
   const clientId = parts.length > 1 ? parts[0] : null;
+  if (!clientId) {
+    console.log("[GET canvas] could not parse clientId from flowId", { flowId });
+    return NextResponse.json({ flow: null, phases: {} });
+  }
 
-  if (!clientId) return NextResponse.json({ flow: null });
+  const realFlowId  = parts.slice(1).join("_");
+  const flowDocPath = paths.flow(user.uid, clientId, realFlowId);
+  console.log("[GET canvas] loading flow", { flowDocPath });
 
-  const realFlowId = parts.slice(1).join("_");
-  const snap = await adminDb.doc(paths.flow(user.uid, clientId, realFlowId)).get();
-  if (!snap.exists) return NextResponse.json({ flow: null });
+  const snap = await adminDb.doc(flowDocPath).get();
+  if (!snap.exists) {
+    console.log("[GET canvas] flow doc not found", { flowDocPath });
+    return NextResponse.json({ flow: null, phases: {} });
+  }
 
-  const flowData  = snap.data()!;
+  const flowData    = snap.data()!;
   const latestRunId = flowData.latestRunId as string | undefined;
+  console.log("[GET canvas] flow found", { latestRunId: latestRunId ?? null });
 
   let phases: Record<string, unknown> = {};
   if (latestRunId) {
-    const phaseRunsSnap = await adminDb
-      .collection(paths.phaseRuns(user.uid, clientId, latestRunId))
-      .get();
+    const phaseRunsPath = paths.phaseRuns(user.uid, clientId, latestRunId);
+    console.log("[GET canvas] loading phaseRuns", { phaseRunsPath });
 
-    const doneDocs = phaseRunsSnap.docs
-      .map(d => d.data())
+    const phaseRunsSnap = await adminDb.collection(phaseRunsPath).get();
+    const allDocs       = phaseRunsSnap.docs.map(d => d.data());
+    console.log("[GET canvas] phaseRuns total", { total: allDocs.length, statuses: allDocs.map(d => d.status) });
+
+    const doneDocs = allDocs
       .filter(d => d.status === "done")
       .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
 
@@ -47,6 +57,7 @@ export async function GET(
       const pid = doc.phaseId as PhaseId;
       if (pid) phases[pid] = { status: "done", output: doc.output ?? {} };
     }
+    console.log("[GET canvas] hydration phases", { phaseIds: Object.keys(phases) });
   }
 
   return NextResponse.json({ flow: { id: snap.id, ...flowData }, phases });
