@@ -8,6 +8,77 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { GeneratedCarousel, CarouselSlide } from "@/types";
 
+// ── CarouselCard ──────────────────────────────────────────────────────────────
+
+function CarouselCard({
+  carousel, coverUrl, status, ready, onClick,
+}: {
+  carousel:  GeneratedCarousel;
+  coverUrl:  string | null;
+  status:    { label: string; className: string };
+  ready:     number;
+  onClick:   () => void;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const showImage = coverUrl && !imgFailed;
+
+  return (
+    <Card
+      className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      onClick={onClick}
+    >
+      <CardContent className="p-0">
+        {/* Hook thumbnail */}
+        <div className="aspect-[4/5] w-full rounded-t-xl overflow-hidden bg-slate-100">
+          {showImage ? (
+            <img
+              src={coverUrl}
+              alt="Cover"
+              className="w-full h-full object-cover"
+              onError={() => {
+                console.error("[carousels/card] image failed to load", {
+                  id: carousel.id, coverUrl,
+                });
+                setImgFailed(true);
+              }}
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-400">
+              <GalleryHorizontal className="w-10 h-10 opacity-30" />
+              <p className="text-xs">
+                {carousel.status === "generating_hook" ? "Gerando capa..." : "Sem preview"}
+              </p>
+              {imgFailed && coverUrl && (
+                <p className="text-[10px] text-red-400 px-3 text-center break-all">{coverUrl}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold text-slate-900 text-sm truncate flex-1">
+              {carousel.topic || carousel.theme}
+            </p>
+            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-none ${status.className}`}>
+              {status.label}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400">{carousel.client_name}</p>
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>{carousel.slide_count} slides</span>
+            {carousel.status === "ready" && (
+              <span className="text-emerald-600 font-medium">{ready} prontos</span>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Status badge ───────────────────────────────────────────────────────────────
+
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   pending:         { label: "Pendente",   className: "bg-slate-50 text-slate-500 border-slate-200" },
   generating_hook: { label: "Gerando…",  className: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -206,46 +277,28 @@ export default function CarouselsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {carousels.map(carousel => {
-            const hook   = hookSlide(carousel);
-            const status = STATUS_BADGE[carousel.status] ?? STATUS_BADGE.pending;
-            const ready  = (carousel.slides ?? []).filter(s => s.composed_url).length;
+            const hook     = hookSlide(carousel);
+            const status   = STATUS_BADGE[carousel.status] ?? STATUS_BADGE.pending;
+            const ready    = (carousel.slides ?? []).filter(s => s.composed_url).length;
+            // composed_url from slide (new V3 carousels) OR hook_image_url top-level (old + new)
+            const coverUrl = hook?.composed_url || carousel.hook_image_url || null;
+
+            console.log("[carousels/card] cover", {
+              id:             carousel.id,
+              coverUrl,
+              composed_url:   hook?.composed_url ?? null,
+              hook_image_url: carousel.hook_image_url ?? null,
+            });
 
             return (
-              <Card key={carousel.id}
-                className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setSelected(carousel)}>
-                <CardContent className="p-0">
-                  {/* Hook thumbnail */}
-                  <div className="aspect-[4/5] w-full rounded-t-xl overflow-hidden bg-slate-100">
-                    {hook?.composed_url ? (
-                      <img src={hook.composed_url} alt="Hook" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-400">
-                        <GalleryHorizontal className="w-10 h-10 opacity-30" />
-                        <p className="text-xs">{carousel.status === "generating_hook" ? "Gerando capa..." : "Sem preview"}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold text-slate-900 text-sm truncate flex-1">
-                        {carousel.topic || carousel.theme}
-                      </p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-none ${status.className}`}>
-                        {status.label}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400">{carousel.client_name}</p>
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>{carousel.slide_count} slides</span>
-                      {carousel.status === "ready" && (
-                        <span className="text-emerald-600 font-medium">{ready} prontos</span>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <CarouselCard
+                key={carousel.id}
+                carousel={carousel}
+                coverUrl={coverUrl}
+                status={status}
+                ready={ready}
+                onClick={() => setSelected(carousel)}
+              />
             );
           })}
         </div>
