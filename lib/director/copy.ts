@@ -42,10 +42,12 @@ export interface DirectorCopyParams {
   objetivo: string;
   formato: string;
   plan?: PlanoDePost;
+  /** Notas da fase Crítica — quando presentes, o copy é reescrito incorporando o feedback */
+  critiqueNotes?: string;
   emit?: TraceEmitter;
 }
 
-function buildSinglePrompt(client: BrandProfile, objetivo: string, formato: string, plan?: PlanoDePost): string {
+function buildSinglePrompt(client: BrandProfile, objetivo: string, formato: string, plan?: PlanoDePost, critiqueNotes?: string): string {
   const tomVoz = plan?.tomVoz?.join(', ') ?? client.tone_of_voice;
   return `Você é um copywriter sênior especialista em redes sociais para o mercado brasileiro.
 
@@ -57,8 +59,16 @@ ${plan?.publico ? `Público específico: ${plan.publico}` : ''}
 ${plan?.bigIdea ? `Big Idea: ${plan.bigIdea}` : ''}
 ${client.keywords?.length ? `Keywords: ${client.keywords.join(', ')}` : ''}
 ${client.avoid_words?.length ? `NUNCA use: ${client.avoid_words.join(', ')}` : ''}
+${critiqueNotes ? `
+━━━━━━━━━━━━━━━━━━━━━━━━
+FEEDBACK DA VERSÃO ANTERIOR (crítica de arte + performance):
+"${critiqueNotes}"
 
-TAREFA: Criar copy para um post de ${formato}.
+INSTRUÇÃO: Reescreva o copy CORRIGINDO os problemas apontados acima.
+Mantenha o tom de voz e objetivo, mas resolva a inconsistência identificada.
+━━━━━━━━━━━━━━━━━━━━━━━━` : ''}
+
+TAREFA: ${critiqueNotes ? 'Reescrever' : 'Criar'} copy para um post de ${formato}.
 Objetivo: ${objetivo}
 
 Retorne APENAS JSON puro (sem markdown fences, sem texto antes ou depois):
@@ -70,7 +80,7 @@ Retorne APENAS JSON puro (sem markdown fences, sem texto antes ou depois):
 }`;
 }
 
-function buildCarouselPrompt(client: BrandProfile, objetivo: string, plan?: PlanoDePost): string {
+function buildCarouselPrompt(client: BrandProfile, objetivo: string, plan?: PlanoDePost, critiqueNotes?: string): string {
   const slides = plan?.slidesBriefing ?? [];
   const tomVoz = plan?.tomVoz?.join(', ') ?? client.tone_of_voice;
   const slideList = slides
@@ -85,6 +95,13 @@ Público-alvo: ${client.target_audience}
 Tom de voz: ${tomVoz}
 ${plan?.bigIdea ? `Big Idea: ${plan.bigIdea}` : ''}
 ${client.avoid_words?.length ? `NUNCA use: ${client.avoid_words.join(', ')}` : ''}
+${critiqueNotes ? `
+━━━━━━━━━━━━━━━━━━━━━━━━
+FEEDBACK DA VERSÃO ANTERIOR (crítica de arte + performance):
+"${critiqueNotes}"
+
+INSTRUÇÃO: Reescreva os slides CORRIGINDO os problemas apontados acima.
+━━━━━━━━━━━━━━━━━━━━━━━━` : ''}
 
 ESTRUTURA DO CARROSSEL (${slides.length} slides):
 ${slideList || '  (sem briefing de slides — criar narrativa coerente)'}
@@ -119,7 +136,7 @@ function parseJson<T>(raw: string): T | null {
 }
 
 export async function runDirectorCopy(params: DirectorCopyParams): Promise<DirectorCopyOutput> {
-  const { uid, clientId, objetivo, formato, plan, emit } = params;
+  const { uid, clientId, objetivo, formato, plan, critiqueNotes, emit } = params;
 
   const clientSnap = await adminDb.collection('clients').doc(clientId).get();
   if (!clientSnap.exists || clientSnap.data()?.agency_id !== uid) {
@@ -129,8 +146,8 @@ export async function runDirectorCopy(params: DirectorCopyParams): Promise<Direc
 
   const isCarousel = CAROUSEL_FORMATS.has(formato);
   const systemPrompt = isCarousel
-    ? buildCarouselPrompt(client, objetivo, plan)
-    : buildSinglePrompt(client, objetivo, formato, plan);
+    ? buildCarouselPrompt(client, objetivo, plan, critiqueNotes)
+    : buildSinglePrompt(client, objetivo, formato, plan, critiqueNotes);
 
   let raw = '';
   try {

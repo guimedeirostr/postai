@@ -140,13 +140,16 @@ async function executeCopy(
   uid: string,
   emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
-  const { objetivo, formato, plan } = input as { objetivo?: string; formato?: string; plan?: PlanoDePost };
+  const { objetivo, formato, plan, critiqueNotes } = input as {
+    objetivo?: string; formato?: string; plan?: PlanoDePost; critiqueNotes?: string;
+  };
   const result = await runDirectorCopy({
     uid,
-    clientId:  ctx.clientId,
-    objetivo:  objetivo ?? "",
-    formato:   formato  ?? "feed",
+    clientId:     ctx.clientId,
+    objetivo:     objetivo ?? "",
+    formato:      formato  ?? "feed",
     plan,
+    critiqueNotes,
     emit,
   });
   return result as unknown as Record<string, unknown>;
@@ -396,7 +399,7 @@ export function buildInput(
     case "compilacao": return { ...base, plan: accum.plan, ...(extra ?? {}) };
     case "prompt":     return { compiledText: accum.compiledText, ...base };
     case "image":      return { compiledText: accum.compiledText, formato: accum.formato, model: accum.model, slideN: accum.slideN };
-    case "copy":       return { ...base, plan: accum.plan };
+    case "copy":       return { ...base, plan: accum.plan, critiqueNotes: accum.notes as string | undefined };
     case "critico":    return { imageUrl: accum.imageUrl, brief: accum.brief ?? accum.caption ?? accum.headline, slideN: accum.slideN, plan: accum.plan };
     case "output":     return { ...accum };
     default:           return base;
