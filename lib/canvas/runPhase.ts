@@ -1,4 +1,5 @@
 import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { paths } from "@/lib/firestore/paths";
 import { runDirectorPlan } from "@/lib/director/plan";
 import { runDirectorCopy } from "@/lib/director/copy";
@@ -7,7 +8,7 @@ import { runDirectorCritic } from "@/lib/director/critic";
 import { compilePrompt } from "@/lib/compiler";
 import { getActiveLockset } from "@/lib/lockset/server";
 import { listLibraryAssets } from "@/lib/assets/service";
-import type { PhaseId, PhaseRun, ClientContext, PlanoDePost, CompileInput } from "@/types";
+import type { PhaseId, PhaseRun, ClientContext, PlanoDePost, CompileInput, SlideType, SlideBgStyle } from "@/types";
 
 // ── Format normalisation ───────────────────────────────────────────────────────
 
@@ -190,6 +191,12 @@ type SlideResult = {
   cta?: string | null; imageUrl?: string | null; score?: number | null; notes?: string | null;
 };
 
+function roleToSlideType(role: string): SlideType {
+  if (role === "hook" || role === "capa") return "hook";
+  if (role === "cta" || role === "fechamento" || role === "close") return "cta";
+  return "content";
+}
+
 async function executeOutput(
   input: Record<string, unknown>,
   ctx: ClientContext,
@@ -210,9 +217,9 @@ async function executeOutput(
   if (CAROUSEL_FORMATS.has(formato)) {
     const docRef  = adminDb.collection(paths.carousels(uid, ctx.clientId)).doc();
     const docPath = `users/${uid}/clients/${ctx.clientId}/carousels/${docRef.id}`;
-    console.log("[output] saving carousel", { docPath, slidesCount: slides.length });
 
-    const doc = {
+    // ── V3 canvas doc ────────────────────────────────────────────────────────
+    const v3Doc = {
       id:         docRef.id,
       uid,
       clientId:   ctx.clientId,
@@ -232,14 +239,61 @@ async function executeOutput(
         score:    s.score    ?? null,
         notes:    s.notes    ?? null,
       })),
-      status:     "pronto" as const,
+      status:     "ready" as const,
       runId,
       flowId:     flowId ?? null,
-      createdAt:  Date.now(),
+      createdAt:  FieldValue.serverTimestamp(),
     };
 
+    // ── Flat `carousels` doc (V1/V2 shape — gallery-compatible) ─────────────
+    const flatSlides = slides.map(s => ({
+      index:        s.n - 1,
+      type:         roleToSlideType(s.role),
+      headline:     s.headline,
+      body_text:    s.body || undefined,
+      cta_text:     s.cta  || undefined,
+      composed_url: s.imageUrl ?? null,
+      bg_style:     "brand" as SlideBgStyle,
+    }));
+    const objetivo  = (input.objetivo as string) ?? "";
+    const hookImage = slides.find(s => s.n === 1)?.imageUrl ?? null;
+    const flatDoc = {
+      id:                docRef.id,   // same ID as V3 doc
+      agency_id:         uid,
+      client_id:         ctx.clientId,
+      client_name:       ctx.clientName,
+      theme:             objetivo,
+      objective:         objetivo,
+      topic:             objetivo,
+      caption:           (input.caption  as string) ?? "",
+      hashtags:          (input.hashtags as string[]) ?? [],
+      slides:            flatSlides,
+      slide_count:       slides.length,
+      hook_task_id:      null,
+      hook_image_url:    hookImage,
+      image_provider:    "canvas",
+      is_panoramic:      false,
+      dna_reference_url: null,
+      status:            "ready" as const,
+      runId,
+      flowId:            flowId ?? null,
+      created_at:        FieldValue.serverTimestamp(),
+      updated_at:        FieldValue.serverTimestamp(),
+    };
+
+    console.log("[output] saving carousel", {
+      docPath,
+      slidesCount: slides.length,
+      hookImage,
+      payloadKeys: Object.keys(flatDoc),
+      status: flatDoc.status,
+    });
+
     try {
-      await docRef.set(doc);
+      await Promise.all([
+        docRef.set(v3Doc),
+        adminDb.collection("carousels").doc(docRef.id).set(flatDoc),
+      ]);
     } catch (err) {
       console.error("[output] save FAILED (carousel)", {
         err: (err as Error).message,
@@ -249,7 +303,7 @@ async function executeOutput(
       throw err;
     }
 
-    console.log("[output] saved carousel", { carouselId: docRef.id, docPath });
+    console.log("[output] saved carousel", { carouselId: docRef.id, docPath, flatPath: `carousels/${docRef.id}` });
     return { ...input, carouselId: docRef.id, slidesCount: slides.length, persisted: true };
   }
 
@@ -273,10 +327,10 @@ async function executeOutput(
     score:      (input.score     as number) ?? null,
     notes:      (input.notes     as string) ?? null,
     plan:       input.plan ?? null,
-    status:     "pronto" as const,
+    status:     "ready" as const,
     runId,
     flowId:     flowId ?? null,
-    createdAt:  Date.now(),
+    createdAt:  FieldValue.serverTimestamp(),
   };
 
   try {
