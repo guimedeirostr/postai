@@ -4,7 +4,7 @@ import { verifySession } from "@/lib/session";
 const SESSION_COOKIE_NAME = "postai_session";
 const PUBLIC_PATHS        = ["/login", "/api/auth"];
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   const token    = req.cookies.get(SESSION_COOKIE_NAME)?.value;
