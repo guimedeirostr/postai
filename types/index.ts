@@ -828,6 +828,32 @@ export interface CanvasRun {
   createdBy: string;
 }
 
+// ── Canvas Trace (live execution feed) ────────────────────────────────────────
+
+export type TraceCode =
+  | "start" | "done" | "error"
+  | "llm.call" | "llm.response" | "llm.parse"
+  | "replicate.predict" | "replicate.status" | "replicate.output"
+  | "r2.upload"
+  | "compile.start" | "compile.done";
+
+export type TraceLevel = "info" | "warn" | "error";
+
+export interface TraceEntry {
+  ts:       number;         // unix ms
+  level:    TraceLevel;
+  code:     TraceCode;
+  message:  string;
+  meta?:    Record<string, unknown>;
+}
+
+export interface CanvasTraceEntry extends TraceEntry {
+  phaseId:  PhaseId;
+  slideN?:  number;
+}
+
+export type TraceEmitter = (entry: TraceEntry) => void;
+
 // ── Recipe (template de fluxo) ────────────────────────────────────────────────
 
 export interface Recipe {

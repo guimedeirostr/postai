@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { PlanoDePost } from "@/types";
+import { estimateCost } from "@/lib/canvas/trace";
+import type { TraceEmitter } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
@@ -10,6 +12,7 @@ export interface DirectorCriticParams {
   clientName?: string;
   plan?: PlanoDePost;
   slideN?: number;
+  emit?: TraceEmitter;
 }
 
 export interface DirectorCriticOutput {
@@ -44,7 +47,7 @@ Retorne APENAS JSON puro:
 }
 
 export async function runDirectorCritic(params: DirectorCriticParams): Promise<DirectorCriticOutput> {
-  const { imageUrl } = params;
+  const { imageUrl, emit } = params;
 
   // Fetch image and convert to base64 (safer than URL source across all Claude models)
   let imageBase64 = '';
@@ -62,6 +65,10 @@ export async function runDirectorCritic(params: DirectorCriticParams): Promise<D
 
   let raw = '';
   try {
+    const t0 = Date.now();
+    emit?.({ ts: Date.now(), level: "info", code: "llm.call",
+      message: `${MODEL} · vision`,
+      meta: { model: MODEL, slideN: params.slideN } });
     const message = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 512,
@@ -77,6 +84,11 @@ export async function runDirectorCritic(params: DirectorCriticParams): Promise<D
       .filter(b => b.type === 'text')
       .map(b => (b as { type: 'text'; text: string }).text)
       .join('');
+    const usage = message.usage;
+    const costUsd = estimateCost(MODEL, usage.input_tokens, usage.output_tokens);
+    emit?.({ ts: Date.now(), level: "info", code: "llm.response",
+      message: `${usage.output_tokens} tok · $${costUsd.toFixed(4)}`,
+      meta: { model: MODEL, inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, costUsd, latencyMs: Date.now() - t0 } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[runDirectorCritic] Anthropic error:', msg);
@@ -97,6 +109,10 @@ export async function runDirectorCritic(params: DirectorCriticParams): Promise<D
       { code: 'PARSE_ERROR', details: raw.slice(0, 300) },
     );
   }
+
+  emit?.({ ts: Date.now(), level: "info", code: "llm.parse",
+    message: `score ${Math.min(10, Math.max(1, Math.round(parsed.score)))}`,
+    meta: { score: parsed.score, notes: parsed.notes?.slice(0, 80) } });
 
   return { score: Math.min(10, Math.max(1, Math.round(parsed.score))), notes: parsed.notes ?? '' };
 }

@@ -117,8 +117,10 @@ export async function POST(req: NextRequest) {
 
       async function exec(phaseId: PhaseId, input: Record<string, unknown>, slideN?: number): Promise<boolean> {
         controller.enqueue(encode({ type: "phase_start", phaseId, slideN, runId }));
+        const emit: import("@/types").TraceEmitter = (entry) =>
+          controller.enqueue(encode({ type: "node_trace", phaseId, slideN: slideN ?? null, ...entry }));
         try {
-          const result = await runPhaseWithCtx({ uid, clientId, phaseId, input, triggeredBy, runId, flowId: resolvedFlowId, ctx });
+          const result = await runPhaseWithCtx({ uid, clientId, phaseId, input, triggeredBy, runId, flowId: resolvedFlowId, ctx, emit });
           Object.assign(accum, result.output);
           controller.enqueue(encode({ type: "phase_done", phaseId, slideN, output: result.output, runId }));
           return true;

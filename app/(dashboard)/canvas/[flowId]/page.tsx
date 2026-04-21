@@ -344,7 +344,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
   const [noClientToast, setNoClientToast] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { phases, clientId: storeClientId, setClientId: setStoreClientId, setStatus, setOutput, hydratePhases, reset } = useCanvasStore();
+  const { phases, clientId: storeClientId, setClientId: setStoreClientId, setStatus, setOutput, hydratePhases, appendTrace, hydrateTraces, traces, reset } = useCanvasStore();
 
   // URL sync: read ?clientId on mount; if absent show onboarding
   useEffect(() => {
@@ -371,7 +371,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
     console.log("[canvas] loading flow", { flowId });
     fetch(`/api/canvas/${flowId}`)
       .then(r => r.json())
-      .then(({ flow, phases: savedPhases }) => {
+      .then(({ flow, phases: savedPhases, traces: savedTraces }) => {
         console.log("[canvas] flow loaded", {
           flowId,
           hasFlow: !!flow,
@@ -387,6 +387,9 @@ function CanvasInner({ flowId }: { flowId: string }) {
           console.log("[canvas] hydratePhases called", { phaseKeys: Object.keys(savedPhases) });
         } else {
           console.log("[canvas] no savedPhases to hydrate");
+        }
+        if (savedTraces?.length > 0) {
+          hydrateTraces(savedTraces as import("@/types").CanvasTraceEntry[]);
         }
         setLoaded(true);
       })
@@ -485,6 +488,17 @@ function CanvasInner({ flowId }: { flowId: string }) {
             if (event.output) setOutput(event.phaseId as PhaseId, event.output);
           }
           if (event.type === "phase_error") setStatus(event.phaseId as PhaseId, "error");
+          if (event.type === "node_trace") {
+            appendTrace({
+              phaseId: event.phaseId as import("@/types").PhaseId,
+              slideN:  event.slideN ?? undefined,
+              ts:      event.ts as number,
+              level:   event.level as import("@/types").TraceLevel,
+              code:    event.code as import("@/types").TraceCode,
+              message: event.message as string,
+              meta:    event.meta as Record<string, unknown> | undefined,
+            });
+          }
           if (event.type === "checkpoint_reached") {
             setCheckpointToast(`Pausei no ${event.phaseId}. Revise e aprove para continuar.`);
             setTimeout(() => setCheckpointToast(null), 5000);
@@ -551,6 +565,20 @@ function CanvasInner({ flowId }: { flowId: string }) {
     return () => window.removeEventListener("keydown", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autosave, clientId, nodes]);
+
+  // Compute metrics from traces
+  const runMetrics = (() => {
+    let totalTokens = 0, costUsd = 0, externalCalls = 0;
+    for (const t of traces) {
+      if (t.code === "llm.response" && t.meta) {
+        totalTokens += ((t.meta.inputTokens as number) ?? 0) + ((t.meta.outputTokens as number) ?? 0);
+        costUsd     += (t.meta.costUsd as number) ?? 0;
+        externalCalls++;
+      }
+      if (t.code === "replicate.predict" || t.code === "r2.upload") externalCalls++;
+    }
+    return { totalTokens, costUsd, externalCalls };
+  })();
 
   return (
     <div className="flex h-full w-full bg-pi-bg">
@@ -642,6 +670,19 @@ function CanvasInner({ flowId }: { flowId: string }) {
               )}
             </div>
           </Panel>
+
+          {/* Run metrics */}
+          {traces.length > 0 && (
+            <Panel position="top-left" style={{ top: "56px" }}>
+              <div className="flex items-center gap-2 bg-pi-surface/80 backdrop-blur-sm border border-pi-border/40 rounded-xl px-3 py-1 text-[10px] font-mono text-pi-text-muted/80 shadow-md">
+                <span>{runMetrics.totalTokens.toLocaleString()} tok</span>
+                <span className="text-pi-border">·</span>
+                <span>${runMetrics.costUsd.toFixed(3)}</span>
+                <span className="text-pi-border">·</span>
+                <span>{runMetrics.externalCalls} calls</span>
+              </div>
+            </Panel>
+          )}
 
           {/* Checkpoint toast */}
           {checkpointToast && (

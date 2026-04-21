@@ -58,9 +58,22 @@ export async function GET(
       if (pid) phases[pid] = { status: "done", output: doc.output ?? {} };
     }
     console.log("[GET canvas] hydration phases", { phaseIds: Object.keys(phases) });
+
+    const traces: import("@/types").CanvasTraceEntry[] = [];
+    for (const doc of doneDocs) {
+      const pid = doc.phaseId as PhaseId;
+      if (!pid) continue;
+      if (doc.traces && Array.isArray(doc.traces)) {
+        for (const t of doc.traces as import("@/types").TraceEntry[]) {
+          traces.push({ ...t, phaseId: pid });
+        }
+      }
+    }
+
+    return NextResponse.json({ flow: { id: snap.id, ...flowData }, phases, traces });
   }
 
-  return NextResponse.json({ flow: { id: snap.id, ...flowData }, phases });
+  return NextResponse.json({ flow: { id: snap.id, ...flowData }, phases, traces: [] });
 }
 
 export async function PUT(

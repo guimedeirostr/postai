@@ -1,6 +1,7 @@
 import { createPrediction, getPrediction } from "@/lib/replicate";
 import { uploadToR2 } from "@/lib/r2";
 import type { ReplicateImageModel } from "@/lib/replicate";
+import type { TraceEmitter } from "@/types";
 
 // Maps Canvas formato keys to the short keys used in ASPECT_RATIO
 const FORMAT_NORMALIZE: Record<string, string> = {
@@ -56,7 +57,7 @@ function extractUrl(output: unknown): string | null {
   return null;
 }
 
-async function downloadAndUpload(remoteUrl: string, clientId: string, model: string, slideN?: number): Promise<string> {
+async function downloadAndUpload(remoteUrl: string, clientId: string, model: string, slideN?: number, emit?: TraceEmitter): Promise<string> {
   const apiKey = process.env.REPLICATE_API_KEY ?? '';
   const slug = model.replace(/\//g, '-').replace(/[^a-z0-9-]/g, '');
   const suffix = slideN != null ? `-s${slideN}` : '';
@@ -72,6 +73,10 @@ async function downloadAndUpload(remoteUrl: string, clientId: string, model: str
   const buf = Buffer.from(await res.arrayBuffer());
   const key = `canvas/${clientId}/${slug}-${Date.now()}${suffix}.${ext}`;
 
+  emit?.({ ts: Date.now(), level: "info", code: "r2.upload",
+    message: `${Math.round(buf.length / 1024)}kB → ${key}`,
+    meta: { key, sizeBytes: buf.length, contentType: ct } });
+
   return uploadToR2(key, buf, ct);
 }
 
@@ -81,6 +86,7 @@ export interface DirectorImageParams {
   formato: string;
   model?: ReplicateImageModel;
   slideN?: number;
+  emit?: TraceEmitter;
 }
 
 export async function runDirectorImage(params: DirectorImageParams): Promise<{ imageUrl: string }> {
@@ -90,6 +96,7 @@ export async function runDirectorImage(params: DirectorImageParams): Promise<{ i
     formato,
     model = 'google/nano-banana-2',
     slideN,
+    emit,
   } = params;
 
   if (!promptCompilado?.trim()) {
@@ -101,6 +108,10 @@ export async function runDirectorImage(params: DirectorImageParams): Promise<{ i
 
   let pred = await createPrediction(model, input);
 
+  emit?.({ ts: Date.now(), level: "info", code: "replicate.predict",
+    message: `${model}`,
+    meta: { predictionId: pred.id, model } });
+
   // Poll until succeeded/failed (max 55 s — leaves buffer for Vercel's 60s limit)
   const deadline = Date.now() + 55_000;
   while (
@@ -111,6 +122,9 @@ export async function runDirectorImage(params: DirectorImageParams): Promise<{ i
   ) {
     await new Promise(r => setTimeout(r, 3_000));
     pred = await getPrediction(pred.id);
+    emit?.({ ts: Date.now(), level: "info", code: "replicate.status",
+      message: pred.status,
+      meta: { status: pred.status, predictionId: pred.id } });
   }
 
   if (pred.status === 'failed' || pred.status === 'canceled') {
@@ -128,6 +142,6 @@ export async function runDirectorImage(params: DirectorImageParams): Promise<{ i
     throw Object.assign(new Error('Replicate retornou succeeded sem output URL'), { code: 'NO_OUTPUT' });
   }
 
-  const imageUrl = await downloadAndUpload(remoteUrl, clientId, model, slideN);
+  const imageUrl = await downloadAndUpload(remoteUrl, clientId, model, slideN, emit);
   return { imageUrl };
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import type { PhaseId, PhaseStatus, ClientContext } from '@/types';
+import type { PhaseId, PhaseStatus, ClientContext, CanvasTraceEntry } from '@/types';
 import { propagateStale, CANVAS_GRAPH } from './staleness';
 
 export type PhaseState = {
@@ -19,6 +19,7 @@ type CanvasStoreState = {
   runId?: string;
   clientId?: string;
   clientContext?: ClientContext;
+  traces: CanvasTraceEntry[];
   setStatus: (p: PhaseId, s: PhaseStatus) => void;
   setOutput: (p: PhaseId, out: unknown) => void;
   setInputHash: (p: PhaseId, hash: string) => void;
@@ -32,6 +33,9 @@ type CanvasStoreState = {
   clearClient: () => void;
   /** Restores phase states from Firestore (called after canvas load). */
   hydratePhases: (incoming: Partial<CanvasPhases>) => void;
+  appendTrace: (entry: CanvasTraceEntry) => void;
+  hydrateTraces: (entries: CanvasTraceEntry[]) => void;
+  clearTraces: () => void;
 };
 
 const INITIAL_PHASES: Record<PhaseId, PhaseState> = {
@@ -53,6 +57,7 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   runId: undefined,
   clientId: undefined,
   clientContext: undefined,
+  traces: [],
 
   setStatus: (p, s) =>
     set(st => ({ phases: { ...st.phases, [p]: { ...st.phases[p], status: s } } })),
@@ -79,7 +84,7 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   setCheckpointAt: (p) => set({ checkpointAt: p }),
   setRunId: (id) => set({ runId: id }),
 
-  reset: () => set({ phases: { ...INITIAL_PHASES }, runId: undefined }),
+  reset: () => set({ phases: { ...INITIAL_PHASES }, runId: undefined, traces: [] }),
 
   setClientId: async (id: string) => {
     if (typeof window !== 'undefined') {
@@ -109,6 +114,15 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
       }
       return { phases: merged };
     }),
+
+  appendTrace: (entry) =>
+    set(st => ({ traces: [...st.traces, entry] })),
+
+  hydrateTraces: (entries) =>
+    set({ traces: entries }),
+
+  clearTraces: () =>
+    set({ traces: [] }),
 
   clearClient: () => {
     if (typeof window !== 'undefined') {

@@ -8,7 +8,7 @@ import { runDirectorCritic } from "@/lib/director/critic";
 import { compilePrompt } from "@/lib/compiler";
 import { getActiveLockset } from "@/lib/lockset/server";
 import { listLibraryAssets } from "@/lib/assets/service";
-import type { PhaseId, PhaseRun, ClientContext, PlanoDePost, CompileInput, SlideType, SlideBgStyle } from "@/types";
+import type { PhaseId, PhaseRun, ClientContext, PlanoDePost, CompileInput, SlideType, SlideBgStyle, TraceEntry, TraceEmitter } from "@/types";
 
 // ── Format normalisation ───────────────────────────────────────────────────────
 
@@ -78,6 +78,7 @@ export async function loadClientContext(uid: string, clientId: string): Promise<
 async function executePlano(
   input: Record<string, unknown>,
   ctx: ClientContext,
+  _emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
   const { objetivo, formato } = input as Record<string, string>;
   const plan = await runDirectorPlan({
@@ -93,6 +94,7 @@ async function executePlano(
 async function executeMemoria(
   _input: Record<string, unknown>,
   ctx: ClientContext,
+  _emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
   return { memory: ctx.clientMemory ?? null, clientId: ctx.clientId, clientName: ctx.clientName };
 }
@@ -101,6 +103,7 @@ async function executeCompilacao(
   input: Record<string, unknown>,
   ctx: ClientContext,
   uid: string,
+  _emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
   const formato = normalizeFormat((input.formato ?? "feed") as string);
   const objetivo = (input.objetivo ?? "") as string;
@@ -135,6 +138,7 @@ async function executeCopy(
   input: Record<string, unknown>,
   ctx: ClientContext,
   uid: string,
+  emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
   const { objetivo, formato, plan } = input as { objetivo?: string; formato?: string; plan?: PlanoDePost };
   const result = await runDirectorCopy({
@@ -143,6 +147,7 @@ async function executeCopy(
     objetivo:  objetivo ?? "",
     formato:   formato  ?? "feed",
     plan,
+    emit,
   });
   return result as unknown as Record<string, unknown>;
 }
@@ -150,6 +155,7 @@ async function executeCopy(
 async function executeImage(
   input: Record<string, unknown>,
   ctx: ClientContext,
+  emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
   const { compiledText, formato, model, slideN } = input as {
     compiledText?: string;
@@ -163,6 +169,7 @@ async function executeImage(
     formato:         formato ?? "feed",
     model:           model as Parameters<typeof runDirectorImage>[0]["model"],
     slideN,
+    emit,
   });
   return { imageUrl };
 }
@@ -170,6 +177,7 @@ async function executeImage(
 async function executeCritic(
   input: Record<string, unknown>,
   ctx: ClientContext,
+  emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
   const { imageUrl, brief, slideN } = input as { imageUrl?: string; brief?: string; slideN?: number };
   if (!imageUrl) throw Object.assign(new Error("imageUrl ausente para fase critico"), { code: "MISSING_INPUT" });
@@ -180,6 +188,7 @@ async function executeCritic(
     clientName: ctx.clientName,
     plan:       input.plan as PlanoDePost | undefined,
     slideN,
+    emit,
   });
   return result as unknown as Record<string, unknown>;
 }
@@ -202,6 +211,7 @@ async function executeOutput(
   ctx: ClientContext,
   uid: string,
   meta: { runId: string; flowId?: string },
+  _emit?: TraceEmitter,
 ): Promise<Record<string, unknown>> {
   const formato   = (input.formato as string) ?? "feed";
   const { runId, flowId } = meta;
@@ -356,17 +366,18 @@ async function dispatchPhase(
   ctx:     ClientContext,
   uid:     string,
   meta:    { runId: string; flowId?: string },
+  emit?:   TraceEmitter,
 ): Promise<Record<string, unknown>> {
   switch (phaseId) {
     case "briefing":   return { ...input };
-    case "plano":      return executePlano(input, ctx);
-    case "memoria":    return executeMemoria(input, ctx);
-    case "compilacao": return executeCompilacao(input, ctx, uid);
+    case "plano":      return executePlano(input, ctx, emit);
+    case "memoria":    return executeMemoria(input, ctx, emit);
+    case "compilacao": return executeCompilacao(input, ctx, uid, emit);
     case "prompt":     return { compiledText: input.compiledText ?? "", formato: input.formato ?? "feed" };
-    case "image":      return executeImage(input, ctx);
-    case "copy":       return executeCopy(input, ctx, uid);
-    case "critico":    return executeCritic(input, ctx);
-    case "output":     return executeOutput(input, ctx, uid, meta);
+    case "image":      return executeImage(input, ctx, emit);
+    case "copy":       return executeCopy(input, ctx, uid, emit);
+    case "critico":    return executeCritic(input, ctx, emit);
+    case "output":     return executeOutput(input, ctx, uid, meta, emit);
   }
 }
 
@@ -380,6 +391,7 @@ export interface RunPhaseParams {
   triggeredBy: PhaseRun["triggeredBy"];
   runId:       string;
   flowId?:     string;
+  emit?:       TraceEmitter;
 }
 
 export interface RunPhaseResult {
@@ -394,8 +406,18 @@ export interface RunPhaseResult {
 export async function runPhaseWithCtx(
   params: RunPhaseParams & { ctx: ClientContext },
 ): Promise<RunPhaseResult> {
-  const { uid, clientId, phaseId, input, triggeredBy, runId, flowId, ctx } = params;
+  const { uid, clientId, phaseId, input, triggeredBy, runId, flowId, ctx, emit } = params;
   const startedAt = Date.now();
+
+  const traceLog: TraceEntry[] = [];
+  const innerEmit: TraceEmitter = (entry) => {
+    traceLog.push(entry);
+    emit?.(entry);
+  };
+
+  innerEmit({ ts: startedAt, level: "info", code: "start",
+    message: `${phaseId} iniciada`,
+    meta: { phaseId, inputKeys: Object.keys(input) } });
 
   const phaseRunRef = adminDb.collection(paths.phaseRuns(uid, clientId, runId)).doc();
   await phaseRunRef.set({
@@ -411,7 +433,7 @@ export async function runPhaseWithCtx(
 
   let output: Record<string, unknown>;
   try {
-    output = await dispatchPhase(phaseId, input, ctx, uid, { runId, flowId });
+    output = await dispatchPhase(phaseId, input, ctx, uid, { runId, flowId }, innerEmit);
   } catch (err) {
     await phaseRunRef.update({
       status:       "error",
@@ -423,11 +445,16 @@ export async function runPhaseWithCtx(
   }
 
   const finishedAt = Date.now();
+  innerEmit({ ts: finishedAt, level: "info", code: "done",
+    message: `${phaseId} concluída · ${finishedAt - startedAt}ms`,
+    meta: { latencyMs: finishedAt - startedAt } });
+
   await phaseRunRef.update({
     status:    "done",
     output,
     finishedAt,
     latencyMs: finishedAt - startedAt,
+    traces:    traceLog,
   });
 
   return { output, phaseRunId: phaseRunRef.id };

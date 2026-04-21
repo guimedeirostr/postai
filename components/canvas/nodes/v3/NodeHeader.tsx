@@ -4,6 +4,7 @@ import { Check, MoreHorizontal } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import type { PhaseId, PhaseStatus } from '@/types';
+import { useCanvasStore } from '@/lib/canvas/store';
 
 const STATUS_BADGE: Record<PhaseStatus, { txt: string; cls: string }> = {
   idle:    { txt: 'Aguardando',    cls: 'bg-pi-surface-muted text-pi-text-muted' },
@@ -28,11 +29,16 @@ interface NodeHeaderProps {
 }
 
 export function NodeHeader({
-  status, onRunToHere, onRegenerate, onReset, onApprove, label, icon, accentColor = '#a855f7',
+  phaseId, status, onRunToHere, onRegenerate, onReset, onApprove, label, icon, accentColor = '#a855f7',
 }: NodeHeaderProps) {
   const badge = STATUS_BADGE[status];
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const traces = useCanvasStore(s => s.traces.filter(t => t.phaseId === phaseId));
+  const startTs = traces.find(t => t.code === "start")?.ts;
+  const doneTs  = traces.find(t => t.code === "done")?.ts;
+  const durationMs = startTs && doneTs ? doneTs - startTs : undefined;
+  const lastTrace  = status === "running" || status === "done" ? traces[traces.length - 1] : undefined;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -43,7 +49,8 @@ export function NodeHeader({
   }, [menuOpen]);
 
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-pi-border/30 px-3 py-2">
+    <div className="border-b border-pi-border/30">
+    <div className="flex items-center justify-between gap-2 px-3 py-2">
       {/* Left: icon + label + badge */}
       <div className="flex items-center gap-2 min-w-0">
         <div
@@ -56,6 +63,11 @@ export function NodeHeader({
         <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full flex-none', badge.cls)}>
           {badge.txt}
         </span>
+        {durationMs !== undefined && (
+          <span className="text-[9px] text-pi-text-muted/70 flex-none">
+            {(durationMs / 1000).toFixed(1)}s
+          </span>
+        )}
       </div>
 
       {/* Right: Approve + ⋯ menu */}
@@ -106,6 +118,14 @@ export function NodeHeader({
           )}
         </div>
       </div>
+    </div>
+    {lastTrace && (
+      <div className="px-3 pb-1.5 -mt-0.5">
+        <p className="text-[9px] text-pi-text-muted/70 font-mono truncate">
+          {lastTrace.message}
+        </p>
+      </div>
+    )}
     </div>
   );
 }

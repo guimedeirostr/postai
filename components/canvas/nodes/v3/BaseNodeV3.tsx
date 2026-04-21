@@ -4,6 +4,7 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NodeHeader } from "./NodeHeader";
+import { NodeTraceFeed } from "@/components/canvas/NodeTraceFeed";
 import { useServiceMissing, SERVICE_ENV_LABEL } from "@/lib/canvas/useHealth";
 import type { PhaseId, PhaseStatus } from "@/types";
 import type { ServiceHealth } from "@/lib/canvas/useHealth";
@@ -100,6 +101,9 @@ export default function BaseNodeV3({
           </div>
         )}
         {children}
+        {phaseId && (
+          <NodeTraceFeed phaseId={phaseId} />
+        )}
       </div>
 
       {/* Handles */}

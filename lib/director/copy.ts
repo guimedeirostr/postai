@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { adminDb } from "@/lib/firebase-admin";
 import type { BrandProfile, PlanoDePost } from "@/types";
+import { estimateCost } from "@/lib/canvas/trace";
+import type { TraceEmitter } from "@/types";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
@@ -40,6 +42,7 @@ export interface DirectorCopyParams {
   objetivo: string;
   formato: string;
   plan?: PlanoDePost;
+  emit?: TraceEmitter;
 }
 
 function buildSinglePrompt(client: BrandProfile, objetivo: string, formato: string, plan?: PlanoDePost): string {
@@ -116,7 +119,7 @@ function parseJson<T>(raw: string): T | null {
 }
 
 export async function runDirectorCopy(params: DirectorCopyParams): Promise<DirectorCopyOutput> {
-  const { uid, clientId, objetivo, formato, plan } = params;
+  const { uid, clientId, objetivo, formato, plan, emit } = params;
 
   const clientSnap = await adminDb.collection('clients').doc(clientId).get();
   if (!clientSnap.exists || clientSnap.data()?.agency_id !== uid) {
@@ -131,6 +134,10 @@ export async function runDirectorCopy(params: DirectorCopyParams): Promise<Direc
 
   let raw = '';
   try {
+    const t0 = Date.now();
+    emit?.({ ts: Date.now(), level: "info", code: "llm.call",
+      message: MODEL,
+      meta: { model: MODEL, formato, isCarousel } });
     const message = await anthropic.messages.create({
       model:      MODEL,
       max_tokens: 4096,
@@ -141,6 +148,11 @@ export async function runDirectorCopy(params: DirectorCopyParams): Promise<Direc
       .filter(b => b.type === 'text')
       .map(b => (b as { type: 'text'; text: string }).text)
       .join('');
+    const usage = message.usage;
+    const costUsd = estimateCost(MODEL, usage.input_tokens, usage.output_tokens);
+    emit?.({ ts: Date.now(), level: "info", code: "llm.response",
+      message: `${usage.output_tokens} tok out · $${costUsd.toFixed(4)}`,
+      meta: { model: MODEL, inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, costUsd, latencyMs: Date.now() - t0 } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[runDirectorCopy] Anthropic error:', msg);
@@ -148,6 +160,11 @@ export async function runDirectorCopy(params: DirectorCopyParams): Promise<Direc
   }
 
   const parsed = parseJson<DirectorCopyOutput>(raw);
+  if (parsed) {
+    emit?.({ ts: Date.now(), level: "info", code: "llm.parse",
+      message: "JSON parsed",
+      meta: { keys: Object.keys(parsed) } });
+  }
   if (!parsed) {
     console.error('[runDirectorCopy] JSON parse failed. Raw:', raw.slice(0, 400));
     throw Object.assign(
