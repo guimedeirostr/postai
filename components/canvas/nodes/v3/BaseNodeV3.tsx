@@ -5,6 +5,8 @@ import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NodeHeader } from "./NodeHeader";
 import { NodeTraceFeed } from "@/components/canvas/NodeTraceFeed";
+import { NodeOutput } from "@/components/canvas/NodeOutput";
+import { usePhaseRunner } from "@/lib/canvas/usePhaseRunner";
 import { useServiceMissing, SERVICE_ENV_LABEL } from "@/lib/canvas/useHealth";
 import type { PhaseId, PhaseStatus } from "@/types";
 import type { ServiceHealth } from "@/lib/canvas/useHealth";
@@ -44,6 +46,10 @@ export default function BaseNodeV3({
   const serviceMissing = useServiceMissing(requiredService);
   const missingLabel   = requiredService && serviceMissing ? SERVICE_ENV_LABEL[requiredService] : null;
 
+  // Hook is always called (rules of hooks), but only wired up when phaseId is known.
+  // Using a fallback ensures the hook runs unconditionally.
+  const runner = usePhaseRunner((phaseId ?? "briefing") as PhaseId);
+
   return (
     <div
       className={cn(
@@ -67,12 +73,16 @@ export default function BaseNodeV3({
           phaseId={phaseId}
           status={phaseStatus}
           onRunToHere={onRunToHere ?? (() => {})}
-          onRegenerate={onRegenerate ?? (() => {})}
+          onRegenerate={() => { onRegenerate?.(); runner.run(true); }}
           onReset={onReset ?? (() => {})}
           onApprove={onApprove ?? (() => {})}
           label={label}
           icon={icon}
           accentColor={accentColor}
+          onPlay={() => runner.run(false)}
+          isRunning={runner.isRunning}
+          elapsedMs={runner.elapsedMs}
+          canRunPhase={runner.canRunPhase}
         />
       ) : (
         <div className="flex items-center gap-2.5 px-4 py-3 border-b border-pi-border/50">
@@ -102,7 +112,10 @@ export default function BaseNodeV3({
         )}
         {children}
         {phaseId && (
-          <NodeTraceFeed phaseId={phaseId} />
+          <>
+            <NodeTraceFeed phaseId={phaseId} />
+            <NodeOutput phaseId={phaseId} onRegenerate={() => runner.run(true)} />
+          </>
         )}
       </div>
 

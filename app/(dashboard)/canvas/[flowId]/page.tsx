@@ -344,7 +344,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
   const [noClientToast, setNoClientToast] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { phases, clientId: storeClientId, setClientId: setStoreClientId, setStatus, setOutput, hydratePhases, appendTrace, hydrateTraces, traces, reset } = useCanvasStore();
+  const { phases, clientId: storeClientId, setClientId: setStoreClientId, setFlowId: setStoreFlowId, setStatus, setOutput, hydratePhases, appendTrace, hydrateTraces, traces, reset } = useCanvasStore();
 
   // URL sync: read ?clientId on mount; if absent show onboarding
   useEffect(() => {
@@ -355,6 +355,8 @@ function CanvasInner({ flowId }: { flowId: string }) {
     } else {
       setShowOnboarding(true);
     }
+    // Persist flowId in store so usePhaseRunner can read it from any node
+    if (flowId && !flowId.startsWith("new")) setStoreFlowId(flowId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -478,6 +480,7 @@ function CanvasInner({ flowId }: { flowId: string }) {
             const serverFlowId = event.flowId as string | null;
             console.log("[canvas] run_started", { serverFlowId, runId: event.runId });
             if (serverFlowId && !serverFlowId.startsWith("new")) {
+              setStoreFlowId(serverFlowId);
               const newUrl = `/canvas/${serverFlowId}${clientId ? `?clientId=${clientId}` : ""}`;
               router.replace(newUrl);
             }

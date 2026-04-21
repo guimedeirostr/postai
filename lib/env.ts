@@ -27,6 +27,7 @@ const envSchema = z.object({
   FALAI_API_KEY:           z.string().optional(),
   FREEPIK_API_KEY:         z.string().optional(),
   IMAGE_PROVIDER:          z.string().optional(),
+  NEXT_PUBLIC_CANVAS_V4_PLAY_PER_NODE: z.string().optional(),
 });
 
 // ── Boot-time validation ───────────────────────────────────────────────────────
@@ -60,6 +61,16 @@ export interface ServiceHealth {
   google:    boolean;
   fal:       boolean;
   freepik:   boolean;
+}
+
+export interface FeatureFlags {
+  canvasV4PlayPerNode: boolean;
+}
+
+export function getFeatureFlags(): FeatureFlags {
+  return {
+    canvasV4PlayPerNode: _env.NEXT_PUBLIC_CANVAS_V4_PLAY_PER_NODE === "true",
+  };
 }
 
 export function getServiceHealth(): ServiceHealth {

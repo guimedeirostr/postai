@@ -381,6 +381,46 @@ async function dispatchPhase(
   }
 }
 
+// ── buildInput — threads accumulated outputs into a phase-specific input ──────
+
+export function buildInput(
+  phaseId: PhaseId,
+  accum:   Record<string, unknown>,
+  extra?:  Record<string, unknown>,
+): Record<string, unknown> {
+  const base = { objetivo: accum.objetivo, formato: accum.formato };
+  switch (phaseId) {
+    case "briefing":   return base;
+    case "memoria":    return base;
+    case "plano":      return base;
+    case "compilacao": return { ...base, plan: accum.plan, ...(extra ?? {}) };
+    case "prompt":     return { compiledText: accum.compiledText, ...base };
+    case "image":      return { compiledText: accum.compiledText, formato: accum.formato, model: accum.model, slideN: accum.slideN };
+    case "copy":       return { ...base, plan: accum.plan };
+    case "critico":    return { imageUrl: accum.imageUrl, brief: accum.brief ?? accum.caption ?? accum.headline, slideN: accum.slideN, plan: accum.plan };
+    case "output":     return { ...accum };
+    default:           return base;
+  }
+}
+
+/** Loads all done phaseRuns for a run and merges their outputs into a flat accum object. */
+export async function loadUpstreamOutputs(
+  uid:      string,
+  clientId: string,
+  runId:    string,
+): Promise<Record<string, unknown>> {
+  const snap = await adminDb.collection(paths.phaseRuns(uid, clientId, runId)).get();
+  const accum: Record<string, unknown> = {};
+  const doneDocs = snap.docs
+    .map(d => d.data())
+    .filter(d => d.status === "done")
+    .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+  for (const doc of doneDocs) {
+    if (doc.output && typeof doc.output === "object") Object.assign(accum, doc.output);
+  }
+  return accum;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 export interface RunPhaseParams {

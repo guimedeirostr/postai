@@ -18,6 +18,7 @@ type CanvasStoreState = {
   checkpointAt?: PhaseId;
   runId?: string;
   clientId?: string;
+  flowId?: string;
   clientContext?: ClientContext;
   traces: CanvasTraceEntry[];
   setStatus: (p: PhaseId, s: PhaseStatus) => void;
@@ -28,6 +29,8 @@ type CanvasStoreState = {
   setMode: (m: 'step' | 'checkpoint' | 'run-all') => void;
   setCheckpointAt: (p: PhaseId | undefined) => void;
   setRunId: (id: string | undefined) => void;
+  setFlowId: (id: string) => void;
+  clearPhaseTraces: (phaseId: PhaseId) => void;
   reset: () => void;
   setClientId: (id: string) => Promise<void>;
   clearClient: () => void;
@@ -56,6 +59,7 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   checkpointAt: 'prompt',
   runId: undefined,
   clientId: undefined,
+  flowId: undefined,
   clientContext: undefined,
   traces: [],
 
@@ -83,6 +87,10 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   setMode: (m) => set({ mode: m }),
   setCheckpointAt: (p) => set({ checkpointAt: p }),
   setRunId: (id) => set({ runId: id }),
+  setFlowId: (id) => set({ flowId: id }),
+
+  clearPhaseTraces: (phaseId) =>
+    set(st => ({ traces: st.traces.filter(t => t.phaseId !== phaseId) })),
 
   reset: () => set({ phases: { ...INITIAL_PHASES }, runId: undefined, traces: [] }),
 

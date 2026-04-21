@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getSessionUser } from "@/lib/session";
 import { paths } from "@/lib/firestore/paths";
-import { loadClientContext, runPhaseWithCtx } from "@/lib/canvas/runPhase";
+import { loadClientContext, runPhaseWithCtx, buildInput } from "@/lib/canvas/runPhase";
 import type { PhaseId, BriefingInput } from "@/types";
 
 // Carousel pipelines can take several minutes (image gen ≤55 s/slide × N slides).
@@ -17,28 +17,6 @@ type RunBody = {
 };
 
 const CAROUSEL_FORMATS = new Set(["carousel", "ig_carousel", "li_carousel_pdf"]);
-
-// ── Input builder — threads accumulated outputs to the next phase ──────────────
-
-function buildInput(
-  phaseId: PhaseId,
-  accum:   Record<string, unknown>,
-  extra?:  Record<string, unknown>,
-): Record<string, unknown> {
-  const base = { objetivo: accum.objetivo, formato: accum.formato };
-  switch (phaseId) {
-    case "briefing":   return base;
-    case "memoria":    return base;
-    case "plano":      return base;
-    case "compilacao": return { ...base, plan: accum.plan, ...(extra ?? {}) };
-    case "prompt":     return { compiledText: accum.compiledText, ...base };
-    case "image":      return { compiledText: accum.compiledText, formato: accum.formato, model: accum.model, slideN: accum.slideN };
-    case "copy":       return { ...base, plan: accum.plan };
-    case "critico":    return { imageUrl: accum.imageUrl, brief: accum.brief ?? accum.caption ?? accum.headline, slideN: accum.slideN, plan: accum.plan };
-    case "output":     return { ...accum };
-    default:           return base;
-  }
-}
 
 function encode(data: object): string {
   return `data: ${JSON.stringify(data)}\n\n`;
