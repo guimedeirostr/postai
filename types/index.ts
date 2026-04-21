@@ -557,15 +557,71 @@ export interface RejectedPattern {
 }
 
 export interface ClientMemory {
-  toneExamples:     string[];
+  toneExamples:     string[];           // keep for backward compat
+  examples?:        PostExample[];      // NEW — rich structured examples
   rejectedPatterns: RejectedPattern[];
   personas:         { name: string; description: string }[];
   productCatalog:   { name: string; description: string }[];
-  stats:            { approved: number; rejected: number; avgCriticScore: number };
+  stats:            { approved: number; rejected: number; avgCriticScore: number; imported?: number };
   // Prompt Compiler ML
   slotWeights?:     Partial<Record<PromptSlotKey, SlotWeightEntry>>;
   customModels?:    { promptWriter?: string };
   updatedAt:        Timestamp;
+}
+
+// ── Visual Design (from Claude Vision) ───────────────────────────────────────
+export interface VisualDesign {
+  palette:     string;    // "dark charcoal background, warm gold accent, white text"
+  mood:        string;    // "luxury, elegant, sophisticated"
+  composition: string;    // "centered product, asymmetric text, generous white space"
+  typography:  string;    // "bold sans-serif headline, light body, wide letter-spacing"
+  elements:    string;    // "product shot, minimal props, soft drop shadow"
+  promptHint:  string;    // condensed for visual_prompt injection: "dark luxury aesthetic, gold accents, bold overlay"
+}
+
+export type PostFormat  = "feed" | "carousel" | "story" | "reels";
+export type PostPilar   = "educacao" | "produto" | "bastidores" | "inspiracao" | "prova_social" | "promocao" | "entretenimento";
+export type HookType    = "pergunta" | "estatistica" | "dor" | "desejo" | "curiosidade" | "polemica" | "afirmacao";
+
+export interface PostSlide {
+  role:      "hook" | "content" | "cta";
+  headline:  string;
+  body:      string;
+  imageUrl?: string;
+}
+
+export interface PostEngagement {
+  likes?:    number;
+  comments?: number;
+  saves?:    number;
+  reach?:    number;
+  shares?:   number;
+}
+
+export interface PostExample {
+  id:              string;
+  source:          "canvas" | "import";
+  format:          PostFormat;
+  // Copy
+  headline?:        string;
+  visual_headline?: string;
+  caption:          string;
+  hashtags?:        string[];
+  // Carousel
+  slides?:          PostSlide[];
+  // Marketing context
+  pilar?:           string;
+  hook_type?:       string;
+  objetivo?:        string;
+  // Visual (from Claude Vision)
+  imageUrl?:        string;
+  visualDesign?:    VisualDesign;
+  // Performance
+  engagement?:      PostEngagement;
+  publishedAt?:     string;    // ISO date string
+  criticScore?:     number;
+  // Meta
+  importedAt:       Timestamp;
 }
 
 // ── Plan ──────────────────────────────────────────────────────────────────────

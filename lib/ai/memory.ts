@@ -4,7 +4,7 @@
 import { adminDb } from "@/lib/firebase-admin";
 import { paths } from "@/lib/firestore/paths";
 import { FieldValue } from "firebase-admin/firestore";
-import type { ClientMemory, RejectedPattern, AssetEmbedding } from "@/types";
+import type { ClientMemory, PostExample, RejectedPattern, AssetEmbedding } from "@/types";
 
 const MAX_TONE_EXAMPLES = 50;
 
@@ -129,4 +129,29 @@ export async function saveEmbedding(uid: string, cid: string, assetId: string, e
     embedding,
     createdAt: FieldValue.serverTimestamp(),
   });
+}
+
+// ── Importação: adiciona PostExample rico à memória ────────────────────────────
+
+export async function appendImported(uid: string, cid: string, example: PostExample) {
+  const ref  = adminDb.doc(paths.memory(uid, cid));
+  const snap = await ref.get();
+  const mem  = snap.exists ? (snap.data() as ClientMemory) : null;
+
+  const currentExamples = mem?.examples ?? [];
+  const currentTones    = mem?.toneExamples ?? [];
+  const currentStats    = mem?.stats ?? { approved: 0, rejected: 0, avgCriticScore: 0 };
+
+  // Keep last 100 examples (FIFO)
+  const newExamples = [...currentExamples, example].slice(-100);
+  // Also keep caption in toneExamples for backward compat
+  const newTones    = [...currentTones, example.caption].slice(-MAX_TONE_EXAMPLES);
+  const imported    = (currentStats as { imported?: number }).imported ?? 0;
+
+  await ref.set({
+    examples:     newExamples,
+    toneExamples: newTones,
+    stats: { ...currentStats, imported: imported + 1 },
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
 }

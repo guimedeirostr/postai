@@ -54,11 +54,13 @@ export async function PATCH(
     const body = await req.json() as {
       toneExamples?:     string[];
       rejectedPatterns?: { pattern: string; reason: string }[];
+      examples?:         unknown[];
     };
 
     const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
     if (body.toneExamples     !== undefined) updates.toneExamples     = body.toneExamples;
     if (body.rejectedPatterns !== undefined) updates.rejectedPatterns = body.rejectedPatterns;
+    if (body.examples         !== undefined) updates.examples         = body.examples;
 
     await adminDb.doc(paths.memory(user.uid, clientId)).set(updates, { merge: true });
 
