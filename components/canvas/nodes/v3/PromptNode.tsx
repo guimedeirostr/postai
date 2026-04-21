@@ -96,6 +96,8 @@ export default function PromptNode({ id, data, selected }: NodeProps) {
       });
       setCompilationStatus("done");
       setStatus('compilacao', 'done');
+      // Popula phases.prompt.output para que ImageNode leia compiledText do store
+      setOutput('prompt', { compiledText: output.compiled, format: d.format ?? 'feed' });
       console.log(JSON.stringify({ event: 'compiler.canvas.recompile', cid: clientId, hadManualEdits: !!d.wasEdited }));
     } catch (e) {
       setCompilationStatus("error");
@@ -135,9 +137,10 @@ export default function PromptNode({ id, data, selected }: NodeProps) {
       const output: CarouselCompileOutput = await res.json();
       compiledAtRef.current = new Date().toLocaleTimeString("pt-BR");
       hasCompiledRef.current = true;
+      const firstSlideText = output.slides[0]?.compiled ?? "";
       // First slide text goes into `prompt` for downstream phases
       updateNodeData(id, {
-        prompt: output.slides[0]?.compiled ?? "",
+        prompt: firstSlideText,
         carouselOutput: output,
         carouselEdits: {},
         carouselEditedSlides: [],
@@ -145,6 +148,8 @@ export default function PromptNode({ id, data, selected }: NodeProps) {
       setActiveSlide(0);
       setCompilationStatus("done");
       setStatus('compilacao', 'done');
+      // Popula phases.prompt.output para que ImageNode leia compiledText do store
+      setOutput('prompt', { compiledText: firstSlideText, format: "carousel" });
       console.log(JSON.stringify({ event: 'compiler.canvas.recompile', cid: clientId, hadManualEdits: false }));
     } catch (e) {
       setCompilationStatus("error");
@@ -280,7 +285,7 @@ export default function PromptNode({ id, data, selected }: NodeProps) {
 
   async function run(triggeredBy: 'step' | 'run-to-here' | 'regenerate' = 'step') {
     if (!d.prompt?.trim() || !clientId) return;
-    const input = { prompt: d.prompt, clientId, model: d.model ?? 'flux-pro', format: d.format ?? 'feed' };
+    const input = { prompt: d.prompt, compiledText: d.compiledText ?? d.prompt, clientId, model: d.model ?? 'flux-pro', format: d.format ?? 'feed' };
     setStatus('prompt', 'running');
     setInputHash('prompt', hashInput(input));
     updateNodeData(id, { status: "loading" });
